@@ -27,40 +27,65 @@ log = logging.getLogger(__name__)
 
 MAX_AGENT_ITERATIONS = 10
 FALLBACK_MODEL = "gemini-1.5-pro-latest"
-CONTEXT_TRUNCATION_THRESHOLD_TOKENS = 800000 # Example token limit
-MAX_HISTORY_TURNS = 20 # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
+CONTEXT_TRUNCATION_THRESHOLD_TOKENS = 800000  # Example token limit
+MAX_HISTORY_TURNS = (
+    20  # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
+)
 
 # Remove standalone list_available_models function
 # def list_available_models(api_key):
 #     ...
 
-class GeminiModel(AbstractModelAgent): # Inherit from base class
+
+class GeminiModel(AbstractModelAgent):  # Inherit from base class
     """Interface for Gemini models using native function calling agentic loop."""
 
-    def __init__(self, api_key: str, console: Console, model_name: str | None = "gemini-2.5-pro-exp-03-25"):
+    def __init__(
+        self,
+        api_key: str,
+        console: Console,
+        model_name: str | None = "gemini-2.5-pro-exp-03-25",
+    ):
         """Initialize the Gemini model interface."""
-        super().__init__(console=console, model_name=model_name) # Call base class init
-        
+        super().__init__(console=console, model_name=model_name)  # Call base class init
+
         if not api_key:
-             raise ValueError("Gemini API key is required.")
-             
+            raise ValueError("Gemini API key is required.")
+
         self.api_key = api_key
-        self.initial_model_name = self.model_name or "gemini-2.5-pro-exp-03-25" # Use passed model or default
-        self.current_model_name = self.initial_model_name # Start with the determined model
+        self.initial_model_name = (
+            self.model_name or "gemini-2.5-pro-exp-03-25"
+        )  # Use passed model or default
+        self.current_model_name = (
+            self.initial_model_name
+        )  # Start with the determined model
         # self.console is set by super().__init__
-        
+
         try:
             genai.configure(api_key=api_key)
         except Exception as config_err:
-             log.error(f"Failed to configure Gemini API: {config_err}", exc_info=True)
-             raise ConnectionError(f"Failed to configure Gemini API: {config_err}") from config_err
+            log.error(f"Failed to configure Gemini API: {config_err}", exc_info=True)
+            raise ConnectionError(
+                f"Failed to configure Gemini API: {config_err}"
+            ) from config_err
 
-        self.generation_config = genai.types.GenerationConfig(temperature=0.4, top_p=0.95, top_k=40)
-        self.safety_settings = { "HARASSMENT": "BLOCK_MEDIUM_AND_ABOVE", "HATE": "BLOCK_MEDIUM_AND_ABOVE", "SEXUAL": "BLOCK_MEDIUM_AND_ABOVE", "DANGEROUS": "BLOCK_MEDIUM_AND_ABOVE" }
-        
+        self.generation_config = genai.types.GenerationConfig(
+            temperature=0.4, top_p=0.95, top_k=40
+        )
+        self.safety_settings = {
+            "HARASSMENT": "BLOCK_MEDIUM_AND_ABOVE",
+            "HATE": "BLOCK_MEDIUM_AND_ABOVE",
+            "SEXUAL": "BLOCK_MEDIUM_AND_ABOVE",
+            "DANGEROUS": "BLOCK_MEDIUM_AND_ABOVE",
+        }
+
         # --- Tool Definition ---
         self.function_declarations = self._create_tool_definitions()
-        self.gemini_tools = genai.Tool(function_declarations=self.function_declarations) if self.function_declarations else None
+        self.gemini_tools = (
+            genai.Tool(function_declarations=self.function_declarations)
+            if self.function_declarations
+            else None
+        )
         # ---
 
         # --- System Prompt (Native Functions & Planning) ---
@@ -68,24 +93,38 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
         # ---
 
         # --- Initialize Gemini-specific History ---
-        self.history = [] # Initialize history list for this instance
-        self.add_to_history({'role': 'user', 'parts': [self.system_instruction]})
-        self.add_to_history({'role': 'model', 'parts': ["Okay, I'm ready. Provide the directory context and your request."]})
+        self.history = []  # Initialize history list for this instance
+        self.add_to_history({"role": "user", "parts": [self.system_instruction]})
+        self.add_to_history(
+            {
+                "role": "model",
+                "parts": [
+                    "Okay, I'm ready. Provide the directory context and your request."
+                ],
+            }
+        )
         log.info("Initialized persistent chat history for GeminiModel.")
         # ---
 
         try:
-            self._initialize_model_instance() # Creates self.model
-            log.info("GeminiModel initialized successfully (Native Function Calling Agent Loop).")
+            self._initialize_model_instance()  # Creates self.model
+            log.info(
+                "GeminiModel initialized successfully (Native Function Calling Agent Loop)."
+            )
         except Exception as e:
-             log.error(f"Fatal error initializing Gemini model '{self.current_model_name}': {str(e)}", exc_info=True)
-             # Raise a more specific error or just re-raise
-             raise Exception(f"Could not initialize Gemini model '{self.current_model_name}': {e}") from e
+            log.error(
+                f"Fatal error initializing Gemini model '{self.current_model_name}': {str(e)}",
+                exc_info=True,
+            )
+            # Raise a more specific error or just re-raise
+            raise Exception(
+                f"Could not initialize Gemini model '{self.current_model_name}': {e}"
+            ) from e
 
     def _initialize_model_instance(self):
         """Helper to create the GenerativeModel instance."""
         if not self.current_model_name:
-             raise ValueError("Model name cannot be empty for initialization.")
+            raise ValueError("Model name cannot be empty for initialization.")
         log.info(f"Initializing model instance: {self.current_model_name}")
         try:
             # Pass system instruction here, tools are passed during generate_content
@@ -93,11 +132,16 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
                 model_name=self.current_model_name,
                 generation_config=self.generation_config,
                 safety_settings=self.safety_settings,
-                system_instruction=self.system_instruction
+                system_instruction=self.system_instruction,
             )
-            log.info(f"Model instance '{self.current_model_name}' created successfully.")
+            log.info(
+                f"Model instance '{self.current_model_name}' created successfully."
+            )
         except Exception as init_err:
-            log.error(f"Failed to create model instance for '{self.current_model_name}': {init_err}", exc_info=True)
+            log.error(
+                f"Failed to create model instance for '{self.current_model_name}': {init_err}",
+                exc_info=True,
+            )
             raise init_err
 
     # --- Implement list_models from base class ---
@@ -109,10 +153,10 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
             gemini_models = []
             for model in models:
                 # Filter for models supporting generateContent
-                if 'generateContent' in model.supported_generation_methods:
+                if "generateContent" in model.supported_generation_methods:
                     model_info = {
-                        "id": model.name, # Use 'id' for consistency maybe?
-                        "name": model.display_name, 
+                        "id": model.name,  # Use 'id' for consistency maybe?
+                        "name": model.display_name,
                         "description": model.description,
                         # Add other relevant fields if needed
                     }
@@ -121,22 +165,24 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
         except Exception as e:
             log.error(f"Error listing Gemini models: {str(e)}", exc_info=True)
             self.console.print(f"[bold red]Error listing Gemini models:[/bold red] {e}")
-            return None # Indicate failure
+            return None  # Indicate failure
 
     # --- generate method remains largely the same, ensure signature matches base ---
     def generate(self, prompt: str) -> str | None:
-        logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
+        logging.info(
+            f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'"
+        )
         original_user_prompt = prompt
-        if prompt.startswith('/'):
-             command = prompt.split()[0].lower()
-             # Handle commands like /compact here eventually
-             if command in ['/exit', '/help']:
-                 logging.info(f"Handled command: {command}")
-                 return None # Or return specific help text
+        if prompt.startswith("/"):
+            command = prompt.split()[0].lower()
+            # Handle commands like /compact here eventually
+            if command in ["/exit", "/help"]:
+                logging.info(f"Handled command: {command}")
+                return None  # Or return specific help text
 
         # === Step 1: Mandatory Orientation ===
         orientation_context = ""
-        ls_result = None # Initialize to None
+        ls_result = None  # Initialize to None
         try:
             logging.info("Performing mandatory orientation (ls).")
             ls_tool = get_tool("ls")
@@ -146,317 +192,464 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
                 # === START DEBUG LOGGING ===
                 log.debug(f"LsTool raw result:\n---\n{ls_result}\n---")
                 # === END DEBUG LOGGING ===
-                log.info(f"Orientation ls result length: {len(ls_result) if ls_result else 0}") # Changed from logging full result
+                log.info(
+                    f"Orientation ls result length: {len(ls_result) if ls_result else 0}"
+                )  # Changed from logging full result
                 self.console.print(f"[dim]Directory context acquired via 'ls'.[/dim]")
                 orientation_context = f"Current directory contents (from initial `ls`):\n```\n{ls_result}\n```\n"
             else:
-                log.error("CRITICAL: Could not find 'ls' tool for mandatory orientation.")
+                log.error(
+                    "CRITICAL: Could not find 'ls' tool for mandatory orientation."
+                )
                 # Stop execution if ls tool is missing - fundamental context is unavailable
                 return "Error: The essential 'ls' tool is missing. Cannot proceed."
 
         except Exception as orient_error:
-            log.error(f"Error during mandatory orientation (ls): {orient_error}", exc_info=True)
+            log.error(
+                f"Error during mandatory orientation (ls): {orient_error}",
+                exc_info=True,
+            )
             error_message = f"Error during initial directory scan: {orient_error}"
             orientation_context = f"{error_message}\n"
-            self.console.print(f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]")
+            self.console.print(
+                f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]"
+            )
             # Stop execution if initial ls fails - context is unreliable
             return f"Error: Failed to get initial directory listing. Cannot reliably proceed. Details: {orient_error}"
 
         # === Step 2: Prepare Initial User Turn ===
         # Combine orientation with the actual user request
-        turn_input_prompt = f"{orientation_context}\nUser request: {original_user_prompt}"
-        
+        turn_input_prompt = (
+            f"{orientation_context}\nUser request: {original_user_prompt}"
+        )
+
         # Add this combined input to the PERSISTENT history
-        self.add_to_history({'role': 'user', 'parts': [turn_input_prompt]})
+        self.add_to_history({"role": "user", "parts": [turn_input_prompt]})
         # === START DEBUG LOGGING ===
-        log.debug(f"Prepared turn_input_prompt (sent to LLM):\n---\n{turn_input_prompt}\n---")
+        log.debug(
+            f"Prepared turn_input_prompt (sent to LLM):\n---\n{turn_input_prompt}\n---"
+        )
         # === END DEBUG LOGGING ===
-        self._manage_context_window() # Truncate *before* sending the first request
+        self._manage_context_window()  # Truncate *before* sending the first request
 
         iteration_count = 0
         task_completed = False
         final_summary = None
-        last_text_response = "No response generated." # Fallback text
+        last_text_response = "No response generated."  # Fallback text
 
         try:
             while iteration_count < MAX_AGENT_ITERATIONS:
                 iteration_count += 1
-                logging.info(f"Agent Loop Iteration {iteration_count}/{MAX_AGENT_ITERATIONS}")
-                
+                logging.info(
+                    f"Agent Loop Iteration {iteration_count}/{MAX_AGENT_ITERATIONS}"
+                )
+
                 # === Call LLM with History and Tools ===
                 llm_response = None
                 try:
-                    logging.info(f"Sending request to LLM ({self.current_model_name}). History length: {len(self.history)} turns.")
+                    logging.info(
+                        f"Sending request to LLM ({self.current_model_name}). History length: {len(self.history)} turns."
+                    )
                     # === ADD STATUS FOR LLM CALL ===
-                    with self.console.status(f"[yellow]Assistant thinking ({self.current_model_name})...", spinner="dots"):
+                    with self.console.status(
+                        f"[yellow]Assistant thinking ({self.current_model_name})...",
+                        spinner="dots",
+                    ):
                         # Pass the available tools to the generate_content call
                         llm_response = self.model.generate_content(
                             self.history,
                             generation_config=self.generation_config,
-                            tools=[self.gemini_tools] if self.gemini_tools else None
+                            tools=[self.gemini_tools] if self.gemini_tools else None,
                         )
                     # === END STATUS ===
-                    
+
                     # === START DEBUG LOGGING ===
-                    log.debug(f"RAW Gemini Response Object (Iter {iteration_count}): {llm_response}")
+                    log.debug(
+                        f"RAW Gemini Response Object (Iter {iteration_count}): {llm_response}"
+                    )
                     # === END DEBUG LOGGING ===
-                    
+
                     # Extract the response part (candidate)
                     # Add checks for empty candidates or parts
                     if not llm_response.candidates:
-                         log.error(f"LLM response had no candidates. Response: {llm_response}")
-                         last_text_response = "(Agent received response with no candidates)"
-                         task_completed = True; final_summary = last_text_response; break
-                         
+                        log.error(
+                            f"LLM response had no candidates. Response: {llm_response}"
+                        )
+                        last_text_response = (
+                            "(Agent received response with no candidates)"
+                        )
+                        task_completed = True
+                        final_summary = last_text_response
+                        break
+
                     response_candidate = llm_response.candidates[0]
-                    if not response_candidate.content or not response_candidate.content.parts:
-                        log.error(f"LLM response candidate had no content or parts. Candidate: {response_candidate}")
-                        last_text_response = "(Agent received response candidate with no content/parts)"
-                        task_completed = True; final_summary = last_text_response; break
+                    if (
+                        not response_candidate.content
+                        or not response_candidate.content.parts
+                    ):
+                        log.error(
+                            f"LLM response candidate had no content or parts. Candidate: {response_candidate}"
+                        )
+                        last_text_response = (
+                            "(Agent received response candidate with no content/parts)"
+                        )
+                        task_completed = True
+                        final_summary = last_text_response
+                        break
 
                     # --- REVISED LOOP LOGIC FOR MULTI-PART HANDLING ---
                     function_call_part_to_execute = None
                     text_response_buffer = ""
-                    processed_function_call_in_turn = False # Flag to ensure only one function call is processed per turn
+                    processed_function_call_in_turn = False  # Flag to ensure only one function call is processed per turn
 
                     # Iterate through all parts in the response
                     for part in response_candidate.content.parts:
-                        if hasattr(part, 'function_call') and part.function_call and not processed_function_call_in_turn:
+                        if (
+                            hasattr(part, "function_call")
+                            and part.function_call
+                            and not processed_function_call_in_turn
+                        ):
                             function_call = part.function_call
                             tool_name = function_call.name
-                            tool_args = dict(function_call.args) if function_call.args else {}
-                            log.info(f"LLM requested Function Call: {tool_name} with args: {tool_args}")
+                            tool_args = (
+                                dict(function_call.args) if function_call.args else {}
+                            )
+                            log.info(
+                                f"LLM requested Function Call: {tool_name} with args: {tool_args}"
+                            )
 
                             # Add the function *call* part to history immediately
-                            self.add_to_history({'role': 'model', 'parts': [part]})
+                            self.add_to_history({"role": "model", "parts": [part]})
                             self._manage_context_window()
-                            
+
                             # Store details for execution after processing all parts
-                            function_call_part_to_execute = part 
-                            processed_function_call_in_turn = True # Mark that we found and will process a function call
+                            function_call_part_to_execute = part
+                            processed_function_call_in_turn = True  # Mark that we found and will process a function call
                             # Don't break here yet, process other parts (like text) first for history/logging
 
-                        elif hasattr(part, 'text') and part.text:
+                        elif hasattr(part, "text") and part.text:
                             llm_text = part.text
-                            log.info(f"LLM returned text part (Iter {iteration_count}): {llm_text[:100]}...")
-                            text_response_buffer += llm_text + "\n" # Append text parts
+                            log.info(
+                                f"LLM returned text part (Iter {iteration_count}): {llm_text[:100]}..."
+                            )
+                            text_response_buffer += llm_text + "\n"  # Append text parts
                             # Add the text response part to history
-                            self.add_to_history({'role': 'model', 'parts': [part]})
+                            self.add_to_history({"role": "model", "parts": [part]})
                             self._manage_context_window()
-                            
+
                         else:
-                            log.warning(f"LLM returned unexpected response part (Iter {iteration_count}): {part}")
+                            log.warning(
+                                f"LLM returned unexpected response part (Iter {iteration_count}): {part}"
+                            )
                             # Add it to history anyway?
-                            self.add_to_history({'role': 'model', 'parts': [part]})
+                            self.add_to_history({"role": "model", "parts": [part]})
                             self._manage_context_window()
 
                     # --- Now, decide action based on processed parts ---
                     if function_call_part_to_execute:
                         # === Execute the Tool === (Using stored details)
-                        function_call = function_call_part_to_execute.function_call # Get the stored call
+                        function_call = (
+                            function_call_part_to_execute.function_call
+                        )  # Get the stored call
                         tool_name = function_call.name
-                        tool_args = dict(function_call.args) if function_call.args else {}
-                        
+                        tool_args = (
+                            dict(function_call.args) if function_call.args else {}
+                        )
+
                         tool_result = ""
                         tool_error = False
-                        user_rejected = False # Flag for user rejection
-                        
+                        user_rejected = False  # Flag for user rejection
+
                         # --- HUMAN IN THE LOOP CONFIRMATION ---
-                        if tool_name in ["edit", "create_file"]: 
+                        if tool_name in ["edit", "create_file"]:
                             file_path = tool_args.get("file_path", "(unknown file)")
-                            content = tool_args.get("content") # Get content, might be None
-                            old_string = tool_args.get("old_string") # Get old_string
-                            new_string = tool_args.get("new_string") # Get new_string
-                            
+                            content = tool_args.get(
+                                "content"
+                            )  # Get content, might be None
+                            old_string = tool_args.get("old_string")  # Get old_string
+                            new_string = tool_args.get("new_string")  # Get new_string
+
                             panel_content = f"[bold yellow]Proposed Action:[/bold yellow]\n[cyan]Tool:[/cyan] {tool_name}\n[cyan]File:[/cyan] {file_path}\n"
-                            
-                            if content is not None: # Case 1: Full content provided
+
+                            if content is not None:  # Case 1: Full content provided
                                 # Prepare content preview (limit length?)
                                 preview_lines = content.splitlines()
-                                max_preview_lines = 30 # Limit preview for long content
+                                max_preview_lines = 30  # Limit preview for long content
                                 if len(preview_lines) > max_preview_lines:
-                                    content_preview = "\n".join(preview_lines[:max_preview_lines]) + f"\n... ({len(preview_lines) - max_preview_lines} more lines)"
+                                    content_preview = (
+                                        "\n".join(preview_lines[:max_preview_lines])
+                                        + f"\n... ({len(preview_lines) - max_preview_lines} more lines)"
+                                    )
                                 else:
                                     content_preview = content
                                 panel_content += f"\n[bold]Content Preview:[/bold]\n---\n{content_preview}\n---"
-                                
-                            elif old_string is not None and new_string is not None: # Case 2: Replacement
-                                max_snippet = 50 # Max chars to show for old/new strings
-                                old_snippet = old_string[:max_snippet] + ('...' if len(old_string) > max_snippet else '')
-                                new_snippet = new_string[:max_snippet] + ('...' if len(new_string) > max_snippet else '')
-                                panel_content += f"\n[bold]Action:[/bold] Replace occurrence of:\n---\n{old_snippet}\n---\n[bold]With:[/bold]\n---\n{new_snippet}\n---"
-                            else: # Case 3: Other/Unknown edit args
-                                 panel_content += "\n[italic](Preview not available for this edit type)"
 
-                            action_desc = f"Change: {old_string} to {new_string}" if old_string and new_string else "(No change specified)"
+                            elif (
+                                old_string is not None and new_string is not None
+                            ):  # Case 2: Replacement
+                                max_snippet = (
+                                    50  # Max chars to show for old/new strings
+                                )
+                                old_snippet = old_string[:max_snippet] + (
+                                    "..." if len(old_string) > max_snippet else ""
+                                )
+                                new_snippet = new_string[:max_snippet] + (
+                                    "..." if len(new_string) > max_snippet else ""
+                                )
+                                panel_content += f"\n[bold]Action:[/bold] Replace occurrence of:\n---\n{old_snippet}\n---\n[bold]With:[/bold]\n---\n{new_snippet}\n---"
+                            else:  # Case 3: Other/Unknown edit args
+                                panel_content += "\n[italic](Preview not available for this edit type)"
+
+                            action_desc = (
+                                f"Change: {old_string} to {new_string}"
+                                if old_string and new_string
+                                else "(No change specified)"
+                            )
                             panel_content += f"\n[cyan]Change:[/cyan]\n{action_desc}"
 
                             # Use full path for Panel
-                            self.console.print(rich.panel.Panel(panel_content, title="Confirmation Required", border_style="red", expand=False))
-                            
+                            self.console.print(
+                                rich.panel.Panel(
+                                    panel_content,
+                                    title="Confirmation Required",
+                                    border_style="red",
+                                    expand=False,
+                                )
+                            )
+
                             # Use questionary for confirmation
                             confirmed = questionary.confirm(
-                                "Apply this change?", 
-                                default=False, # Default to No
-                                auto_enter=False # Require Enter key press
+                                "Apply this change?",
+                                default=False,  # Default to No
+                                auto_enter=False,  # Require Enter key press
                             ).ask()
-                            
+
                             # Handle case where user might Ctrl+C during prompt
-                            if confirmed is None: 
+                            if confirmed is None:
                                 log.warning("User cancelled confirmation prompt.")
                                 tool_result = f"User cancelled confirmation for {tool_name} on {file_path}."
                                 user_rejected = True
-                            elif not confirmed: # User explicitly selected No
-                                log.warning(f"User rejected proposed action: {tool_name} on {file_path}")
+                            elif not confirmed:  # User explicitly selected No
+                                log.warning(
+                                    f"User rejected proposed action: {tool_name} on {file_path}"
+                                )
                                 tool_result = f"User rejected the proposed {tool_name} operation on {file_path}."
-                                user_rejected = True # Set flag to skip execution
-                            else: # User selected Yes
-                                log.info(f"User confirmed action: {tool_name} on {file_path}")
+                                user_rejected = True  # Set flag to skip execution
+                            else:  # User selected Yes
+                                log.info(
+                                    f"User confirmed action: {tool_name} on {file_path}"
+                                )
                         # --- END CONFIRMATION ---
 
                         # Only execute if not rejected by user
                         if not user_rejected:
                             status_msg = f"Executing {tool_name}"
-                            if tool_args: status_msg += f" ({', '.join([f'{k}={str(v)[:30]}...' if len(str(v))>30 else f'{k}={v}' for k,v in tool_args.items()])})"
-                            
-                            with self.console.status(f"[yellow]{status_msg}...", spinner="dots"):
+                            if tool_args:
+                                status_msg += f" ({', '.join([f'{k}={str(v)[:30]}...' if len(str(v)) > 30 else f'{k}={v}' for k, v in tool_args.items()])})"
+
+                            with self.console.status(
+                                f"[yellow]{status_msg}...", spinner="dots"
+                            ):
                                 try:
                                     tool_instance = get_tool(tool_name)
                                     if tool_instance:
-                                        log.debug(f"Executing tool '{tool_name}' with arguments: {tool_args}")
+                                        log.debug(
+                                            f"Executing tool '{tool_name}' with arguments: {tool_args}"
+                                        )
                                         tool_result = tool_instance.execute(**tool_args)
-                                        log.info(f"Tool '{tool_name}' executed. Result length: {len(str(tool_result)) if tool_result else 0}")
-                                        log.debug(f"Tool '{tool_name}' result: {str(tool_result)[:500]}...")
+                                        log.info(
+                                            f"Tool '{tool_name}' executed. Result length: {len(str(tool_result)) if tool_result else 0}"
+                                        )
+                                        log.debug(
+                                            f"Tool '{tool_name}' result: {str(tool_result)[:500]}..."
+                                        )
                                     else:
                                         log.error(f"Tool '{tool_name}' not found.")
                                         tool_result = f"Error: Tool '{tool_name}' is not available."
                                         tool_error = True
                                 except Exception as tool_exec_error:
-                                    log.error(f"Error executing tool '{tool_name}' with args {tool_args}: {tool_exec_error}", exc_info=True)
+                                    log.error(
+                                        f"Error executing tool '{tool_name}' with args {tool_args}: {tool_exec_error}",
+                                        exc_info=True,
+                                    )
                                     tool_result = f"Error executing tool {tool_name}: {str(tool_exec_error)}"
                                     tool_error = True
-                                
+
                                 # --- Print Executed/Error INSIDE the status block ---
                                 if tool_error:
-                                    self.console.print(f"[red] -> Error executing {tool_name}: {str(tool_result)[:100]}...[/red]")
+                                    self.console.print(
+                                        f"[red] -> Error executing {tool_name}: {str(tool_result)[:100]}...[/red]"
+                                    )
                                 else:
-                                    self.console.print(f"[dim] -> Executed {tool_name}[/dim]") 
+                                    self.console.print(
+                                        f"[dim] -> Executed {tool_name}[/dim]"
+                                    )
                             # --- End Status Block ---
-                                
+
                         # === Check for Task Completion Signal via Tool Call ===
                         if tool_name == "task_complete":
-                            log.info("Task completion signaled by 'task_complete' function call.")
+                            log.info(
+                                "Task completion signaled by 'task_complete' function call."
+                            )
                             task_completed = True
-                            final_summary = tool_result # The result of task_complete IS the summary
+                            final_summary = tool_result  # The result of task_complete IS the summary
                             # We break *after* adding the function response below
-                        
+
                         # === Add Function Response to History ===
                         # Create the FunctionResponse proto
                         function_response_proto = genai.FunctionResponse(
                             name=tool_name,
-                            response={"result": tool_result} # API expects dict
+                            response={"result": tool_result},  # API expects dict
                         )
                         # Wrap it in a Part proto
-                        response_part_proto = genai.Part(function_response=function_response_proto)
-                        
+                        response_part_proto = genai.Part(
+                            function_response=function_response_proto
+                        )
+
                         # Append to history
-                        self.add_to_history({'role': 'user', # Function response acts as a 'user' turn providing data
-                                              'parts': [response_part_proto]})
+                        self.add_to_history(
+                            {
+                                "role": "user",  # Function response acts as a 'user' turn providing data
+                                "parts": [response_part_proto],
+                            }
+                        )
                         self._manage_context_window()
-                        
-                        if task_completed: 
-                            break # Exit loop NOW that task_complete result is in history
+
+                        if task_completed:
+                            break  # Exit loop NOW that task_complete result is in history
                         else:
-                            continue # IMPORTANT: Continue loop to let LLM react to function result
-                            
-                    elif text_response_buffer: 
+                            continue  # IMPORTANT: Continue loop to let LLM react to function result
+
+                    elif text_response_buffer:
                         # === Only Text Returned ===
-                        log.info("LLM returned only text response(s). Assuming task completion or explanation provided.")
+                        log.info(
+                            "LLM returned only text response(s). Assuming task completion or explanation provided."
+                        )
                         last_text_response = text_response_buffer.strip()
-                        task_completed = True # Treat text response as completion
-                        final_summary = last_text_response # Use the text as the summary
-                        break # Exit the loop
-                    
+                        task_completed = True  # Treat text response as completion
+                        final_summary = (
+                            last_text_response  # Use the text as the summary
+                        )
+                        break  # Exit the loop
+
                     else:
                         # === No actionable parts found ===
-                        log.warning("LLM response contained no actionable parts (text or function call).")
-                        last_text_response = "(Agent received response with no actionable parts)"
-                        task_completed = True # Treat as completion to avoid loop errors
+                        log.warning(
+                            "LLM response contained no actionable parts (text or function call)."
+                        )
+                        last_text_response = (
+                            "(Agent received response with no actionable parts)"
+                        )
+                        task_completed = (
+                            True  # Treat as completion to avoid loop errors
+                        )
                         final_summary = last_text_response
-                        break # Exit loop
+                        break  # Exit loop
 
                 except google.api_core.exceptions.ResourceExhausted as quota_error:
-                    log.warning(f"Quota exceeded for model '{self.current_model_name}': {quota_error}")
+                    log.warning(
+                        f"Quota exceeded for model '{self.current_model_name}': {quota_error}"
+                    )
                     # Check if we are already using the fallback
                     if self.current_model_name == FALLBACK_MODEL:
-                        log.error("Quota exceeded even for the fallback model. Cannot proceed.")
-                        self.console.print(f"[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]")
+                        log.error(
+                            "Quota exceeded even for the fallback model. Cannot proceed."
+                        )
+                        self.console.print(
+                            f"[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]"
+                        )
                         # Clean history before returning
-                        if self.history[-1]['role'] == 'user': self.history.pop()
+                        if self.history[-1]["role"] == "user":
+                            self.history.pop()
                         return f"Error: API quota exceeded for primary and fallback models."
                     else:
                         log.info(f"Switching to fallback model: {FALLBACK_MODEL}")
-                        self.console.print(f"[bold yellow]Quota limit reached for {self.current_model_name}. Switching to fallback model ({FALLBACK_MODEL})...[/bold yellow]")
+                        self.console.print(
+                            f"[bold yellow]Quota limit reached for {self.current_model_name}. Switching to fallback model ({FALLBACK_MODEL})...[/bold yellow]"
+                        )
                         self.current_model_name = FALLBACK_MODEL
                         try:
-                            self._initialize_model_instance() # Recreate model instance with fallback name
-                            log.info(f"Successfully switched to and initialized fallback model: {self.current_model_name}")
+                            self._initialize_model_instance()  # Recreate model instance with fallback name
+                            log.info(
+                                f"Successfully switched to and initialized fallback model: {self.current_model_name}"
+                            )
                             # Important: Clear the last model response (which caused the error) before retrying
-                            if self.history[-1]['role'] == 'model': 
-                               last_part = self.history[-1]['parts'][0]
-                               # Only pop if it was a failed function call attempt or empty text response leading to error
-                               if hasattr(last_part, 'function_call') or not hasattr(last_part, 'text') or not last_part.text:
-                                   self.history.pop() 
-                                   log.debug("Removed last model part before retrying with fallback.")
-                            continue # Retry the current loop iteration with the new model
+                            if self.history[-1]["role"] == "model":
+                                last_part = self.history[-1]["parts"][0]
+                                # Only pop if it was a failed function call attempt or empty text response leading to error
+                                if (
+                                    hasattr(last_part, "function_call")
+                                    or not hasattr(last_part, "text")
+                                    or not last_part.text
+                                ):
+                                    self.history.pop()
+                                    log.debug(
+                                        "Removed last model part before retrying with fallback."
+                                    )
+                            continue  # Retry the current loop iteration with the new model
                         except Exception as fallback_init_error:
-                            log.error(f"Failed to initialize fallback model '{FALLBACK_MODEL}': {fallback_init_error}", exc_info=True)
-                            self.console.print(f"[bold red]Error switching to fallback model: {fallback_init_error}[/bold red]")
-                            if self.history[-1]['role'] == 'user': self.history.pop()
+                            log.error(
+                                f"Failed to initialize fallback model '{FALLBACK_MODEL}': {fallback_init_error}",
+                                exc_info=True,
+                            )
+                            self.console.print(
+                                f"[bold red]Error switching to fallback model: {fallback_init_error}[/bold red]"
+                            )
+                            if self.history[-1]["role"] == "user":
+                                self.history.pop()
                             return f"Error: Failed to initialize fallback model after quota error."
 
                 except Exception as generation_error:
-                     # This handles other errors during the generate_content call or loop logic
-                     log.error(f"Error during Agent Loop: {generation_error}", exc_info=True)
-                     # Clean history
-                     if self.history[-1]['role'] == 'user': self.history.pop()
-                     return f"Error during agent processing: {generation_error}"
+                    # This handles other errors during the generate_content call or loop logic
+                    log.error(
+                        f"Error during Agent Loop: {generation_error}", exc_info=True
+                    )
+                    # Clean history
+                    if self.history[-1]["role"] == "user":
+                        self.history.pop()
+                    return f"Error during agent processing: {generation_error}"
 
             # === End Agent Loop ===
 
             # === Handle Final Output ===
             if task_completed and final_summary:
-                 log.info("Agent loop finished. Returning final summary.")
-                 # Cleanup internal tags if needed (using a hypothetical method)
-                 # cleaned_summary = self._cleanup_internal_tags(final_summary) 
-                 return final_summary.strip() # Return the summary from task_complete or final text
+                log.info("Agent loop finished. Returning final summary.")
+                # Cleanup internal tags if needed (using a hypothetical method)
+                # cleaned_summary = self._cleanup_internal_tags(final_summary)
+                return (
+                    final_summary.strip()
+                )  # Return the summary from task_complete or final text
             elif iteration_count >= MAX_AGENT_ITERATIONS:
-                 log.warning(f"Agent loop terminated after reaching max iterations ({MAX_AGENT_ITERATIONS}).")
-                 # Try to get the last *text* response the model generated, even if it wanted to call a function after
-                 last_model_response_text = self._find_last_model_text(self.history)
-                 timeout_message = f"(Task exceeded max iterations ({MAX_AGENT_ITERATIONS}). Last text from model was: {last_model_response_text})"
-                 return timeout_message.strip()
+                log.warning(
+                    f"Agent loop terminated after reaching max iterations ({MAX_AGENT_ITERATIONS})."
+                )
+                # Try to get the last *text* response the model generated, even if it wanted to call a function after
+                last_model_response_text = self._find_last_model_text(self.history)
+                timeout_message = f"(Task exceeded max iterations ({MAX_AGENT_ITERATIONS}). Last text from model was: {last_model_response_text})"
+                return timeout_message.strip()
             else:
-                 # This case should be less likely now
-                 log.error("Agent loop exited unexpectedly.")
-                 last_model_response_text = self._find_last_model_text(self.history)
-                 return f"(Agent loop finished unexpectedly. Last model text: {last_model_response_text})"
+                # This case should be less likely now
+                log.error("Agent loop exited unexpectedly.")
+                last_model_response_text = self._find_last_model_text(self.history)
+                return f"(Agent loop finished unexpectedly. Last model text: {last_model_response_text})"
 
         except Exception as e:
-             log.error(f"Error during Agent Loop: {str(e)}", exc_info=True)
-             return f"An unexpected error occurred during the agent process: {str(e)}"
+            log.error(f"Error during Agent Loop: {str(e)}", exc_info=True)
+            return f"An unexpected error occurred during the agent process: {str(e)}"
 
     # --- Context Management (Consider Token Counting) ---
     def _manage_context_window(self):
         """Truncates history if it exceeds limits (Gemini-specific)."""
         # Each full LLM round (request + function_call + function_response) adds 3 items
-        if len(self.history) > (MAX_HISTORY_TURNS * 3 + 2): 
-             log.warning(f"Chat history length ({len(self.history)}) exceeded threshold. Truncating.")
-             # Keep system prompt (idx 0), initial model ack (idx 1)
-             keep_count = MAX_HISTORY_TURNS * 3 # Keep N rounds
-             keep_from_index = len(self.history) - keep_count
-             self.history = self.history[:2] + self.history[keep_from_index:]
-             log.info(f"History truncated to {len(self.history)} items.")
+        if len(self.history) > (MAX_HISTORY_TURNS * 3 + 2):
+            log.warning(
+                f"Chat history length ({len(self.history)}) exceeded threshold. Truncating."
+            )
+            # Keep system prompt (idx 0), initial model ack (idx 1)
+            keep_count = MAX_HISTORY_TURNS * 3  # Keep N rounds
+            keep_from_index = len(self.history) - keep_count
+            self.history = self.history[:2] + self.history[keep_from_index:]
+            log.info(f"History truncated to {len(self.history)} items.")
         # TODO: Implement token-based truncation check using count_tokens
 
     # --- Tool Definition Helper ---
@@ -464,18 +657,24 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
         """Dynamically create FunctionDeclarations from AVAILABLE_TOOLS."""
         declarations = []
         for tool_name, tool_instance in AVAILABLE_TOOLS.items():
-            if hasattr(tool_instance, 'get_function_declaration'):
+            if hasattr(tool_instance, "get_function_declaration"):
                 declaration = tool_instance.get_function_declaration()
                 if declaration:
                     declarations.append(declaration)
                     log.debug(f"Generated FunctionDeclaration for tool: {tool_name}")
                 else:
-                    log.warning(f"Tool {tool_name} has 'get_function_declaration' but it returned None.")
+                    log.warning(
+                        f"Tool {tool_name} has 'get_function_declaration' but it returned None."
+                    )
             else:
                 # Fallback or skip tools without the method? For now, log warning.
-                log.warning(f"Tool {tool_name} does not have a 'get_function_declaration' method. Skipping.")
-        
-        log.info(f"Created {len(declarations)} function declarations for native tool use.")
+                log.warning(
+                    f"Tool {tool_name} does not have a 'get_function_declaration' method. Skipping."
+                )
+
+        log.info(
+            f"Created {len(declarations)} function declarations for native tool use."
+        )
         return declarations if declarations else None
 
     # --- System Prompt Helper ---
@@ -485,28 +684,40 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
         tool_descriptions = []
         if self.function_declarations:
             for func_decl in self.function_declarations:
-                 # Simple representation: name(args) - description
-                 # Ensure parameters exist before trying to access properties
-                 args_str = ""
-                 if func_decl.parameters and func_decl.parameters.properties:
-                      args_list = []
-                      required_args = func_decl.parameters.required or []
-                      for prop, details in func_decl.parameters.properties.items():
-                            # Access attributes directly from the Schema object
-                            prop_type = details.type if hasattr(details, 'type') else 'UNKNOWN' 
-                            prop_desc = details.description if hasattr(details, 'description') else ''
-                            
-                            suffix = "" if prop in required_args else "?" # Indicate optional args
-                            
-                            # Include parameter description in the string for clarity in the system prompt
-                            args_list.append(f"{prop}: {prop_type}{suffix} # {prop_desc}") 
-                            
-                      args_str = ", ".join(args_list)
-                 
-                 desc = func_decl.description or "(No description provided)" # Overall func desc
-                 tool_descriptions.append(f"- `{func_decl.name}({args_str})`: {desc}")
+                # Simple representation: name(args) - description
+                # Ensure parameters exist before trying to access properties
+                args_str = ""
+                if func_decl.parameters and func_decl.parameters.properties:
+                    args_list = []
+                    required_args = func_decl.parameters.required or []
+                    for prop, details in func_decl.parameters.properties.items():
+                        # Access attributes directly from the Schema object
+                        prop_type = (
+                            details.type if hasattr(details, "type") else "UNKNOWN"
+                        )
+                        prop_desc = (
+                            details.description
+                            if hasattr(details, "description")
+                            else ""
+                        )
+
+                        suffix = (
+                            "" if prop in required_args else "?"
+                        )  # Indicate optional args
+
+                        # Include parameter description in the string for clarity in the system prompt
+                        args_list.append(f"{prop}: {prop_type}{suffix} # {prop_desc}")
+
+                    args_str = ", ".join(args_list)
+
+                desc = (
+                    func_decl.description or "(No description provided)"
+                )  # Overall func desc
+                tool_descriptions.append(f"- `{func_decl.name}({args_str})`: {desc}")
         else:
-             tool_descriptions.append(" - (No tools available with function declarations)")
+            tool_descriptions.append(
+                " - (No tools available with function declarations)"
+            )
 
         tool_list_str = "\n".join(tool_descriptions)
 
@@ -548,41 +759,52 @@ The user's first message will contain initial directory context and their reques
 
     # --- Text Extraction Helper (if needed for final output) ---
     def _extract_text_from_response(self, response) -> str | None:
-         """Safely extracts text from a Gemini response object."""
-         try:
-             if response and response.candidates:
-                 # Handle potential multi-part responses if ever needed, for now assume text is in the first part
-                 if response.candidates[0].content and response.candidates[0].content.parts:
-                     text_parts = [part.text for part in response.candidates[0].content.parts if hasattr(part, 'text')]
-                     return "\n".join(text_parts).strip() if text_parts else None
-             return None
-         except (AttributeError, IndexError) as e:
-             log.warning(f"Could not extract text from response: {e} - Response: {response}")
-             return None
-             
+        """Safely extracts text from a Gemini response object."""
+        try:
+            if response and response.candidates:
+                # Handle potential multi-part responses if ever needed, for now assume text is in the first part
+                if (
+                    response.candidates[0].content
+                    and response.candidates[0].content.parts
+                ):
+                    text_parts = [
+                        part.text
+                        for part in response.candidates[0].content.parts
+                        if hasattr(part, "text")
+                    ]
+                    return "\n".join(text_parts).strip() if text_parts else None
+            return None
+        except (AttributeError, IndexError) as e:
+            log.warning(
+                f"Could not extract text from response: {e} - Response: {response}"
+            )
+            return None
+
     # --- Find Last Text Helper ---
     def _find_last_model_text(self, history: list) -> str:
         """Finds the last text part sent by the model in the history."""
         for i in range(len(history) - 1, -1, -1):
-            if history[i]['role'] == 'model':
+            if history[i]["role"] == "model":
                 try:
-                     # Check if parts exists and has content
-                     if history[i]['parts'] and hasattr(history[i]['parts'][0], 'text'):
-                           return history[i]['parts'][0].text.strip()
+                    # Check if parts exists and has content
+                    if history[i]["parts"] and hasattr(history[i]["parts"][0], "text"):
+                        return history[i]["parts"][0].text.strip()
                 except (AttributeError, IndexError):
-                     continue # Ignore malformed history entries
+                    continue  # Ignore malformed history entries
         return "(No previous model text found)"
 
     # --- Add Gemini-specific history management methods ---
     def add_to_history(self, entry):
         """Adds an entry to the Gemini conversation history."""
         self.history.append(entry)
-        self._manage_context_window() # Call truncation logic after adding
+        self._manage_context_window()  # Call truncation logic after adding
 
     def clear_history(self):
         """Clears the Gemini conversation history, preserving the system prompt."""
         if self.history:
-             self.history = self.history[:2] # Keep user(system_prompt) and initial model response
+            self.history = self.history[
+                :2
+            ]  # Keep user(system_prompt) and initial model response
         else:
-             self.history = [] # Should not happen if initialized correctly
+            self.history = []  # Should not happen if initialized correctly
         log.info("Gemini history cleared.")
