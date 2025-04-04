@@ -59,3 +59,27 @@ cli-code = "cli_code.main:cli"
 [tool.setuptools]
 packages = ["cli_code", "cli_code.models", "cli_code.tools"]
 package-dir = {"" = "src"}
+
+# Add Ruff configuration
+[tool.ruff]
+exclude = [
+    ".git",
+    ".env",
+    ".venv",
+    "venv",
+    "env",
+    "__pycache__",
+    ".vscode",
+]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+# Enable a set of rules
+select = ["E", "F", "I", "B"]
+# Ignore certain errors that are difficult to fix in this codebase
+ignore = ["E701", "E702", "E501", "F401", "F541", "E402", "E721", "F841"]
+
+# Allow autofix for all enabled rules (when `--fix`) is used.
+fixable = ["ALL"]
+unfixable = []

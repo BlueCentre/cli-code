@@ -38,7 +38,7 @@ jobs:
 
     - name: Lint with Ruff
       run: |
-        ruff check . # Run ruff directly
+        ruff check --unfixable E701,E702,E501,F401,F541,E402,E721,F841 . # Run ruff directly
         ruff format . # Apply formatting instead of just checking
 
     - name: Test with pytest
