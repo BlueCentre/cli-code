@@ -1,0 +1,40 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx -y @modelcontextprotocol/server-memory",
+      "env": {
+        "MEMORY_PATH": ".cursor/memory.json"
+      }
+    },
+    "Atlassian MCP": {
+      "command": "uvx",
+      "args": [
+        "mcp-atlassian",
+        "--confluence-url={{env.CONFLUENCE_URL}}",
+        "--confluence-username={{env.CONFLUENCE_USERNAME}}",
+        "--confluence-token={{env.CONFLUENCE_TOKEN}}",
+        "--jira-url={{env.JIRA_URL}}",
+        "--jira-username={{env.JIRA_USERNAME}}",
+        "--jira-token={{env.JIRA_TOKEN}}"
+      ]
+    },
+    "SlackBot Composio": {
+      "url": "https://mcp.composio.dev/slackbot/stocky-mushy-toddler-mbmAIf"
+    },
+    "Google Tasks MCP": {
+      "url": "https://mcp.composio.dev/googletasks/stocky-mushy-toddler-mbmAIf"
+    },
+    "GitHub MCP": {
+      "command": "npx -y @modelcontextprotocol/server-github",
+      "env": {
+        "GITHUB_TOKEN": "{{env.GITHUB_TOKEN}}"
+      }
+    },
+    "gcp": {
+      "command": "npx -y gcp-mcp"
+    },
+    "Stripe MCP": {
+      "command": "npx -y @stripe/mcp --tools=all --api-key={{env.STRIPE_API_KEY}}"
+    }
+  }
+}
