@@ -10,7 +10,7 @@ from rich.console import Console
 # from rich.panel import Panel # Remove unused import
 import questionary
 from typing import List, Dict # Add typing for list_models
-# from google.api_core.exceptions import ResourceExhausted # Remove unused import
+import google.api_core.exceptions # Import the exceptions module
 import rich # Keep rich import needed for rich.panel.Panel
 
 from ..utils import count_tokens
