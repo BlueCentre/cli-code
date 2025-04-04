@@ -51,5 +51,11 @@ dev = [
 [project.scripts]
 cli-code = "cli_code.main:cli"
 
-[tool.setuptools.packages.find]
-where = ["src"]  # look for packages in src/
+# Remove the automatic package finding
+# [tool.setuptools.packages.find]
+# where = ["src"]  # look for packages in src/
+
+# Explicitly list packages
+[tool.setuptools]
+packages = ["cli_code", "cli_code.models", "cli_code.tools"]
+package-dir = {"" = "src"}
