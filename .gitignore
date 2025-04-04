@@ -1,0 +1,25 @@
+# Python Bytecode and Cache
+__pycache__/
+*.pyc
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Ruff Cache
+.ruff_cache/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+
+# Operating System Files
+.DS_Store
+Thumbs.db 
