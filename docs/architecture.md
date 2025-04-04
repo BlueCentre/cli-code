@@ -2,6 +2,8 @@
 
 This document outlines the architecture of the `gemini-cli` Python application, a command-line coding assistant powered by Google Gemini models.
 
+> **Note on Diagrams**: All diagrams in this document follow [GitHub's Mermaid diagram specifications](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams) to ensure proper rendering on GitHub. Please refer to the GitHub documentation when making changes to any diagrams.
+
 ## 1. Overview
 
 The application provides an interactive CLI experience where users can converse with a Gemini model. The key feature is the model's ability to use local tools (file system operations, command execution, code analysis) via Gemini's native function calling mechanism to fulfill user requests related to the codebase in the current working directory.
