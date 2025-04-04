@@ -42,6 +42,9 @@ jobs:
         ruff format . # Apply formatting instead of just checking
 
     - name: Test with pytest
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      if: env.GEMINI_API_KEY != ''
       run: |
         pytest test_dir/
 
