@@ -32,6 +32,9 @@ jobs:
         # pip install -e .
         # pip install ruff pytest # Example tools
 
+    - name: Debug Python Path
+      run: python -c "import sys; print(sys.path)"
+
     - name: Lint with Ruff
       run: |
         python -m ruff check .
