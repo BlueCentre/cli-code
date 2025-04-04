@@ -10,10 +10,10 @@ import google.api_core.exceptions
 
 # Third-party Libraries
 import google.generativeai as genai
+import google.generativeai.types as genai_types
 import questionary
 import rich
 from rich.console import Console
-import google.generativeai.types as genai_types
 
 # from rich.panel import Panel # Remove unused import
 # Local Application/Library Specific Imports
