@@ -1,8 +1,10 @@
 import logging
 import os
 from rich.console import Console
+from rich.panel import Panel # Import Panel
 from typing import List, Dict
 import json # For formatting tool results
+import questionary # Import questionary
 
 # Attempt to import the OpenAI client library
 try:
@@ -21,6 +23,7 @@ from ..tools import AVAILABLE_TOOLS, get_tool # Import get_tool
 
 log = logging.getLogger(__name__)
 MAX_OLLAMA_ITERATIONS = 5 # Limit tool call loops for Ollama initially
+SENSITIVE_TOOLS = ["edit", "create_file"] # Define sensitive tools requiring confirmation
 
 class OllamaModel(AbstractModelAgent):
     """Interface for Ollama models using the OpenAI-compatible API."""
@@ -133,49 +136,86 @@ class OllamaModel(AbstractModelAgent):
                      # Add the assistant's response (containing the tool requests) to history
                      self.add_to_history(response_message.model_dump(exclude_unset=True)) 
 
-                     # --- Execute Tools --- 
+                     # --- Execute Tools (with HITL) --- 
                      for tool_call in tool_calls:
                          tool_name = tool_call.function.name
                          tool_args_str = tool_call.function.arguments
                          tool_call_id = tool_call.id
                          log.info(f"Processing tool call: ID={tool_call_id}, Name={tool_name}, Args='{tool_args_str}'")
 
+                         tool_result = ""
+                         tool_error = False
+                         user_rejected = False # Flag for confirmation
+
                          try:
                              tool_args = json.loads(tool_args_str)
                          except json.JSONDecodeError:
                              log.error(f"Failed to decode JSON arguments for tool {tool_name}: {tool_args_str}")
-                             tool_result = f"Error: Invalid JSON arguments provided: {tool_args_str}"
                              tool_error = True
                          else:
-                             # --- Execute the actual tool --- 
-                             tool_instance = get_tool(tool_name)
-                             if tool_instance:
-                                  try:
-                                       # TODO: Add Human-in-the-Loop confirmation here if needed for Ollama
-                                       # if tool_name in ["edit", "create_file"]: ... confirmation logic ...
-                                       
-                                       # === ADD STATUS FOR TOOL EXEC ===
-                                       with self.console.status(f"[cyan]Executing tool: {tool_name}...", spinner="dots"):
-                                            tool_result = tool_instance.execute(**tool_args)
-                                       # === END STATUS ===
-                                       log.info(f"Tool {tool_name} executed successfully. Result length: {len(tool_result) if tool_result else 0}")
-                                       tool_error = False 
-                                  except Exception as tool_exec_error:
-                                       log.error(f"Error executing tool {tool_name} with args {tool_args}: {tool_exec_error}", exc_info=True)
-                                       tool_result = f"Error executing tool {tool_name}: {str(tool_exec_error)}"
-                                       tool_error = True
-                             else:
-                                  log.error(f"Tool '{tool_name}' requested by Ollama not found in available tools.")
-                                  tool_result = f"Error: Tool '{tool_name}' not found."
-                                  tool_error = True
+                             # --- HUMAN IN THE LOOP CONFIRMATION --- 
+                             if tool_name in SENSITIVE_TOOLS:
+                                 file_path = tool_args.get("file_path", "(unknown file)")
+                                 content = tool_args.get("content")
+                                 old_string = tool_args.get("old_string")
+                                 new_string = tool_args.get("new_string")
+                                 
+                                 panel_content = f"[bold yellow]Proposed Action:[/bold yellow]\n[cyan]Tool:[/cyan] {tool_name}\n[cyan]File:[/cyan] {file_path}\n"
+                                 
+                                 if content is not None:
+                                      preview_lines = content.splitlines()[:10] # Show first 10 lines
+                                      preview = "\n".join(preview_lines)
+                                      if len(content.splitlines()) > 10: preview += "\n... (truncated)"
+                                      action_desc = f"Write/Overwrite with content:\n---\n{preview}\n---"
+                                 elif old_string is not None and new_string is not None:
+                                      action_desc = f"Replace first occurrence of:\n '{old_string}'\nWith:\n '{new_string}'"
+                                 elif content is None and old_string is None and new_string is None: # Handle empty file creation explicitly if needed
+                                     action_desc = "Create empty file (or clear existing)."
+                                 else:
+                                     action_desc = "(Could not determine specific change)"
+                                
+                                 panel_content += f"[cyan]Change:[/cyan]\n{action_desc}"
+                                
+                                 self.console.print(Panel(panel_content, title="Confirmation Required", border_style="red", expand=False))
+                                 try:
+                                     user_confirmed = questionary.confirm("Proceed with this action?", default=False, auto_enter=False, ask_if_answered=True).ask()
+                                 except KeyboardInterrupt: # Handle Ctrl+C during question
+                                     user_confirmed = False
+                                     self.console.print("[yellow]Action cancelled by user.[/yellow]")
+                                     
+                                 if not user_confirmed:
+                                     log.warning(f"User rejected execution of sensitive tool: {tool_name}")
+                                     user_rejected = True
+                                     tool_result = f"User rejected the execution of tool '{tool_name}' on file '{file_path}'."
+                                     tool_error = True # Treat rejection as an error for the LLM's perspective
+                             # --- END HITL --- 
+
+                             # --- Execute the actual tool (only if not rejected) --- 
+                             if not user_rejected:
+                                 tool_instance = get_tool(tool_name)
+                                 if tool_instance:
+                                      try:
+                                           with self.console.status(f"[cyan]Executing tool: {tool_name}...", spinner="dots"):
+                                                tool_result = tool_instance.execute(**tool_args)
+                                           log.info(f"Tool {tool_name} executed successfully. Result length: {len(tool_result) if tool_result else 0}")
+                                           tool_error = False 
+                                      except Exception as tool_exec_error:
+                                           log.error(f"Error executing tool {tool_name} with args {tool_args}: {tool_exec_error}", exc_info=True)
+                                           tool_result = f"Error executing tool {tool_name}: {str(tool_exec_error)}"
+                                           tool_error = True
+                                 else:
+                                      log.error(f"Tool '{tool_name}' requested by Ollama not found in available tools.")
+                                      tool_result = f"Error: Tool '{tool_name}' not found."
+                                      tool_error = True
 
                          # --- Add Tool Result to History --- 
+                         # (This happens regardless of user_rejected because we need to inform the LLM)
                          self.add_to_history(
                              {
                                  "tool_call_id": tool_call_id,
                                  "role": "tool",
                                  "name": tool_name,
-                                 "content": tool_result, # Send back the execution result
+                                 "content": tool_result, # Send back execution result OR rejection message
                              }
                          )
                      # --- Loop back to LLM --- 
