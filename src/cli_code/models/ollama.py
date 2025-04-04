@@ -119,6 +119,7 @@ class OllamaModel(AbstractModelAgent):
         self.add_to_history({"role": "user", "content": prompt})
 
         iteration_count = 0
+        final_response = None
         while iteration_count < MAX_OLLAMA_ITERATIONS:
             iteration_count += 1
             log.info(f"Ollama Agent Iteration {iteration_count}/{MAX_OLLAMA_ITERATIONS}")
@@ -159,6 +160,28 @@ class OllamaModel(AbstractModelAgent):
                         tool_call_id = tool_call.id
                         log.info(f"Processing tool call: ID={tool_call_id}, Name={tool_name}, Args='{tool_args_str}'")
 
+                        # Special handling for task_complete tool to extract the final response
+                        if tool_name == "task_complete":
+                            try:
+                                tool_args = json.loads(tool_args_str)
+                                summary = tool_args.get("summary", "Task completed successfully.")
+                                final_response = summary
+                                log.info(f"Task completion tool called with summary: {summary}")
+                                
+                                # Add the response to history for context
+                                self.add_to_history({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call_id,
+                                    "name": tool_name,
+                                    "content": summary
+                                })
+                                
+                                # Return the summary directly instead of the JSON
+                                return final_response
+                            except json.JSONDecodeError:
+                                log.error(f"Failed to decode JSON for task_complete: {tool_args_str}")
+                                continue
+                        
                         tool_result = ""
                         tool_error = False
                         user_rejected = False  # Flag for confirmation
@@ -261,12 +284,17 @@ class OllamaModel(AbstractModelAgent):
                     continue  # Continue the while loop to send tool results back to Ollama
 
                 else:
-                    # === Text Response Received ===
-                    final_text = response_message.content
-                    log.info(f"Ollama returned final text response: {final_text[:100]}...")
-                    # Add assistant's final text response to history
-                    self.add_to_history(response_message.model_dump(exclude_unset=True))
-                    return final_text  # Exit loop and return text
+                    # Handle standard text responses that don't use tools
+                    content = response_message.content
+                    if content:
+                        # Add the response to history
+                        self.add_to_history(response_message.model_dump(exclude_unset=True))
+                        log.info(f"Received direct text response (no tool calls), length: {len(content)}")
+                        # Return the actual text response
+                        return content
+                    else:
+                        log.warning("Received empty content from model response with no tool calls")
+                        return "The model provided an empty response. Please try again with a more specific question."
 
             except Exception as e:
                 log.error(f"Error during Ollama agent iteration {iteration_count}: {e}", exc_info=True)
