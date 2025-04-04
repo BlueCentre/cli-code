@@ -3,14 +3,15 @@ Gemini model integration for the CLI tool.
 """
 
 import google.generativeai as genai
+from google.generativeai.types import FunctionDeclaration, Tool
 import logging
 import time
 from rich.console import Console
-from rich.panel import Panel
+# from rich.panel import Panel # Remove unused import
 import questionary
 from typing import List, Dict # Add typing for list_models
-from google.generativeai.types import FunctionDeclaration, Tool
-from google.api_core.exceptions import ResourceExhausted
+# from google.api_core.exceptions import ResourceExhausted # Remove unused import
+import rich # Keep rich import needed for rich.panel.Panel
 
 from ..utils import count_tokens
 from ..tools import get_tool, AVAILABLE_TOOLS
@@ -263,7 +264,7 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
                             old_string = tool_args.get("old_string") # Get old_string
                             new_string = tool_args.get("new_string") # Get new_string
                             
-                            panel_content = f"[bold yellow]Proposed change:[/bold yellow]\n[cyan]Tool:[/cyan] {tool_name}\n[cyan]File:[/cyan] {file_path}\n"
+                            panel_content = f"[bold yellow]Proposed Action:[/bold yellow]\n[cyan]Tool:[/cyan] {tool_name}\n[cyan]File:[/cyan] {file_path}\n"
                             
                             if content is not None: # Case 1: Full content provided
                                 # Prepare content preview (limit length?)
@@ -283,13 +284,11 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
                             else: # Case 3: Other/Unknown edit args
                                  panel_content += "\n[italic](Preview not available for this edit type)"
 
-                            # Use Rich Panel for better presentation
-                            self.console.print(Panel(
-                                panel_content, # Use the constructed content
-                                title="Confirm File Modification",
-                                border_style="red",
-                                expand=False
-                            ))
+                            action_desc = f"Change: {old_string} to {new_string}" if old_string and new_string else "(No change specified)"
+                            panel_content += f"\n[cyan]Change:[/cyan]\n{action_desc}"
+
+                            # Use full path for Panel
+                            self.console.print(rich.panel.Panel(panel_content, title="Confirmation Required", border_style="red", expand=False))
                             
                             # Use questionary for confirmation
                             confirmed = questionary.confirm(
@@ -382,7 +381,7 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
                         final_summary = last_text_response
                         break # Exit loop
 
-                except ResourceExhausted as quota_error:
+                except google.api_core.exceptions.ResourceExhausted as quota_error:
                     log.warning(f"Quota exceeded for model '{self.current_model_name}': {quota_error}")
                     # Check if we are already using the fallback
                     if self.current_model_name == FALLBACK_MODEL:
