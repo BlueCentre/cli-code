@@ -3,6 +3,7 @@ Configuration management for Gemini CLI.
 """
 
 import logging
+import os
 from pathlib import Path
 
 import yaml
@@ -17,12 +18,67 @@ class Config:
         self.config_dir = Path.home() / ".config" / "cli-code"
         self.config_file = self.config_dir / "config.yaml"
         self.config = {}
+        
+        # First load environment variables from .env file if it exists
+        self._load_dotenv()
+        
         try:
             self._ensure_config_exists()
             self.config = self._load_config()
             self._migrate_old_keys()
+            
+            # Override config with environment variables if they exist
+            self._apply_env_vars()
         except Exception as e:
             log.error(f"Error initializing configuration from {self.config_file}: {e}", exc_info=True)
+
+    def _load_dotenv(self):
+        """Load environment variables from .env file if it exists."""
+        env_file = Path(".env")
+        if env_file.exists():
+            try:
+                log.info(f"Loading environment variables from {env_file.resolve()}")
+                with open(env_file, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        
+                        if "=" in line:
+                            key, value = line.split("=", 1)
+                            key = key.strip()
+                            value = value.strip()
+                            
+                            # Remove quotes if present
+                            if (value.startswith('"') and value.endswith('"')) or \
+                               (value.startswith("'") and value.endswith("'")):
+                                value = value[1:-1]
+                                
+                            if key and value:
+                                os.environ[key] = value
+                                log.debug(f"Set environment variable: {key}")
+            except Exception as e:
+                log.warning(f"Error loading .env file: {e}", exc_info=True)
+                
+    def _apply_env_vars(self):
+        """Apply environment variables to override config settings."""
+        # Map of environment variable names to config keys
+        env_var_mapping = {
+            "CLI_CODE_GOOGLE_API_KEY": "google_api_key",
+            "CLI_CODE_OLLAMA_API_URL": "ollama_api_url",
+            "CLI_CODE_DEFAULT_PROVIDER": "default_provider",
+            "CLI_CODE_DEFAULT_MODEL": "default_model",
+            "CLI_CODE_OLLAMA_DEFAULT_MODEL": "ollama_default_model"
+        }
+        
+        for env_var, config_key in env_var_mapping.items():
+            if env_var in os.environ:
+                log.info(f"Using environment variable {env_var} to override config")
+                self.config[config_key] = os.environ[env_var]
+                
+        # Apply and save if environment variables were found
+        if any(env_var in os.environ for env_var in env_var_mapping):
+            self._save_config()
 
     def _ensure_config_exists(self):
         """Create config directory and file with defaults if they don't exist."""

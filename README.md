@@ -52,6 +52,35 @@ cli-code setup --provider=gemini YOUR_GOOGLE_API_KEY
 # cli-code setup --provider=ollama YOUR_OLLAMA_API_URL
 ```
 
+### Alternative Setup Using Environment Variables
+
+You can also configure CLI Code using environment variables, either by setting them directly or using a `.env` file:
+
+1. Create a `.env` file in your working directory (copy from `.env.example`):
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit the `.env` file and uncomment/modify the settings you need:
+   ```
+   # API Keys and URLs
+   CLI_CODE_GOOGLE_API_KEY=your_google_api_key_here
+   CLI_CODE_OLLAMA_API_URL=http://localhost:11434/v1
+   
+   # Default Provider
+   CLI_CODE_DEFAULT_PROVIDER=ollama
+   
+   # Default Model
+   CLI_CODE_OLLAMA_DEFAULT_MODEL=llama3.2:latest
+   ```
+
+3. Run CLI Code normally, and it will automatically load the settings from your `.env` file:
+   ```bash
+   cli-code
+   ```
+
+The environment variables take precedence over saved configuration, making this approach useful for temporary settings or project-specific configurations.
+
 ## Usage
 
 ```bash

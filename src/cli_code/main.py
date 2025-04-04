@@ -298,12 +298,21 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
     # --- End Welcome Art ---
 
     credential = config.get_credential(provider)
-    if not credential:
+    # Check if credential exists and log its source (env var or config file)
+    if credential:
+        cred_type = "API Key" if provider == "gemini" else "API URL"
+        env_var = "CLI_CODE_GOOGLE_API_KEY" if provider == "gemini" else "CLI_CODE_OLLAMA_API_URL"
+        if env_var in os.environ:
+            log.info(f"Using {provider} {cred_type} from environment variable {env_var}")
+        else:
+            log.info(f"Using {provider} {cred_type} from config file")
+    else:
         credential_type = "API Key" if provider == "gemini" else "API URL"
         console.print(f"\n[bold red]Error:[/bold red] {provider.capitalize()} {credential_type} not found.")
         console.print(
             f"Please run [bold]'cli-code setup --provider={provider} YOUR_{credential_type.upper().replace(' ', '_')}'[/bold] first."
         )
+        console.print(f"Or set the environment variable [bold]CLI_CODE_{provider.upper()}_API_{'KEY' if provider == 'gemini' else 'URL'}[/bold]")
         return
 
     try:
