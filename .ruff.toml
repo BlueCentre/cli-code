@@ -1,0 +1,27 @@
+# .ruff.toml - Ruff configuration file
+line-length = 120
+target-version = "py39"
+
+[lint]
+# Enable specific rule sets
+select = ["E", "F", "I", "B"]
+# Ignore specific linting errors that are difficult to fix
+ignore = [
+    "E701",  # Multiple statements on one line
+    "E702",  # Multiple statements on one line (semicolon)
+    "E501",  # Line too long
+    "F401",  # Unused imports
+    "F541",  # f-string missing placeholders
+    "E402",  # Module level import not at top of file
+    "E721",  # Do not compare types, use isinstance()
+    "F841",  # Local variable name is assigned to but never used
+]
+
+# Don't automatically fix these rules when the --fix option is used
+unfixable = ["E701", "E702"]
+
+[format]
+# Enable auto-formatting
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto" 

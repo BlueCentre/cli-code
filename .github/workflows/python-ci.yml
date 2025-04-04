@@ -36,10 +36,13 @@ jobs:
     - name: Debug Python Path
       run: python -c "import sys; print(sys.path)"
 
-    - name: Lint with Ruff
+    - name: Lint with Ruff (check)
       run: |
-        ruff check --ignore E701,E702,E501,F401,F541,E402,E721,F841 . # Run ruff directly
-        ruff format . # Apply formatting instead of just checking
+        ruff check --verbose --preview .
+
+    - name: Lint with Ruff (format)
+      run: |
+        ruff format .
 
     - name: Test with pytest
       env:
