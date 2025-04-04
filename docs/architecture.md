@@ -279,4 +279,130 @@ This logic is primarily implemented in `main.py` when processing CLI arguments a
 
 This hierarchical approach provides a balance between flexibility (users can easily override defaults) and convenience (sensible defaults mean minimal configuration required).
 
+## 8. Context Management
+
+The CLI Code Assistant implements a context management system to maintain coherent multi-turn conversations between the user and the LLM while operating within the constraints of each provider's context window limits.
+
+### Current Implementation
+
+#### Conversation History
+
+Each Model Agent instance (e.g., GeminiModel, OllamaModel) maintains its own persistent conversation history throughout the session:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Model Agent
+    participant H as History
+    participant LLM as LLM API
+    
+    U->>A: User prompt
+    A->>H: Add user prompt
+    A->>A: Add initial context (ls output)
+    A->>H: Add context
+    A->>LLM: Send history + tools
+    LLM->>A: Response or tool call
+    A->>H: Add model response
+    
+    alt is Tool Call
+        A->>A: Execute tool
+        A->>H: Add tool result
+        A->>LLM: Send updated history
+        LLM->>A: Next response
+        A->>H: Add response
+    end
+    
+    A->>U: Final response
+```
+
+The history structure includes:
+
+1. **System Prompt**: Initially included to set the assistant's behavior.
+2. **User Prompt**: Each user message enriched with contextual information (e.g., directory contents).
+3. **Model Responses**: Text responses from the LLM.
+4. **Tool Calls**: When the LLM decides to use a tool, the call is recorded.
+5. **Tool Results**: Results of tool executions are added back to the history.
+
+#### Initial Context Gathering
+
+Before processing a user's request, the agent performs mandatory orientation:
+
+1. By default, the agent executes an `ls` command to gather directory context.
+2. This orientation helps the LLM understand the user's working environment.
+3. The results are formatted and prepended to the user's actual prompt:
+
+```
+Current directory contents (from initial `ls`):
+```
+<directory listing>
+```
+
+User request: <actual user prompt>
+```
+
+#### Context Window Management
+
+The current approach to handling context window constraints includes:
+
+1. **History Management**: The `GeminiModel` class implements a `_manage_context_window` method that:
+   - Keeps track of the number of turns in the conversation.
+   - Limits history to `MAX_HISTORY_TURNS` (approximately 20 pairs of user/model interactions).
+   - Preserves the initial system prompt and recent interactions.
+
+2. **Provider-Specific Handling**: 
+   - Each provider implementation (Gemini, Ollama) handles context structure according to the provider's API requirements.
+   - For Gemini, the history is formatted as a list of message objects with "role" and "parts".
+   - For Ollama (OpenAI-compatible), the history is formatted as a list of message objects with "role" and "content".
+
+### Planned Enhancements
+
+The following improvements to context management are planned:
+
+#### Token-Aware Context Management
+
+```mermaid
+flowchart TD
+    A[New Content] --> B[Token Counter]
+    B --> C{Would exceed\ntoken limit?}
+    C -->|Yes| D[Context Trimming]
+    C -->|No| E[Add to Context]
+    
+    D --> F{Trimming strategy}
+    F -->|Sliding Window| G[Remove oldest turns]
+    F -->|Summarization| H[Summarize older turns]
+    F -->|Hybrid| I[Summarize some, remove others]
+    
+    G --> E
+    H --> E
+    I --> E
+```
+
+1. **Token Counting**: Implement accurate token counting for both providers:
+   - For Gemini, use the provider's token counting API.
+   - For Ollama, implement or use an existing tokenizer.
+
+2. **Dynamic Trimming**: Instead of a fixed number of turns:
+   - Implement a sliding window based on token count rather than turn count.
+   - Consider importance of turns (e.g., keep system prompt, recent interactions, and critical tool outputs).
+
+3. **Content Compression**:
+   - For lengthy tool outputs (e.g., `view` results of large files), implement summarization or truncation.
+   - Consider indexing large file contents and only including relevant sections in the context.
+
+4. **Context Summarization**:
+   - For long-running sessions, summarize older turns rather than discarding them.
+   - Potentially use the model itself to create summaries of previous interactions.
+
+#### Context Persistence
+
+1. **Session Recovery**:
+   - Implement a mechanism to save and restore conversation context between sessions.
+   - Allow users to continue previous conversations.
+
+2. **Context Visualization**:
+   - Provide commands to inspect the current context size.
+   - Allow users to view and manage which parts of history are being retained.
+
+This enhanced context management system will balance maintaining coherent multi-turn conversations with the token limitations of current LLM architectures, providing a more reliable and efficient user experience.
+
 This analysis provides a comprehensive overview of the planned `cli-code` architecture. 
