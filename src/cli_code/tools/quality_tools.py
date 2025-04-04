@@ -3,13 +3,16 @@ Tools for code quality (linting, formatting).
 Requires external tools like 'ruff', 'black', 'flake8' etc. to be installed
 in the environment where this CLI runs.
 """
-import subprocess
+
 import logging
-import shlex
 import os
+import shlex
+import subprocess
+
 from .base import BaseTool
 
 log = logging.getLogger(__name__)
+
 
 # --- Helper for running commands ---
 def _run_quality_command(command: list[str], tool_name: str) -> str:
@@ -19,24 +22,28 @@ def _run_quality_command(command: list[str], tool_name: str) -> str:
             command,
             capture_output=True,
             text=True,
-            check=False, # Check return code manually
-            timeout=120 # 2 minute timeout
+            check=False,  # Check return code manually
+            timeout=120,  # 2 minute timeout
         )
         stdout = process.stdout.strip()
         stderr = process.stderr.strip()
         log.info(f"{tool_name} completed. Exit Code: {process.returncode}")
         log.debug(f"{tool_name} stdout:\n{stdout}")
-        if stderr: log.debug(f"{tool_name} stderr:\n{stderr}")
+        if stderr:
+            log.debug(f"{tool_name} stderr:\n{stderr}")
 
         result = f"{tool_name} Result (Exit Code: {process.returncode}):\n"
-        if stdout: result += f"-- Output --\n{stdout}\n"
-        if stderr: result += f"-- Errors --\n{stderr}\n"
-        if not stdout and not stderr: result += "(No output)"
+        if stdout:
+            result += f"-- Output --\n{stdout}\n"
+        if stderr:
+            result += f"-- Errors --\n{stderr}\n"
+        if not stdout and not stderr:
+            result += "(No output)"
 
         # Truncate long results?
         max_len = 2000
         if len(result) > max_len:
-             result = result[:max_len] + "\n... (output truncated)"
+            result = result[:max_len] + "\n... (output truncated)"
 
         return result
 
@@ -54,10 +61,11 @@ def _run_quality_command(command: list[str], tool_name: str) -> str:
 
 class LinterCheckerTool(BaseTool):
     """Tool to run a code linter (e.g., ruff, flake8)."""
+
     name = "linter_checker"
     description = "Runs a code linter (default: 'ruff check') on a specified path to find potential issues."
 
-    def execute(self, path: str = '.', linter_command: str = 'ruff check') -> str:
+    def execute(self, path: str = ".", linter_command: str = "ruff check") -> str:
         """
         Runs the linter.
 
@@ -69,8 +77,8 @@ class LinterCheckerTool(BaseTool):
             The output from the linter.
         """
         if ".." in path.split(os.path.sep):
-             log.warning(f"Attempted to access parent directory in linter path: {path}")
-             return f"Error: Invalid path '{path}'. Cannot access parent directories."
+            log.warning(f"Attempted to access parent directory in linter path: {path}")
+            return f"Error: Invalid path '{path}'. Cannot access parent directories."
         target_path = os.path.abspath(os.path.expanduser(path))
 
         # Basic command splitting, assumes simple command name possibly with one arg
@@ -82,10 +90,11 @@ class LinterCheckerTool(BaseTool):
 
 class FormatterTool(BaseTool):
     """Tool to run a code formatter (e.g., black, prettier)."""
+
     name = "formatter"
     description = "Runs a code formatter (default: 'black') on a specified path to automatically fix styling."
 
-    def execute(self, path: str = '.', formatter_command: str = 'black') -> str:
+    def execute(self, path: str = ".", formatter_command: str = "black") -> str:
         """
         Runs the formatter.
 
@@ -97,8 +106,8 @@ class FormatterTool(BaseTool):
             The output from the formatter.
         """
         if ".." in path.split(os.path.sep):
-             log.warning(f"Attempted to access parent directory in formatter path: {path}")
-             return f"Error: Invalid path '{path}'. Cannot access parent directories."
+            log.warning(f"Attempted to access parent directory in formatter path: {path}")
+            return f"Error: Invalid path '{path}'. Cannot access parent directories."
         target_path = os.path.abspath(os.path.expanduser(path))
 
         # Basic command splitting

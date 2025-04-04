@@ -2,13 +2,15 @@
 Tool for running automated tests (e.g., pytest).
 """
 
-import subprocess
 import logging
 import shlex
+import subprocess
+
 from .base import BaseTool
 
 # Configure logging for this tool
 log = logging.getLogger(__name__)
+
 
 class TestRunnerTool(BaseTool):
     """
@@ -16,6 +18,7 @@ class TestRunnerTool(BaseTool):
     Assumes the test runner command (e.g., 'pytest') is available
     in the environment where the CLI is run.
     """
+
     name = "test_runner"
     description = "Runs automated tests using the project's test runner (defaults to trying 'pytest'). Use after making code changes to verify correctness."
 
@@ -53,8 +56,8 @@ class TestRunnerTool(BaseTool):
                 command,
                 capture_output=True,
                 text=True,
-                check=False, # Don't raise exception on non-zero exit code, we'll check it manually
-                timeout=300 # Timeout in seconds (e.g., 5 minutes)
+                check=False,  # Don't raise exception on non-zero exit code, we'll check it manually
+                timeout=300,  # Timeout in seconds (e.g., 5 minutes)
             )
 
             exit_code = process.returncode
@@ -73,7 +76,7 @@ class TestRunnerTool(BaseTool):
             if exit_code == 0:
                 summary += "Status: SUCCESS\n"
                 # Include stdout even on success, maybe truncated?
-                summary += f"\nOutput:\n---\n{stdout[-1000:]}\n---\n" # Show last 1000 chars
+                summary += f"\nOutput:\n---\n{stdout[-1000:]}\n---\n"  # Show last 1000 chars
             else:
                 summary += "Status: FAILED\n"
                 summary += f"\nStandard Output:\n---\n{stdout}\n---\n"
@@ -82,9 +85,8 @@ class TestRunnerTool(BaseTool):
 
             # Specific exit codes for pytest might be useful
             # (e.g., 5 means no tests collected) - can add more logic here
-            if exit_code == 5 and 'pytest' in runner_command:
-                 summary += "\nNote: Pytest exit code 5 often means no tests were found or collected."
-
+            if exit_code == 5 and "pytest" in runner_command:
+                summary += "\nNote: Pytest exit code 5 often means no tests were found or collected."
 
             return summary
 

@@ -4,21 +4,19 @@ Gemini model integration for the CLI tool.
 
 # Standard Library
 import logging
-import time
-from typing import List, Dict
+from typing import Dict, List
+
+import google.api_core.exceptions
 
 # Third-party Libraries
 import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool
-import google.api_core.exceptions
 import questionary
 import rich
 from rich.console import Console
-# from rich.panel import Panel # Remove unused import
 
+# from rich.panel import Panel # Remove unused import
 # Local Application/Library Specific Imports
-from ..utils import count_tokens
-from ..tools import get_tool, AVAILABLE_TOOLS
+from ..tools import AVAILABLE_TOOLS, get_tool
 from .base import AbstractModelAgent
 
 # Setup logging (basic config, consider moving to main.py)
@@ -28,9 +26,7 @@ log = logging.getLogger(__name__)
 MAX_AGENT_ITERATIONS = 10
 FALLBACK_MODEL = "gemini-1.5-pro-latest"
 CONTEXT_TRUNCATION_THRESHOLD_TOKENS = 800000  # Example token limit
-MAX_HISTORY_TURNS = (
-    20  # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
-)
+MAX_HISTORY_TURNS = 20  # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
 
 # Remove standalone list_available_models function
 # def list_available_models(api_key):
@@ -53,25 +49,17 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             raise ValueError("Gemini API key is required.")
 
         self.api_key = api_key
-        self.initial_model_name = (
-            self.model_name or "gemini-2.5-pro-exp-03-25"
-        )  # Use passed model or default
-        self.current_model_name = (
-            self.initial_model_name
-        )  # Start with the determined model
+        self.initial_model_name = self.model_name or "gemini-2.5-pro-exp-03-25"  # Use passed model or default
+        self.current_model_name = self.initial_model_name  # Start with the determined model
         # self.console is set by super().__init__
 
         try:
             genai.configure(api_key=api_key)
         except Exception as config_err:
             log.error(f"Failed to configure Gemini API: {config_err}", exc_info=True)
-            raise ConnectionError(
-                f"Failed to configure Gemini API: {config_err}"
-            ) from config_err
+            raise ConnectionError(f"Failed to configure Gemini API: {config_err}") from config_err
 
-        self.generation_config = genai.types.GenerationConfig(
-            temperature=0.4, top_p=0.95, top_k=40
-        )
+        self.generation_config = genai.types.GenerationConfig(temperature=0.4, top_p=0.95, top_k=40)
         self.safety_settings = {
             "HARASSMENT": "BLOCK_MEDIUM_AND_ABOVE",
             "HATE": "BLOCK_MEDIUM_AND_ABOVE",
@@ -82,9 +70,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # --- Tool Definition ---
         self.function_declarations = self._create_tool_definitions()
         self.gemini_tools = (
-            genai.Tool(function_declarations=self.function_declarations)
-            if self.function_declarations
-            else None
+            genai.Tool(function_declarations=self.function_declarations) if self.function_declarations else None
         )
         # ---
 
@@ -98,9 +84,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         self.add_to_history(
             {
                 "role": "model",
-                "parts": [
-                    "Okay, I'm ready. Provide the directory context and your request."
-                ],
+                "parts": ["Okay, I'm ready. Provide the directory context and your request."],
             }
         )
         log.info("Initialized persistent chat history for GeminiModel.")
@@ -108,18 +92,14 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         try:
             self._initialize_model_instance()  # Creates self.model
-            log.info(
-                "GeminiModel initialized successfully (Native Function Calling Agent Loop)."
-            )
+            log.info("GeminiModel initialized successfully (Native Function Calling Agent Loop).")
         except Exception as e:
             log.error(
                 f"Fatal error initializing Gemini model '{self.current_model_name}': {str(e)}",
                 exc_info=True,
             )
             # Raise a more specific error or just re-raise
-            raise Exception(
-                f"Could not initialize Gemini model '{self.current_model_name}': {e}"
-            ) from e
+            raise Exception(f"Could not initialize Gemini model '{self.current_model_name}': {e}") from e
 
     def _initialize_model_instance(self):
         """Helper to create the GenerativeModel instance."""
@@ -134,9 +114,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 safety_settings=self.safety_settings,
                 system_instruction=self.system_instruction,
             )
-            log.info(
-                f"Model instance '{self.current_model_name}' created successfully."
-            )
+            log.info(f"Model instance '{self.current_model_name}' created successfully.")
         except Exception as init_err:
             log.error(
                 f"Failed to create model instance for '{self.current_model_name}': {init_err}",
@@ -169,9 +147,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
     # --- generate method remains largely the same, ensure signature matches base ---
     def generate(self, prompt: str) -> str | None:
-        logging.info(
-            f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'"
-        )
+        logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
         original_user_prompt = prompt
         if prompt.startswith("/"):
             command = prompt.split()[0].lower()
@@ -195,12 +171,10 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 log.info(
                     f"Orientation ls result length: {len(ls_result) if ls_result else 0}"
                 )  # Changed from logging full result
-                self.console.print(f"[dim]Directory context acquired via 'ls'.[/dim]")
+                self.console.print("[dim]Directory context acquired via 'ls'.[/dim]")
                 orientation_context = f"Current directory contents (from initial `ls`):\n```\n{ls_result}\n```\n"
             else:
-                log.error(
-                    "CRITICAL: Could not find 'ls' tool for mandatory orientation."
-                )
+                log.error("CRITICAL: Could not find 'ls' tool for mandatory orientation.")
                 # Stop execution if ls tool is missing - fundamental context is unavailable
                 return "Error: The essential 'ls' tool is missing. Cannot proceed."
 
@@ -211,24 +185,18 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             )
             error_message = f"Error during initial directory scan: {orient_error}"
             orientation_context = f"{error_message}\n"
-            self.console.print(
-                f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]"
-            )
+            self.console.print(f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]")
             # Stop execution if initial ls fails - context is unreliable
             return f"Error: Failed to get initial directory listing. Cannot reliably proceed. Details: {orient_error}"
 
         # === Step 2: Prepare Initial User Turn ===
         # Combine orientation with the actual user request
-        turn_input_prompt = (
-            f"{orientation_context}\nUser request: {original_user_prompt}"
-        )
+        turn_input_prompt = f"{orientation_context}\nUser request: {original_user_prompt}"
 
         # Add this combined input to the PERSISTENT history
         self.add_to_history({"role": "user", "parts": [turn_input_prompt]})
         # === START DEBUG LOGGING ===
-        log.debug(
-            f"Prepared turn_input_prompt (sent to LLM):\n---\n{turn_input_prompt}\n---"
-        )
+        log.debug(f"Prepared turn_input_prompt (sent to LLM):\n---\n{turn_input_prompt}\n---")
         # === END DEBUG LOGGING ===
         self._manage_context_window()  # Truncate *before* sending the first request
 
@@ -240,9 +208,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         try:
             while iteration_count < MAX_AGENT_ITERATIONS:
                 iteration_count += 1
-                logging.info(
-                    f"Agent Loop Iteration {iteration_count}/{MAX_AGENT_ITERATIONS}"
-                )
+                logging.info(f"Agent Loop Iteration {iteration_count}/{MAX_AGENT_ITERATIONS}")
 
                 # === Call LLM with History and Tools ===
                 llm_response = None
@@ -264,35 +230,22 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     # === END STATUS ===
 
                     # === START DEBUG LOGGING ===
-                    log.debug(
-                        f"RAW Gemini Response Object (Iter {iteration_count}): {llm_response}"
-                    )
+                    log.debug(f"RAW Gemini Response Object (Iter {iteration_count}): {llm_response}")
                     # === END DEBUG LOGGING ===
 
                     # Extract the response part (candidate)
                     # Add checks for empty candidates or parts
                     if not llm_response.candidates:
-                        log.error(
-                            f"LLM response had no candidates. Response: {llm_response}"
-                        )
-                        last_text_response = (
-                            "(Agent received response with no candidates)"
-                        )
+                        log.error(f"LLM response had no candidates. Response: {llm_response}")
+                        last_text_response = "(Agent received response with no candidates)"
                         task_completed = True
                         final_summary = last_text_response
                         break
 
                     response_candidate = llm_response.candidates[0]
-                    if (
-                        not response_candidate.content
-                        or not response_candidate.content.parts
-                    ):
-                        log.error(
-                            f"LLM response candidate had no content or parts. Candidate: {response_candidate}"
-                        )
-                        last_text_response = (
-                            "(Agent received response candidate with no content/parts)"
-                        )
+                    if not response_candidate.content or not response_candidate.content.parts:
+                        log.error(f"LLM response candidate had no content or parts. Candidate: {response_candidate}")
+                        last_text_response = "(Agent received response candidate with no content/parts)"
                         task_completed = True
                         final_summary = last_text_response
                         break
@@ -300,7 +253,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     # --- REVISED LOOP LOGIC FOR MULTI-PART HANDLING ---
                     function_call_part_to_execute = None
                     text_response_buffer = ""
-                    processed_function_call_in_turn = False  # Flag to ensure only one function call is processed per turn
+                    processed_function_call_in_turn = (
+                        False  # Flag to ensure only one function call is processed per turn
+                    )
 
                     # Iterate through all parts in the response
                     for part in response_candidate.content.parts:
@@ -311,12 +266,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                         ):
                             function_call = part.function_call
                             tool_name = function_call.name
-                            tool_args = (
-                                dict(function_call.args) if function_call.args else {}
-                            )
-                            log.info(
-                                f"LLM requested Function Call: {tool_name} with args: {tool_args}"
-                            )
+                            tool_args = dict(function_call.args) if function_call.args else {}
+                            log.info(f"LLM requested Function Call: {tool_name} with args: {tool_args}")
 
                             # Add the function *call* part to history immediately
                             self.add_to_history({"role": "model", "parts": [part]})
@@ -324,23 +275,21 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
                             # Store details for execution after processing all parts
                             function_call_part_to_execute = part
-                            processed_function_call_in_turn = True  # Mark that we found and will process a function call
+                            processed_function_call_in_turn = (
+                                True  # Mark that we found and will process a function call
+                            )
                             # Don't break here yet, process other parts (like text) first for history/logging
 
                         elif hasattr(part, "text") and part.text:
                             llm_text = part.text
-                            log.info(
-                                f"LLM returned text part (Iter {iteration_count}): {llm_text[:100]}..."
-                            )
+                            log.info(f"LLM returned text part (Iter {iteration_count}): {llm_text[:100]}...")
                             text_response_buffer += llm_text + "\n"  # Append text parts
                             # Add the text response part to history
                             self.add_to_history({"role": "model", "parts": [part]})
                             self._manage_context_window()
 
                         else:
-                            log.warning(
-                                f"LLM returned unexpected response part (Iter {iteration_count}): {part}"
-                            )
+                            log.warning(f"LLM returned unexpected response part (Iter {iteration_count}): {part}")
                             # Add it to history anyway?
                             self.add_to_history({"role": "model", "parts": [part]})
                             self._manage_context_window()
@@ -348,13 +297,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     # --- Now, decide action based on processed parts ---
                     if function_call_part_to_execute:
                         # === Execute the Tool === (Using stored details)
-                        function_call = (
-                            function_call_part_to_execute.function_call
-                        )  # Get the stored call
+                        function_call = function_call_part_to_execute.function_call  # Get the stored call
                         tool_name = function_call.name
-                        tool_args = (
-                            dict(function_call.args) if function_call.args else {}
-                        )
+                        tool_args = dict(function_call.args) if function_call.args else {}
 
                         tool_result = ""
                         tool_error = False
@@ -363,9 +308,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                         # --- HUMAN IN THE LOOP CONFIRMATION ---
                         if tool_name in ["edit", "create_file"]:
                             file_path = tool_args.get("file_path", "(unknown file)")
-                            content = tool_args.get(
-                                "content"
-                            )  # Get content, might be None
+                            content = tool_args.get("content")  # Get content, might be None
                             old_string = tool_args.get("old_string")  # Get old_string
                             new_string = tool_args.get("new_string")  # Get new_string
 
@@ -384,12 +327,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                     content_preview = content
                                 panel_content += f"\n[bold]Content Preview:[/bold]\n---\n{content_preview}\n---"
 
-                            elif (
-                                old_string is not None and new_string is not None
-                            ):  # Case 2: Replacement
-                                max_snippet = (
-                                    50  # Max chars to show for old/new strings
-                                )
+                            elif old_string is not None and new_string is not None:  # Case 2: Replacement
+                                max_snippet = 50  # Max chars to show for old/new strings
                                 old_snippet = old_string[:max_snippet] + (
                                     "..." if len(old_string) > max_snippet else ""
                                 )
@@ -430,15 +369,11 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                 tool_result = f"User cancelled confirmation for {tool_name} on {file_path}."
                                 user_rejected = True
                             elif not confirmed:  # User explicitly selected No
-                                log.warning(
-                                    f"User rejected proposed action: {tool_name} on {file_path}"
-                                )
+                                log.warning(f"User rejected proposed action: {tool_name} on {file_path}")
                                 tool_result = f"User rejected the proposed {tool_name} operation on {file_path}."
                                 user_rejected = True  # Set flag to skip execution
                             else:  # User selected Yes
-                                log.info(
-                                    f"User confirmed action: {tool_name} on {file_path}"
-                                )
+                                log.info(f"User confirmed action: {tool_name} on {file_path}")
                         # --- END CONFIRMATION ---
 
                         # Only execute if not rejected by user
@@ -447,22 +382,16 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                             if tool_args:
                                 status_msg += f" ({', '.join([f'{k}={str(v)[:30]}...' if len(str(v)) > 30 else f'{k}={v}' for k, v in tool_args.items()])})"
 
-                            with self.console.status(
-                                f"[yellow]{status_msg}...", spinner="dots"
-                            ):
+                            with self.console.status(f"[yellow]{status_msg}...", spinner="dots"):
                                 try:
                                     tool_instance = get_tool(tool_name)
                                     if tool_instance:
-                                        log.debug(
-                                            f"Executing tool '{tool_name}' with arguments: {tool_args}"
-                                        )
+                                        log.debug(f"Executing tool '{tool_name}' with arguments: {tool_args}")
                                         tool_result = tool_instance.execute(**tool_args)
                                         log.info(
                                             f"Tool '{tool_name}' executed. Result length: {len(str(tool_result)) if tool_result else 0}"
                                         )
-                                        log.debug(
-                                            f"Tool '{tool_name}' result: {str(tool_result)[:500]}..."
-                                        )
+                                        log.debug(f"Tool '{tool_name}' result: {str(tool_result)[:500]}...")
                                     else:
                                         log.error(f"Tool '{tool_name}' not found.")
                                         tool_result = f"Error: Tool '{tool_name}' is not available."
@@ -481,16 +410,12 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                         f"[red] -> Error executing {tool_name}: {str(tool_result)[:100]}...[/red]"
                                     )
                                 else:
-                                    self.console.print(
-                                        f"[dim] -> Executed {tool_name}[/dim]"
-                                    )
+                                    self.console.print(f"[dim] -> Executed {tool_name}[/dim]")
                             # --- End Status Block ---
 
                         # === Check for Task Completion Signal via Tool Call ===
                         if tool_name == "task_complete":
-                            log.info(
-                                "Task completion signaled by 'task_complete' function call."
-                            )
+                            log.info("Task completion signaled by 'task_complete' function call.")
                             task_completed = True
                             final_summary = tool_result  # The result of task_complete IS the summary
                             # We break *after* adding the function response below
@@ -502,9 +427,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                             response={"result": tool_result},  # API expects dict
                         )
                         # Wrap it in a Part proto
-                        response_part_proto = genai.Part(
-                            function_response=function_response_proto
-                        )
+                        response_part_proto = genai.Part(function_response=function_response_proto)
 
                         # Append to history
                         self.add_to_history(
@@ -527,41 +450,29 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                         )
                         last_text_response = text_response_buffer.strip()
                         task_completed = True  # Treat text response as completion
-                        final_summary = (
-                            last_text_response  # Use the text as the summary
-                        )
+                        final_summary = last_text_response  # Use the text as the summary
                         break  # Exit the loop
 
                     else:
                         # === No actionable parts found ===
-                        log.warning(
-                            "LLM response contained no actionable parts (text or function call)."
-                        )
-                        last_text_response = (
-                            "(Agent received response with no actionable parts)"
-                        )
-                        task_completed = (
-                            True  # Treat as completion to avoid loop errors
-                        )
+                        log.warning("LLM response contained no actionable parts (text or function call).")
+                        last_text_response = "(Agent received response with no actionable parts)"
+                        task_completed = True  # Treat as completion to avoid loop errors
                         final_summary = last_text_response
                         break  # Exit loop
 
                 except google.api_core.exceptions.ResourceExhausted as quota_error:
-                    log.warning(
-                        f"Quota exceeded for model '{self.current_model_name}': {quota_error}"
-                    )
+                    log.warning(f"Quota exceeded for model '{self.current_model_name}': {quota_error}")
                     # Check if we are already using the fallback
                     if self.current_model_name == FALLBACK_MODEL:
-                        log.error(
-                            "Quota exceeded even for the fallback model. Cannot proceed."
-                        )
+                        log.error("Quota exceeded even for the fallback model. Cannot proceed.")
                         self.console.print(
-                            f"[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]"
+                            "[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]"
                         )
                         # Clean history before returning
                         if self.history[-1]["role"] == "user":
                             self.history.pop()
-                        return f"Error: API quota exceeded for primary and fallback models."
+                        return "Error: API quota exceeded for primary and fallback models."
                     else:
                         log.info(f"Switching to fallback model: {FALLBACK_MODEL}")
                         self.console.print(
@@ -583,9 +494,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                     or not last_part.text
                                 ):
                                     self.history.pop()
-                                    log.debug(
-                                        "Removed last model part before retrying with fallback."
-                                    )
+                                    log.debug("Removed last model part before retrying with fallback.")
                             continue  # Retry the current loop iteration with the new model
                         except Exception as fallback_init_error:
                             log.error(
@@ -597,13 +506,11 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                             )
                             if self.history[-1]["role"] == "user":
                                 self.history.pop()
-                            return f"Error: Failed to initialize fallback model after quota error."
+                            return "Error: Failed to initialize fallback model after quota error."
 
                 except Exception as generation_error:
                     # This handles other errors during the generate_content call or loop logic
-                    log.error(
-                        f"Error during Agent Loop: {generation_error}", exc_info=True
-                    )
+                    log.error(f"Error during Agent Loop: {generation_error}", exc_info=True)
                     # Clean history
                     if self.history[-1]["role"] == "user":
                         self.history.pop()
@@ -616,13 +523,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 log.info("Agent loop finished. Returning final summary.")
                 # Cleanup internal tags if needed (using a hypothetical method)
                 # cleaned_summary = self._cleanup_internal_tags(final_summary)
-                return (
-                    final_summary.strip()
-                )  # Return the summary from task_complete or final text
+                return final_summary.strip()  # Return the summary from task_complete or final text
             elif iteration_count >= MAX_AGENT_ITERATIONS:
-                log.warning(
-                    f"Agent loop terminated after reaching max iterations ({MAX_AGENT_ITERATIONS})."
-                )
+                log.warning(f"Agent loop terminated after reaching max iterations ({MAX_AGENT_ITERATIONS}).")
                 # Try to get the last *text* response the model generated, even if it wanted to call a function after
                 last_model_response_text = self._find_last_model_text(self.history)
                 timeout_message = f"(Task exceeded max iterations ({MAX_AGENT_ITERATIONS}). Last text from model was: {last_model_response_text})"
@@ -642,9 +545,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         """Truncates history if it exceeds limits (Gemini-specific)."""
         # Each full LLM round (request + function_call + function_response) adds 3 items
         if len(self.history) > (MAX_HISTORY_TURNS * 3 + 2):
-            log.warning(
-                f"Chat history length ({len(self.history)}) exceeded threshold. Truncating."
-            )
+            log.warning(f"Chat history length ({len(self.history)}) exceeded threshold. Truncating.")
             # Keep system prompt (idx 0), initial model ack (idx 1)
             keep_count = MAX_HISTORY_TURNS * 3  # Keep N rounds
             keep_from_index = len(self.history) - keep_count
@@ -663,18 +564,12 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     declarations.append(declaration)
                     log.debug(f"Generated FunctionDeclaration for tool: {tool_name}")
                 else:
-                    log.warning(
-                        f"Tool {tool_name} has 'get_function_declaration' but it returned None."
-                    )
+                    log.warning(f"Tool {tool_name} has 'get_function_declaration' but it returned None.")
             else:
                 # Fallback or skip tools without the method? For now, log warning.
-                log.warning(
-                    f"Tool {tool_name} does not have a 'get_function_declaration' method. Skipping."
-                )
+                log.warning(f"Tool {tool_name} does not have a 'get_function_declaration' method. Skipping.")
 
-        log.info(
-            f"Created {len(declarations)} function declarations for native tool use."
-        )
+        log.info(f"Created {len(declarations)} function declarations for native tool use.")
         return declarations if declarations else None
 
     # --- System Prompt Helper ---
@@ -692,32 +587,20 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     required_args = func_decl.parameters.required or []
                     for prop, details in func_decl.parameters.properties.items():
                         # Access attributes directly from the Schema object
-                        prop_type = (
-                            details.type if hasattr(details, "type") else "UNKNOWN"
-                        )
-                        prop_desc = (
-                            details.description
-                            if hasattr(details, "description")
-                            else ""
-                        )
+                        prop_type = details.type if hasattr(details, "type") else "UNKNOWN"
+                        prop_desc = details.description if hasattr(details, "description") else ""
 
-                        suffix = (
-                            "" if prop in required_args else "?"
-                        )  # Indicate optional args
+                        suffix = "" if prop in required_args else "?"  # Indicate optional args
 
                         # Include parameter description in the string for clarity in the system prompt
                         args_list.append(f"{prop}: {prop_type}{suffix} # {prop_desc}")
 
                     args_str = ", ".join(args_list)
 
-                desc = (
-                    func_decl.description or "(No description provided)"
-                )  # Overall func desc
+                desc = func_decl.description or "(No description provided)"  # Overall func desc
                 tool_descriptions.append(f"- `{func_decl.name}({args_str})`: {desc}")
         else:
-            tool_descriptions.append(
-                " - (No tools available with function declarations)"
-            )
+            tool_descriptions.append(" - (No tools available with function declarations)")
 
         tool_list_str = "\n".join(tool_descriptions)
 
@@ -763,21 +646,12 @@ The user's first message will contain initial directory context and their reques
         try:
             if response and response.candidates:
                 # Handle potential multi-part responses if ever needed, for now assume text is in the first part
-                if (
-                    response.candidates[0].content
-                    and response.candidates[0].content.parts
-                ):
-                    text_parts = [
-                        part.text
-                        for part in response.candidates[0].content.parts
-                        if hasattr(part, "text")
-                    ]
+                if response.candidates[0].content and response.candidates[0].content.parts:
+                    text_parts = [part.text for part in response.candidates[0].content.parts if hasattr(part, "text")]
                     return "\n".join(text_parts).strip() if text_parts else None
             return None
         except (AttributeError, IndexError) as e:
-            log.warning(
-                f"Could not extract text from response: {e} - Response: {response}"
-            )
+            log.warning(f"Could not extract text from response: {e} - Response: {response}")
             return None
 
     # --- Find Last Text Helper ---
@@ -802,9 +676,7 @@ The user's first message will contain initial directory context and their reques
     def clear_history(self):
         """Clears the Gemini conversation history, preserving the system prompt."""
         if self.history:
-            self.history = self.history[
-                :2
-            ]  # Keep user(system_prompt) and initial model response
+            self.history = self.history[:2]  # Keep user(system_prompt) and initial model response
         else:
             self.history = []  # Should not happen if initialized correctly
         log.info("Gemini history cleared.")

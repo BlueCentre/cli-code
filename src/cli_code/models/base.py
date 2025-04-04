@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
-from rich.console import Console # Import Console for type hinting
-from typing import List, Dict # Add typing import
+from typing import Dict, List  # Add typing import
+
+from rich.console import Console  # Import Console for type hinting
+
 
 class AbstractModelAgent(ABC):
     """Abstract base class for different LLM provider agents."""
@@ -14,9 +16,9 @@ class AbstractModelAgent(ABC):
             model_name: The specific model ID to use (optional, uses provider default if None).
         """
         self.console = console
-        self.model_name = model_name # Store the specific model requested
+        self.model_name = model_name  # Store the specific model requested
         # History is now managed by subclasses
-        # self.history = [] 
+        # self.history = []
 
     @abstractmethod
     def generate(self, prompt: str) -> str | None:
@@ -34,7 +36,7 @@ class AbstractModelAgent(ABC):
         pass
 
     @abstractmethod
-    def list_models(self) -> List[Dict] | None: # Return list of dicts for more info
+    def list_models(self) -> List[Dict] | None:  # Return list of dicts for more info
         """
         List available models for the provider.
 
@@ -48,4 +50,4 @@ class AbstractModelAgent(ABC):
     # def add_to_history(self, entry):
     #     ...
     # def clear_history(self):
-    #    ... 
+    #    ...

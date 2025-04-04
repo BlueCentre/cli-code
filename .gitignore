@@ -16,6 +16,9 @@ build/
 # Ruff Cache
 .ruff_cache/
 
+# Local Environment Variables
+.env
+
 # IDE / Editor specific
 .vscode/
 .idea/

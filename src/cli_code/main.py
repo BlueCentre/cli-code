@@ -4,31 +4,31 @@ Targets Gemini 2.5 Pro Experimental. Includes ASCII Art welcome.
 Passes console object to model.
 """
 
+import logging
 import os
 import sys
+import time
+
 import click
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from pathlib import Path
-import logging
-import time
+
+from .config import Config
+
+# Remove list_available_models import:
+# from .models.gemini import GeminiModel, list_available_models
+from .models.base import AbstractModelAgent  # Keep base import
 
 # Import the specific model classes (adjust path if needed)
 # We will dynamically import/instantiate later based on provider
-from .models.gemini import GeminiModel # Keep GeminiModel import
-# Remove list_available_models import:
-# from .models.gemini import GeminiModel, list_available_models
-from .models.base import AbstractModelAgent # Keep base import
-from .models.ollama import OllamaModel # Import the new Ollama agent
-
-from .config import Config
-from .utils import count_tokens
+from .models.gemini import GeminiModel  # Keep GeminiModel import
+from .models.ollama import OllamaModel  # Import the new Ollama agent
 from .tools import AVAILABLE_TOOLS
 
 # Setup console and config
-console = Console() # Create console instance HERE
-config = None # Initialize config as None
+console = Console()  # Create console instance HERE
+config = None  # Initialize config as None
 try:
     config = Config()
 except Exception as e:
@@ -37,11 +37,13 @@ except Exception as e:
 
 # Setup logging - MORE EXPLICIT CONFIGURATION
 log_level = os.environ.get("LOG_LEVEL", "WARNING").upper()
-log_format = '%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
-logging.basicConfig(level=log_level, format=log_format, stream=sys.stdout, force=True) # Use basicConfig with force=True for simplicity
+log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+logging.basicConfig(
+    level=log_level, format=log_format, stream=sys.stdout, force=True
+)  # Use basicConfig with force=True for simplicity
 
-log = logging.getLogger(__name__) # Get logger for this module
-log.info(f"Logging initialized with level: {log_level}") 
+log = logging.getLogger(__name__)  # Get logger for this module
+log.info(f"Logging initialized with level: {log_level}")
 
 # --- Default Model (Provider specific defaults are now in Config) ---
 # DEFAULT_MODEL = "gemini-2.5-pro-exp-03-25" # Removed global default
@@ -64,22 +66,25 @@ CLI_CODE_ART = r"""
 # --- End ASCII Art ---
 
 
-CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
 # --- Provider Choice ---
-PROVIDER_CHOICES = click.Choice(['gemini', 'ollama'])
+PROVIDER_CHOICES = click.Choice(["gemini", "ollama"])
+
 
 @click.group(invoke_without_command=True, context_settings=CONTEXT_SETTINGS)
 @click.option(
-    '--provider', '-p',
+    "--provider",
+    "-p",
     type=PROVIDER_CHOICES,
-    default=None, # Default is determined from config later
-    help='Specify the LLM provider to use (e.g., gemini, ollama). Overrides config default.'
+    default=None,  # Default is determined from config later
+    help="Specify the LLM provider to use (e.g., gemini, ollama). Overrides config default.",
 )
 @click.option(
-    '--model', '-m',
-    default=None, # Default is determined from config/provider later
-    help='Specify the model ID to use. Overrides provider default.'
+    "--model",
+    "-m",
+    default=None,  # Default is determined from config/provider later
+    help="Specify the model ID to use. Overrides provider default.",
 )
 @click.pass_context
 def cli(ctx, provider, model):
@@ -87,24 +92,30 @@ def cli(ctx, provider, model):
     if not config:
         console.print("[bold red]Configuration could not be loaded. Cannot proceed.[/bold red]")
         sys.exit(1)
-        
+
     ctx.ensure_object(dict)
     # Store provider and model for subcommands, resolving defaults
     selected_provider = provider or config.get_default_provider()
-    selected_model = model # Keep explicit model if passed
-    
-    ctx.obj['PROVIDER'] = selected_provider
-    ctx.obj['MODEL'] = selected_model # Will be None if not passed via CLI
+    selected_model = model  # Keep explicit model if passed
 
-    log.info(f"CLI invoked. Determined provider: {selected_provider}, Explicit model: {selected_model or 'Not Specified'}")
+    ctx.obj["PROVIDER"] = selected_provider
+    ctx.obj["MODEL"] = selected_model  # Will be None if not passed via CLI
+
+    log.info(
+        f"CLI invoked. Determined provider: {selected_provider}, Explicit model: {selected_model or 'Not Specified'}"
+    )
 
     if ctx.invoked_subcommand is None:
         # Resolve model fully if starting interactive session
         final_model = selected_model or config.get_default_model(selected_provider)
         if not final_model:
-             console.print(f"[bold red]Error:[/bold red] No default model configured for provider '{selected_provider}' and no model specified with --model.")
-             console.print(f"Run 'cli-code set-default-model --provider={selected_provider} YOUR_MODEL_NAME' or use the --model flag.")
-             sys.exit(1)
+            console.print(
+                f"[bold red]Error:[/bold red] No default model configured for provider '{selected_provider}' and no model specified with --model."
+            )
+            console.print(
+                f"Run 'cli-code set-default-model --provider={selected_provider} YOUR_MODEL_NAME' or use the --model flag."
+            )
+            sys.exit(1)
 
         log.info(f"Starting interactive session. Provider: {selected_provider}, Model: {final_model}")
         start_interactive_session(provider=selected_provider, model_name=final_model, console=console)
@@ -113,40 +124,43 @@ def cli(ctx, provider, model):
 # --- Refactored Setup Command ---
 @cli.command()
 @click.option(
-    '--provider', '-p',
-    type=PROVIDER_CHOICES,
-    required=True,
-    help='The provider to configure (gemini or ollama).'
+    "--provider", "-p", type=PROVIDER_CHOICES, required=True, help="The provider to configure (gemini or ollama)."
 )
-@click.argument('credential', required=True)
+@click.argument("credential", required=True)
 def setup(provider, credential):
     """Configure credentials (API Key/URL) for a specific provider."""
-    if not config: console.print("[bold red]Config error.[/bold red]"); return
-    
+    if not config:
+        console.print("[bold red]Config error.[/bold red]")
+        return
+
     credential_type = "API Key" if provider == "gemini" else "API URL"
-    
-    try: 
+
+    try:
         config.set_credential(provider, credential)
         # Also set as default provider on first successful setup for that provider? Optional.
-        # config.set_default_provider(provider) 
+        # config.set_default_provider(provider)
         console.print(f"[green]✓[/green] {provider.capitalize()} {credential_type} saved.")
         if provider == "ollama":
-             console.print(f"[yellow]Note:[/yellow] Ensure your Ollama server is running and accessible at {credential}")
-             console.print(f"You may need to set a default model using 'cli-code set-default-model --provider=ollama MODEL_NAME'.")
+            console.print(f"[yellow]Note:[/yellow] Ensure your Ollama server is running and accessible at {credential}")
+            console.print(
+                "You may need to set a default model using 'cli-code set-default-model --provider=ollama MODEL_NAME'."
+            )
         elif provider == "gemini":
-             console.print(f"Default model is currently set to: {config.get_default_model(provider='gemini')}")
+            console.print(f"Default model is currently set to: {config.get_default_model(provider='gemini')}")
 
-    except Exception as e: 
+    except Exception as e:
         console.print(f"[bold red]Error saving {credential_type}:[/bold red] {e}")
         log.error(f"Failed to save credential for {provider}", exc_info=True)
 
 
 # --- New Set Default Provider Command ---
 @cli.command()
-@click.argument('provider', type=PROVIDER_CHOICES, required=True)
+@click.argument("provider", type=PROVIDER_CHOICES, required=True)
 def set_default_provider(provider):
     """Set the default LLM provider to use."""
-    if not config: console.print("[bold red]Config error.[/bold red]"); return
+    if not config:
+        console.print("[bold red]Config error.[/bold red]")
+        return
     try:
         config.set_default_provider(provider)
         console.print(f"[green]✓[/green] Default provider set to [bold]{provider}[/bold].")
@@ -158,23 +172,28 @@ def set_default_provider(provider):
 # --- Refactored Set Default Model Command ---
 @cli.command()
 @click.option(
-    '--provider', '-p',
+    "--provider",
+    "-p",
     type=PROVIDER_CHOICES,
-    default=None, # If None, uses the current default provider
-    help='Set the default model for this specific provider.'
+    default=None,  # If None, uses the current default provider
+    help="Set the default model for this specific provider.",
 )
-@click.argument('model_name', required=True)
-@click.pass_context # Need context to get the default provider if --provider is not used
+@click.argument("model_name", required=True)
+@click.pass_context  # Need context to get the default provider if --provider is not used
 def set_default_model(ctx, provider, model_name):
     """Set the default model ID for a provider."""
-    if not config: console.print("[bold red]Config error.[/bold red]"); return
-    
-    target_provider = provider or config.get_default_provider() # Use flag or config default
-    
-    try: 
+    if not config:
+        console.print("[bold red]Config error.[/bold red]")
+        return
+
+    target_provider = provider or config.get_default_provider()  # Use flag or config default
+
+    try:
         config.set_default_model(model_name, provider=target_provider)
-        console.print(f"[green]✓[/green] Default model for provider [bold]{target_provider}[/bold] set to [bold]{model_name}[/bold].")
-    except Exception as e: 
+        console.print(
+            f"[green]✓[/green] Default model for provider [bold]{target_provider}[/bold] set to [bold]{model_name}[/bold]."
+        )
+    except Exception as e:
         console.print(f"[bold red]Error setting default model for {target_provider}:[/bold red] {e}")
         log.error(f"Failed to set default model {model_name} for {target_provider}", exc_info=True)
 
@@ -182,71 +201,78 @@ def set_default_model(ctx, provider, model_name):
 # --- Refactored List Models Command ---
 @cli.command()
 @click.option(
-    '--provider', '-p',
+    "--provider",
+    "-p",
     type=PROVIDER_CHOICES,
-    default=None, # If None, uses the current default provider
-    help='List models available for a specific provider.'
+    default=None,  # If None, uses the current default provider
+    help="List models available for a specific provider.",
 )
 def list_models(provider):
     """List available models for a configured provider."""
-    if not config: console.print("[bold red]Config error.[/bold red]"); return
-    
+    if not config:
+        console.print("[bold red]Config error.[/bold red]")
+        return
+
     target_provider = provider or config.get_default_provider()
     credential = config.get_credential(target_provider)
 
     if not credential:
         credential_type = "API Key" if target_provider == "gemini" else "API URL"
         console.print(f"[bold red]Error:[/bold red] {target_provider.capitalize()} {credential_type} not found.")
-        console.print(f"Please run 'cli-code setup --provider={target_provider} YOUR_{credential_type.upper().replace(' ','_')}' first.")
+        console.print(
+            f"Please run 'cli-code setup --provider={target_provider} YOUR_{credential_type.upper().replace(' ', '_')}' first."
+        )
         return
 
     console.print(f"[yellow]Fetching models for provider '{target_provider}'...[/yellow]")
-    
+
     agent_instance: AbstractModelAgent | None = None
     models_list: list[dict] | None = None
 
     try:
-        # --- Instantiate the correct agent --- 
+        # --- Instantiate the correct agent ---
         if target_provider == "gemini":
-            agent_instance = GeminiModel(api_key=credential, console=console, model_name=None) 
+            agent_instance = GeminiModel(api_key=credential, console=console, model_name=None)
         elif target_provider == "ollama":
             # Instantiate OllamaModel
             agent_instance = OllamaModel(api_url=credential, console=console, model_name=None)
         else:
-             console.print(f"[bold red]Error:[/bold red] Unknown provider '{target_provider}'.")
-             return
+            console.print(f"[bold red]Error:[/bold red] Unknown provider '{target_provider}'.")
+            return
 
-        # --- Call the agent's list_models method --- 
+        # --- Call the agent's list_models method ---
         models_list = agent_instance.list_models()
 
-        # --- Process and display results --- 
+        # --- Process and display results ---
         if models_list is None:
-             # Error message should have been printed by the agent's list_models method
-             log.warning(f"Agent's list_models returned None for provider {target_provider}.")
-             # console.print(f"[red]Failed to list models for {target_provider}. Check logs.")
-             return # Exit if listing failed
-        
+            # Error message should have been printed by the agent's list_models method
+            log.warning(f"Agent's list_models returned None for provider {target_provider}.")
+            # console.print(f"[red]Failed to list models for {target_provider}. Check logs.")
+            return  # Exit if listing failed
+
         if not models_list:
-             console.print(f"[yellow]No models found or reported by provider '{target_provider}'.[/yellow]")
-             return
-             
+            console.print(f"[yellow]No models found or reported by provider '{target_provider}'.[/yellow]")
+            return
+
         console.print(f"\n[bold cyan]Available {target_provider.capitalize()} Models:[/bold cyan]")
         for model_data in models_list:
-             # Assuming model_data is a dict with at least 'id' and 'name'
-             model_id = model_data.get('id', 'N/A')
-             display_name = model_data.get('name', model_id) # Use name, fallback to id
-             console.print(f"- [bold green]{model_id}[/bold green] (Name: {display_name})")
-             
+            # Assuming model_data is a dict with at least 'id' and 'name'
+            model_id = model_data.get("id", "N/A")
+            display_name = model_data.get("name", model_id)  # Use name, fallback to id
+            console.print(f"- [bold green]{model_id}[/bold green] (Name: {display_name})")
+
         # Display current default for this provider
         current_default = config.get_default_model(provider=target_provider)
         if current_default:
-             console.print(f"\nCurrent default {target_provider.capitalize()} model: {current_default}")
+            console.print(f"\nCurrent default {target_provider.capitalize()} model: {current_default}")
         else:
-             console.print(f"\nNo default model set for {target_provider.capitalize()}.")
-             
-        console.print(f"\nUse 'cli-code --provider={target_provider} --model MODEL' or 'cli-code set-default-model --provider={target_provider} MODEL'.")
+            console.print(f"\nNo default model set for {target_provider.capitalize()}.")
 
-    except Exception as e: 
+        console.print(
+            f"\nUse 'cli-code --provider={target_provider} --model MODEL' or 'cli-code set-default-model --provider={target_provider} MODEL'."
+        )
+
+    except Exception as e:
         console.print(f"[bold red]Error listing models for {target_provider}:[/bold red] {e}")
         log.error(f"List models command failed for {target_provider}", exc_info=True)
 
@@ -254,12 +280,20 @@ def list_models(provider):
 # --- MODIFIED start_interactive_session ---
 def start_interactive_session(provider: str, model_name: str, console: Console):
     """Start an interactive chat session with the selected provider and model."""
-    if not config: console.print("[bold red]Config error.[/bold red]"); return
+    if not config:
+        console.print("[bold red]Config error.[/bold red]")
+        return
 
     # --- Display Welcome Art ---
     console.clear()
-    console.print(CLI_CODE_ART) # Use updated art name
-    console.print(Panel(f"[b]Welcome to CLI Code AI Assistant! (Provider: {provider.capitalize()})[/b]", border_style="blue", expand=False))
+    console.print(CLI_CODE_ART)  # Use updated art name
+    console.print(
+        Panel(
+            f"[b]Welcome to CLI Code AI Assistant! (Provider: {provider.capitalize()})[/b]",
+            border_style="blue",
+            expand=False,
+        )
+    )
     time.sleep(0.1)
     # --- End Welcome Art ---
 
@@ -267,15 +301,17 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
     if not credential:
         credential_type = "API Key" if provider == "gemini" else "API URL"
         console.print(f"\n[bold red]Error:[/bold red] {provider.capitalize()} {credential_type} not found.")
-        console.print(f"Please run [bold]'cli-code setup --provider={provider} YOUR_{credential_type.upper().replace(' ','_')}'[/bold] first.")
+        console.print(
+            f"Please run [bold]'cli-code setup --provider={provider} YOUR_{credential_type.upper().replace(' ', '_')}'[/bold] first."
+        )
         return
 
     try:
         console.print(f"\nInitializing provider [bold]{provider}[/bold] with model [bold]{model_name}[/bold]...")
-        
-        model_agent: AbstractModelAgent | None = None # Define agent variable
-        
-        # --- Instantiate the correct agent --- 
+
+        model_agent: AbstractModelAgent | None = None  # Define agent variable
+
+        # --- Instantiate the correct agent ---
         if provider == "gemini":
             model_agent = GeminiModel(api_key=credential, console=console, model_name=model_name)
             console.print("[green]Gemini model initialized successfully.[/green]\n")
@@ -285,9 +321,9 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
             console.print("[green]Ollama provider initialized successfully.[/green]\n")
             # Note: Generate method is not implemented yet, session will show warnings.
         else:
-             console.print(f"[bold red]Error:[/bold red] Unknown provider '{provider}'. Cannot initialize.")
-             log.error(f"Attempted to start session with unknown provider: {provider}")
-             return
+            console.print(f"[bold red]Error:[/bold red] Unknown provider '{provider}'. Cannot initialize.")
+            log.error(f"Attempted to start session with unknown provider: {provider}")
+            return
 
     except Exception as e:
         console.print(f"\n[bold red]Error initializing model '{model_name}':[/bold red] {e}")
@@ -302,17 +338,25 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
         try:
             user_input = console.input("[bold blue]You:[/bold blue] ")
 
-            if user_input.lower() == '/exit': break
-            elif user_input.lower() == '/help': show_help(provider); continue # Pass provider to help
+            if user_input.lower() == "/exit":
+                break
+            elif user_input.lower() == "/help":
+                show_help(provider)
+                continue  # Pass provider to help
 
             # Display initial "thinking" status - generate handles intermediate ones
-            response_text = model_agent.generate(user_input) # Use the instantiated agent
+            response_text = model_agent.generate(user_input)  # Use the instantiated agent
 
-            if response_text is None and user_input.startswith('/'): console.print(f"[yellow]Unknown command:[/yellow] {user_input}"); continue
-            elif response_text is None: console.print("[red]Received an empty response from the model.[/red]"); log.warning("generate() returned None unexpectedly."); continue
+            if response_text is None and user_input.startswith("/"):
+                console.print(f"[yellow]Unknown command:[/yellow] {user_input}")
+                continue
+            elif response_text is None:
+                console.print("[red]Received an empty response from the model.[/red]")
+                log.warning("generate() returned None unexpectedly.")
+                continue
 
-            # --- Changed Prompt Name --- 
-            console.print(f"[bold medium_purple]Assistant:[/bold medium_purple]") # Changed from provider.capitalize()
+            # --- Changed Prompt Name ---
+            console.print("[bold medium_purple]Assistant:[/bold medium_purple]")  # Changed from provider.capitalize()
             console.print(Markdown(response_text), highlight=True)
 
         except KeyboardInterrupt:
@@ -331,7 +375,7 @@ def show_help(provider: str):
         tool_list_formatted = "\n".join([f"  • [white]`{name}`[/white]" for name in sorted(AVAILABLE_TOOLS.keys())])
     else:
         tool_list_formatted = "  (No tools available)"
-        
+
     # Use direct rich markup and ensure newlines are preserved
     help_text = f""" [bold]Help[/bold]
 

@@ -1,61 +1,65 @@
+import json  # For formatting tool results
 import logging
+from typing import Dict, List
+
+import questionary  # Import questionary
 from rich.console import Console
-from rich.panel import Panel # Import Panel
-from typing import List, Dict
-import json # For formatting tool results
-import questionary # Import questionary
+from rich.panel import Panel  # Import Panel
 
 # Attempt to import the OpenAI client library
 try:
     import openai
-    from openai import OpenAI # Import the client class
+    from openai import OpenAI  # Import the client class
 except ImportError:
     # This allows the module to be imported even if openai isn't installed yet,
     # but methods using it will fail later if it's not installed.
     openai = None
-    OpenAI = None 
+    OpenAI = None
     # Log a warning or raise a more specific error during __init__ if openai is None.
     pass
 
+from ..tools import AVAILABLE_TOOLS, get_tool  # Import get_tool
+from ..utils import count_tokens  # Import count_tokens
 from .base import AbstractModelAgent
-from ..tools import AVAILABLE_TOOLS, get_tool # Import get_tool
-from ..utils import count_tokens # Import count_tokens
 
 # Import MessageToDict for schema conversion
 try:
-     from google.protobuf.json_format import MessageToDict
+    from google.protobuf.json_format import MessageToDict
 except ImportError:
-     MessageToDict = None # Handle missing dependency gracefully
+    MessageToDict = None  # Handle missing dependency gracefully
 
 log = logging.getLogger(__name__)
-MAX_OLLAMA_ITERATIONS = 5 # Limit tool call loops for Ollama initially
-SENSITIVE_TOOLS = ["edit", "create_file"] # Define sensitive tools requiring confirmation
-OLLAMA_MAX_CONTEXT_TOKENS = 8000 # Example token limit for Ollama models, adjust as needed
+MAX_OLLAMA_ITERATIONS = 5  # Limit tool call loops for Ollama initially
+SENSITIVE_TOOLS = ["edit", "create_file"]  # Define sensitive tools requiring confirmation
+OLLAMA_MAX_CONTEXT_TOKENS = 8000  # Example token limit for Ollama models, adjust as needed
+
 
 class OllamaModel(AbstractModelAgent):
     """Interface for Ollama models using the OpenAI-compatible API."""
 
     def __init__(self, api_url: str, console: Console, model_name: str | None = None):
         """Initialize the Ollama model interface."""
-        super().__init__(console=console, model_name=model_name) # Call base class init
-        
+        super().__init__(console=console, model_name=model_name)  # Call base class init
+
         if not OpenAI:
-             log.error("OpenAI client library not found. Please install it: pip install openai")
-             raise ImportError("OpenAI client library is required for the Ollama provider. Please run: pip install openai")
-             
+            log.error("OpenAI client library not found. Please install it: pip install openai")
+            raise ImportError(
+                "OpenAI client library is required for the Ollama provider. Please run: pip install openai"
+            )
+
         if not api_url:
             raise ValueError("Ollama API URL (base_url) is required.")
-            
+
         self.api_url = api_url
         # self.model_name is set by super().__init__
         # The actual default model name from config should be resolved in main.py before passing
-        
+
         try:
             # Initialize OpenAI client pointing to the Ollama base URL
             # Use a placeholder API key as Ollama doesn't require one by default
             self.client = OpenAI(
                 base_url=self.api_url,
-                api_key="ollama" # Required by the openai client, but value doesn't matter for Ollama
+                api_key="ollama",  # Required by the openai client, but value doesn't matter for Ollama
             )
             log.info(f"OpenAI client initialized for Ollama at: {self.api_url}")
             # Optionally, add a quick ping or model list check here to verify connection
@@ -66,8 +70,8 @@ class OllamaModel(AbstractModelAgent):
 
         # TODO: Add Ollama-specific tool/function calling setup if different from OpenAI standard
         # self.ollama_tools = self._prepare_ollama_tools()
-        
-        # --- Initialize Ollama-specific History & System Prompt --- 
+
+        # --- Initialize Ollama-specific History & System Prompt ---
         self.history = []
         # Define the system prompt
         self.system_prompt = (
@@ -88,15 +92,15 @@ class OllamaModel(AbstractModelAgent):
         if not self.client:
             log.error("Ollama generate called but OpenAI client not initialized.")
             return "Error: Ollama client not initialized."
-            
+
         # Ensure model name is set (either from constructor or config default resolved in main)
         if not self.model_name:
-             log.error("Ollama generate called without a model name specified.")
-             # Try getting default from config as a fallback, though main.py should handle this
-             # config = Config() # Need config access or pass it in
-             # self.model_name = config.get_default_model(provider='ollama') 
-             # if not self.model_name:
-             return "Error: No Ollama model name configured or specified."
+            log.error("Ollama generate called without a model name specified.")
+            # Try getting default from config as a fallback, though main.py should handle this
+            # config = Config() # Need config access or pass it in
+            # self.model_name = config.get_default_model(provider='ollama')
+            # if not self.model_name:
+            return "Error: No Ollama model name configured or specified."
 
         log.info(f"Ollama Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.model_name}'")
 
@@ -113,140 +117,165 @@ class OllamaModel(AbstractModelAgent):
 
         # Add the user prompt directly to history
         self.add_to_history({"role": "user", "content": prompt})
-        
+
         iteration_count = 0
         while iteration_count < MAX_OLLAMA_ITERATIONS:
-             iteration_count += 1
-             log.info(f"Ollama Agent Iteration {iteration_count}/{MAX_OLLAMA_ITERATIONS}")
+            iteration_count += 1
+            log.info(f"Ollama Agent Iteration {iteration_count}/{MAX_OLLAMA_ITERATIONS}")
 
-             try:
-                 # === Prepare Tools for API Call ===
-                 # Convert our tool schemas to OpenAI format
-                 current_tools = self._prepare_openai_tools()
+            try:
+                # === Prepare Tools for API Call ===
+                # Convert our tool schemas to OpenAI format
+                current_tools = self._prepare_openai_tools()
 
-                 # === Call Ollama (OpenAI API) ===
-                 log.debug(f"Sending request to Ollama. Model: {self.model_name}. History: {self.history}. Tools: {current_tools}")
-                 with self.console.status(f"[yellow]Ollama thinking ({self.model_name})...", spinner="dots"):
-                     response = self.client.chat.completions.create(
-                         model=self.model_name,
-                         messages=self.history,
-                         tools=current_tools,
-                         tool_choice="auto" # Let the model decide if it needs tools
-                         # Add other parameters like temperature if needed
-                     )
-                 log.debug(f"Raw Ollama Response (Iter {iteration_count}): {response}")
+                # === Call Ollama (OpenAI API) ===
+                log.debug(
+                    f"Sending request to Ollama. Model: {self.model_name}. History: {self.history}. Tools: {current_tools}"
+                )
+                with self.console.status(f"[yellow]Ollama thinking ({self.model_name})...", spinner="dots"):
+                    response = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=self.history,
+                        tools=current_tools,
+                        tool_choice="auto",  # Let the model decide if it needs tools
+                        # Add other parameters like temperature if needed
+                    )
+                log.debug(f"Raw Ollama Response (Iter {iteration_count}): {response}")
 
-                 response_message = response.choices[0].message
-                 
-                 # === Handle Response === 
-                 tool_calls = response_message.tool_calls
-                 if tool_calls:
-                     # === Tool Call Requested ===
-                     log.info(f"Ollama requested {len(tool_calls)} tool call(s).")
-                     # Add the assistant's response (containing the tool requests) to history
-                     self.add_to_history(response_message.model_dump(exclude_unset=True)) 
+                response_message = response.choices[0].message
 
-                     # --- Execute Tools (with HITL) --- 
-                     for tool_call in tool_calls:
-                         tool_name = tool_call.function.name
-                         tool_args_str = tool_call.function.arguments
-                         tool_call_id = tool_call.id
-                         log.info(f"Processing tool call: ID={tool_call_id}, Name={tool_name}, Args='{tool_args_str}'")
+                # === Handle Response ===
+                tool_calls = response_message.tool_calls
+                if tool_calls:
+                    # === Tool Call Requested ===
+                    log.info(f"Ollama requested {len(tool_calls)} tool call(s).")
+                    # Add the assistant's response (containing the tool requests) to history
+                    self.add_to_history(response_message.model_dump(exclude_unset=True))
 
-                         tool_result = ""
-                         tool_error = False
-                         user_rejected = False # Flag for confirmation
+                    # --- Execute Tools (with HITL) ---
+                    for tool_call in tool_calls:
+                        tool_name = tool_call.function.name
+                        tool_args_str = tool_call.function.arguments
+                        tool_call_id = tool_call.id
+                        log.info(f"Processing tool call: ID={tool_call_id}, Name={tool_name}, Args='{tool_args_str}'")
 
-                         try:
-                             tool_args = json.loads(tool_args_str)
-                         except json.JSONDecodeError:
-                             log.error(f"Failed to decode JSON arguments for tool {tool_name}: {tool_args_str}")
-                             tool_result = f"Error: Invalid JSON arguments provided: {tool_args_str}"
-                         else:
-                             # --- HUMAN IN THE LOOP CONFIRMATION --- 
-                             if tool_name in SENSITIVE_TOOLS:
-                                 file_path = tool_args.get("file_path", "(unknown file)")
-                                 content = tool_args.get("content")
-                                 old_string = tool_args.get("old_string")
-                                 new_string = tool_args.get("new_string")
-                                 
-                                 panel_content = f"[bold yellow]Proposed Action:[/bold yellow]\n[cyan]Tool:[/cyan] {tool_name}\n[cyan]File:[/cyan] {file_path}\n"
-                                 
-                                 if content is not None:
-                                      preview_lines = content.splitlines()[:10] # Show first 10 lines
-                                      preview = "\n".join(preview_lines)
-                                      if len(content.splitlines()) > 10: preview += "\n... (truncated)"
-                                      action_desc = f"Write/Overwrite with content:\n---\n{preview}\n---"
-                                 elif old_string is not None and new_string is not None:
-                                      action_desc = f"Replace first occurrence of:\n '{old_string}'\nWith:\n '{new_string}'"
-                                 elif content is None and old_string is None and new_string is None: # Handle empty file creation explicitly if needed
-                                     action_desc = "Create empty file (or clear existing)."
-                                 else:
-                                     action_desc = "(Could not determine specific change)"
-                                
-                                 panel_content += f"[cyan]Change:[/cyan]\n{action_desc}"
-                                
-                                 self.console.print(Panel(panel_content, title="Confirmation Required", border_style="red", expand=False))
-                                 try:
-                                     user_confirmed = questionary.confirm("Proceed with this action?", default=False, auto_enter=False, ask_if_answered=True).ask()
-                                 except KeyboardInterrupt: # Handle Ctrl+C during question
-                                     user_confirmed = False
-                                     self.console.print("[yellow]Action cancelled by user.[/yellow]")
-                                     
-                                 if not user_confirmed:
-                                     log.warning(f"User rejected execution of sensitive tool: {tool_name}")
-                                     user_rejected = True
-                                     tool_result = f"User rejected the execution of tool '{tool_name}' on file '{file_path}'."
-                                     tool_error = True # Treat rejection as an error for the LLM's perspective
-                             # --- END HITL --- 
+                        tool_result = ""
+                        tool_error = False
+                        user_rejected = False  # Flag for confirmation
 
-                             # --- Execute the actual tool (only if not rejected) --- 
-                             if not user_rejected:
-                                 tool_instance = get_tool(tool_name)
-                                 if tool_instance:
-                                      try:
-                                           with self.console.status(f"[cyan]Executing tool: {tool_name}...", spinner="dots"):
-                                                tool_result = tool_instance.execute(**tool_args)
-                                           log.info(f"Tool {tool_name} executed successfully. Result length: {len(tool_result) if tool_result else 0}")
-                                           tool_error = False 
-                                      except Exception as tool_exec_error:
-                                           log.error(f"Error executing tool {tool_name} with args {tool_args}: {tool_exec_error}", exc_info=True)
-                                           tool_result = f"Error executing tool {tool_name}: {str(tool_exec_error)}"
-                                           tool_error = True
-                                 else:
-                                      log.error(f"Tool '{tool_name}' requested by Ollama not found in available tools.")
-                                      tool_result = f"Error: Tool '{tool_name}' not found."
-                                      tool_error = True
+                        try:
+                            tool_args = json.loads(tool_args_str)
+                        except json.JSONDecodeError:
+                            log.error(f"Failed to decode JSON arguments for tool {tool_name}: {tool_args_str}")
+                            tool_result = f"Error: Invalid JSON arguments provided: {tool_args_str}"
+                        else:
+                            # --- HUMAN IN THE LOOP CONFIRMATION ---
+                            if tool_name in SENSITIVE_TOOLS:
+                                file_path = tool_args.get("file_path", "(unknown file)")
+                                content = tool_args.get("content")
+                                old_string = tool_args.get("old_string")
+                                new_string = tool_args.get("new_string")
 
-                         # --- Add Tool Result to History --- 
-                         # (This happens regardless of user_rejected because we need to inform the LLM)
-                         self.add_to_history(
-                             {
-                                 "tool_call_id": tool_call_id,
-                                 "role": "tool",
-                                 "name": tool_name,
-                                 "content": tool_result, # Send back execution result OR rejection message
-                             }
-                         )
-                     # --- Loop back to LLM --- 
-                     continue # Continue the while loop to send tool results back to Ollama
+                                panel_content = f"[bold yellow]Proposed Action:[/bold yellow]\n[cyan]Tool:[/cyan] {tool_name}\n[cyan]File:[/cyan] {file_path}\n"
 
-                 else:
-                     # === Text Response Received ===
-                     final_text = response_message.content
-                     log.info(f"Ollama returned final text response: {final_text[:100]}...")
-                     # Add assistant's final text response to history
-                     self.add_to_history(response_message.model_dump(exclude_unset=True)) 
-                     return final_text # Exit loop and return text
+                                if content is not None:
+                                    preview_lines = content.splitlines()[:10]  # Show first 10 lines
+                                    preview = "\n".join(preview_lines)
+                                    if len(content.splitlines()) > 10:
+                                        preview += "\n... (truncated)"
+                                    action_desc = f"Write/Overwrite with content:\n---\n{preview}\n---"
+                                elif old_string is not None and new_string is not None:
+                                    action_desc = (
+                                        f"Replace first occurrence of:\n '{old_string}'\nWith:\n '{new_string}'"
+                                    )
+                                elif (
+                                    content is None and old_string is None and new_string is None
+                                ):  # Handle empty file creation explicitly if needed
+                                    action_desc = "Create empty file (or clear existing)."
+                                else:
+                                    action_desc = "(Could not determine specific change)"
 
-             except Exception as e:
-                 log.error(f"Error during Ollama agent iteration {iteration_count}: {e}", exc_info=True)
-                 self.console.print(f"[bold red]Error during Ollama interaction:[/bold red] {e}")
-                 # Clean history? Pop last user message?
-                 if self.history and self.history[-1].get("role") == "user":
-                      self.history.pop()
-                 return f"(Error interacting with Ollama: {e})" # Return error message
-        
+                                panel_content += f"[cyan]Change:[/cyan]\n{action_desc}"
+
+                                self.console.print(
+                                    Panel(
+                                        panel_content, title="Confirmation Required", border_style="red", expand=False
+                                    )
+                                )
+                                try:
+                                    user_confirmed = questionary.confirm(
+                                        "Proceed with this action?",
+                                        default=False,
+                                        auto_enter=False,
+                                        ask_if_answered=True,
+                                    ).ask()
+                                except KeyboardInterrupt:  # Handle Ctrl+C during question
+                                    user_confirmed = False
+                                    self.console.print("[yellow]Action cancelled by user.[/yellow]")
+
+                                if not user_confirmed:
+                                    log.warning(f"User rejected execution of sensitive tool: {tool_name}")
+                                    user_rejected = True
+                                    tool_result = (
+                                        f"User rejected the execution of tool '{tool_name}' on file '{file_path}'."
+                                    )
+                                    tool_error = True  # Treat rejection as an error for the LLM's perspective
+                            # --- END HITL ---
+
+                            # --- Execute the actual tool (only if not rejected) ---
+                            if not user_rejected:
+                                tool_instance = get_tool(tool_name)
+                                if tool_instance:
+                                    try:
+                                        with self.console.status(
+                                            f"[cyan]Executing tool: {tool_name}...", spinner="dots"
+                                        ):
+                                            tool_result = tool_instance.execute(**tool_args)
+                                        log.info(
+                                            f"Tool {tool_name} executed successfully. Result length: {len(tool_result) if tool_result else 0}"
+                                        )
+                                        tool_error = False
+                                    except Exception as tool_exec_error:
+                                        log.error(
+                                            f"Error executing tool {tool_name} with args {tool_args}: {tool_exec_error}",
+                                            exc_info=True,
+                                        )
+                                        tool_result = f"Error executing tool {tool_name}: {str(tool_exec_error)}"
+                                        tool_error = True
+                                else:
+                                    log.error(f"Tool '{tool_name}' requested by Ollama not found in available tools.")
+                                    tool_result = f"Error: Tool '{tool_name}' not found."
+                                    tool_error = True
+
+                        # --- Add Tool Result to History ---
+                        # (This happens regardless of user_rejected because we need to inform the LLM)
+                        self.add_to_history(
+                            {
+                                "tool_call_id": tool_call_id,
+                                "role": "tool",
+                                "name": tool_name,
+                                "content": tool_result,  # Send back execution result OR rejection message
+                            }
+                        )
+                    # --- Loop back to LLM ---
+                    continue  # Continue the while loop to send tool results back to Ollama
+
+                else:
+                    # === Text Response Received ===
+                    final_text = response_message.content
+                    log.info(f"Ollama returned final text response: {final_text[:100]}...")
+                    # Add assistant's final text response to history
+                    self.add_to_history(response_message.model_dump(exclude_unset=True))
+                    return final_text  # Exit loop and return text
+
+            except Exception as e:
+                log.error(f"Error during Ollama agent iteration {iteration_count}: {e}", exc_info=True)
+                self.console.print(f"[bold red]Error during Ollama interaction:[/bold red] {e}")
+                # Clean history? Pop last user message?
+                if self.history and self.history[-1].get("role") == "user":
+                    self.history.pop()
+                return f"(Error interacting with Ollama: {e})"  # Return error message
+
         # If loop finishes without returning text (e.g., max iterations)
         log.warning(f"Ollama agent loop reached max iterations ({MAX_OLLAMA_ITERATIONS}).")
         return "(Agent reached maximum iterations)"
@@ -257,8 +286,8 @@ class OllamaModel(AbstractModelAgent):
         """
         log.info(f"Attempting to list models from Ollama endpoint: {self.api_url}")
         if not self.client:
-             log.error("OpenAI client not initialized for Ollama.")
-             return None
+            log.error("OpenAI client not initialized for Ollama.")
+            return None
         try:
             models_response = self.client.models.list()
             # The response object is a SyncPage[Model], access data via .data
@@ -266,10 +295,10 @@ class OllamaModel(AbstractModelAgent):
             for model in models_response.data:
                 # Adapt the OpenAI Model object to our expected dict format
                 model_info = {
-                    "id": model.id,        # Typically the model identifier used in API calls
-                    "name": getattr(model, 'name', model.id), # Use name if available, else id
+                    "id": model.id,  # Typically the model identifier used in API calls
+                    "name": getattr(model, "name", model.id),  # Use name if available, else id
                     # Add other potentially useful fields if needed, e.g., owner
-                    # "owned_by": model.owned_by 
+                    # "owned_by": model.owned_by
                 }
                 available_models.append(model_info)
             log.info(f"Found {len(available_models)} models at {self.api_url}")
@@ -278,26 +307,26 @@ class OllamaModel(AbstractModelAgent):
             log.error(f"Error listing models from Ollama at {self.api_url}: {e}", exc_info=True)
             self.console.print(f"[bold red]Error contacting Ollama endpoint '{self.api_url}':[/bold red] {e}")
             self.console.print("[yellow]Ensure the Ollama server is running and the API URL is correct.[/yellow]")
-            return None # Indicate failure
-    
+            return None  # Indicate failure
+
     # TODO: Add helper methods for tool schema conversion, history formatting etc.
     # def _prepare_ollama_tools(self):
-    #     ... 
+    #     ...
 
     # --- Ollama-specific history management ---
     def add_to_history(self, message: Dict):
         """Adds a message dictionary (OpenAI format) to the history and manages context window."""
         if not isinstance(message, dict) or "role" not in message:
-             log.warning(f"Attempted to add invalid message to Ollama history: {message}")
-             return
+            log.warning(f"Attempted to add invalid message to Ollama history: {message}")
+            return
         self.history.append(message)
-        self._manage_ollama_context() # Call context management after adding
+        self._manage_ollama_context()  # Call context management after adding
 
     def clear_history(self):
         """Clears the Ollama conversation history, preserving the system prompt."""
         self.history = []
         # Re-add system prompt after clearing
-        if hasattr(self, 'system_prompt') and self.system_prompt:
+        if hasattr(self, "system_prompt") and self.system_prompt:
             # Use insert instead of add_to_history to avoid triggering context management unnecessarily here
             self.history.insert(0, {"role": "system", "content": self.system_prompt})
         log.info("Ollama history cleared, system prompt preserved.")
@@ -313,32 +342,34 @@ class OllamaModel(AbstractModelAgent):
                 message_str = json.dumps(message)
                 total_tokens += count_tokens(message_str)
             except TypeError as e:
-                 log.warning(f"Could not serialize message for token counting: {message} - Error: {e}")
-                 # Fallback: estimate based on string representation length
-                 total_tokens += len(str(message)) // 4 
-        
+                log.warning(f"Could not serialize message for token counting: {message} - Error: {e}")
+                # Fallback: estimate based on string representation length
+                total_tokens += len(str(message)) // 4
+
         log.debug(f"Estimated total tokens in Ollama history: {total_tokens}")
 
         if total_tokens > OLLAMA_MAX_CONTEXT_TOKENS:
-            log.warning(f"Ollama history token count ({total_tokens}) exceeds limit ({OLLAMA_MAX_CONTEXT_TOKENS}). Truncating.")
+            log.warning(
+                f"Ollama history token count ({total_tokens}) exceeds limit ({OLLAMA_MAX_CONTEXT_TOKENS}). Truncating."
+            )
             # Simple truncation: keep system prompt (if present at index 0) and remove oldest user/assistant messages
             # Keep removing messages (after the potential system prompt) until under the limit
-            
+
             # Find index of first non-system message
             start_index = 0
             if self.history and self.history[0].get("role") == "system":
-                 start_index = 1
-                 
-            # Keep removing messages from the start (after system prompt) 
+                start_index = 1
+
+            # Keep removing messages from the start (after system prompt)
             while total_tokens > OLLAMA_MAX_CONTEXT_TOKENS and len(self.history) > start_index:
                 removed_message = self.history.pop(start_index)
-                try: 
+                try:
                     removed_tokens = count_tokens(json.dumps(removed_message))
-                except TypeError: 
+                except TypeError:
                     removed_tokens = len(str(removed_message)) // 4
                 total_tokens -= removed_tokens
                 log.debug(f"Removed message ({removed_tokens} tokens). New total: {total_tokens}")
-            
+
             log.info(f"Ollama history truncated to {len(self.history)} messages, estimated tokens: {total_tokens}")
 
     # --- Tool Preparation Helper ---
@@ -346,51 +377,58 @@ class OllamaModel(AbstractModelAgent):
         """Converts available tools to the OpenAI tool format."""
         if not AVAILABLE_TOOLS:
             return None
-            
+
         if not MessageToDict:
-             log.error("google.protobuf library is required for tool schema conversion. Please install it: pip install protobuf")
-             # Or raise ImportError here
-             return None # Cannot prepare tools without the library
-        
+            log.error(
+                "google.protobuf library is required for tool schema conversion. Please install it: pip install protobuf"
+            )
+            # Or raise ImportError here
+            return None  # Cannot prepare tools without the library
+
         openai_tools = []
         for name, tool_instance in AVAILABLE_TOOLS.items():
             try:
                 declaration = tool_instance.get_function_declaration()
                 if declaration and declaration.parameters:
-                    # --- FIX: Convert Schema object to Dict using MessageToDict --- 
+                    # --- FIX: Convert Schema object to Dict using MessageToDict ---
                     try:
                         # The declaration.parameters object should be a protobuf Message
-                        parameters_dict = MessageToDict(declaration.parameters._pb) # Access the underlying protobuf message (_pb)
+                        parameters_dict = MessageToDict(
+                            declaration.parameters._pb
+                        )  # Access the underlying protobuf message (_pb)
                         # Optional: Clean empty fields if MessageToDict includes them explicitly
-                        # parameters_dict = {k: v for k, v in parameters_dict.items() if v} 
+                        # parameters_dict = {k: v for k, v in parameters_dict.items() if v}
                     except Exception as conversion_err:
-                         log.error(f"Failed to convert parameters schema for tool '{name}' using MessageToDict: {conversion_err}", exc_info=True)
-                         continue # Skip this tool if conversion fails
+                        log.error(
+                            f"Failed to convert parameters schema for tool '{name}' using MessageToDict: {conversion_err}",
+                            exc_info=True,
+                        )
+                        continue  # Skip this tool if conversion fails
                     # --- END FIX ---
-                    
+
                     tool_dict = {
                         "type": "function",
                         "function": {
                             "name": declaration.name,
                             "description": declaration.description,
-                            "parameters": parameters_dict # Use the converted dictionary
-                        }
+                            "parameters": parameters_dict,  # Use the converted dictionary
+                        },
                     }
                     openai_tools.append(tool_dict)
-                elif declaration: # Handle case with no parameters
-                     tool_dict = {
+                elif declaration:  # Handle case with no parameters
+                    tool_dict = {
                         "type": "function",
                         "function": {
                             "name": declaration.name,
                             "description": declaration.description,
-                        }
+                        },
                     }
-                     openai_tools.append(tool_dict)
+                    openai_tools.append(tool_dict)
                 else:
                     log.warning(f"Could not get function declaration for tool '{name}'. Skipping.")
-                    
+
             except Exception as e:
                 log.error(f"Error preparing tool '{name}' for OpenAI format: {e}", exc_info=True)
-                
+
         log.debug(f"Prepared {len(openai_tools)} tools for Ollama API call.")
-        return openai_tools if openai_tools else None 
+        return openai_tools if openai_tools else None

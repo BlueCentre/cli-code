@@ -3,12 +3,12 @@ Utility functions for the Gemini CLI tool.
 """
 
 import tiktoken
-import json
+
 
 def count_tokens(text):
     """
     Count the number of tokens in a text string.
-    
+
     This is a rough estimate for Gemini 2.5 Pro, using GPT-4 tokenizer as a proxy.
     For production, you'd want to use model-specific token counting.
     """
