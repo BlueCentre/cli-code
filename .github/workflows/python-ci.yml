@@ -32,6 +32,9 @@ jobs:
         # pip install -e .
         # pip install ruff pytest # Example tools
 
+    - name: Verify Installation
+      run: ls -l /opt/hostedtoolcache/Python/3.11.9/x64/lib/python3.11/site-packages | grep -E 'google|rich|questionary'
+
     - name: Debug Python Path
       run: python -c "import sys; print(sys.path)"
 
