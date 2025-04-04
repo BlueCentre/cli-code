@@ -51,13 +51,13 @@ log.info(f"Logging initialized with level: {log_level}")
 CLI_CODE_ART = r"""
 
 [medium_purple]
-  ██████╗██╗     ██╗ ██████╗        ██████╗  ██████╗ ██████╗ ███████╗
- ██╔════╝██║     ██║██╔════╝       ██╔════╝ ██╔═══██╗██╔══██╗██╔════╝
- ██║     ██║     ██║██║  ███╗      ██║      ██║   ██║██║  ██║███████╗
- ██║     ██║     ██║██║   ██║      ██║      ██║   ██║██║  ██║██╔════╝
- ╚██████╗███████╗██║╚██████╔╝      ╚██████╗ ╚██████╔╝██████╔╝███████╗
-  ╚═════╝╚══════╝╚═╝ ╚═════╝        ╚═════╝  ╚═════╝ ╚═════╝ ╚══════╝
-[/medium_purple]
+  ██████╗██╗     ██╗ ███████╗ ██████╗  ██████╗ ███████╗███████╗
+ ██╔════╝██║     ██║ ██╔════╝██╔════╝ ██╔═══██╗██╔════╝██╔════╝
+ ██║     ██║     ██║ ███████╗██║  ███╗██║   ██║███████╗███████╗
+ ██║     ██║     ██║ ██╔════╝██║   ██║██║   ██║██╔════╝╚════██║
+ ╚██████╗███████╗██║ ███████╗╚██████╔╝╚██████╔╝███████╗███████║
+  ╚═════╝╚══════╝╚═╝ ╚══════╝ ╚═════╝  ╚═════╝ ╚══════╝╚══════╝
+ [/medium_purple]
 """
 # --- End ASCII Art ---
 
@@ -301,15 +301,16 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
             user_input = console.input("[bold blue]You:[/bold blue] ")
 
             if user_input.lower() == '/exit': break
-            elif user_input.lower() == '/help': show_help(); continue
+            elif user_input.lower() == '/help': show_help(provider); continue # Pass provider to help
 
             # Display initial "thinking" status - generate handles intermediate ones
-            response_text = model_agent.generate(user_input)
+            response_text = model_agent.generate(user_input) # Use the instantiated agent
 
             if response_text is None and user_input.startswith('/'): console.print(f"[yellow]Unknown command:[/yellow] {user_input}"); continue
             elif response_text is None: console.print("[red]Received an empty response from the model.[/red]"); log.warning("generate() returned None unexpectedly."); continue
 
-            console.print("[bold medium_purple]Gemini:[/bold medium_purple]")
+            # --- Changed Prompt Name --- 
+            console.print(f"[bold medium_purple]Assistant:[/bold medium_purple]") # Changed from provider.capitalize()
             console.print(Markdown(response_text), highlight=True)
 
         except KeyboardInterrupt:
@@ -320,7 +321,7 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
             log.error("Error during interactive loop", exc_info=True)
 
 
-def show_help():
+def show_help(provider: str):
     """Show help information for interactive mode."""
     tool_list_formatted = ""
     if AVAILABLE_TOOLS:
