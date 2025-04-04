@@ -345,16 +345,37 @@ class OllamaModel(AbstractModelAgent):
         openai_tools = []
         for name, tool_instance in AVAILABLE_TOOLS.items():
             try:
-                # Get the Gemini FunctionDeclaration
                 declaration = tool_instance.get_function_declaration()
-                if declaration and declaration.parameters: # Ensure declaration and parameters exist
-                    # The .parameters attribute already holds the JSON schema in the correct format
+                if declaration and declaration.parameters:
+                    # --- FIX: Convert Schema object to Dict --- 
+                    try:
+                        # Attempt conversion using a hypothetical to_dict() or similar
+                        # Common patterns: .to_dict(), ._pb.DESCRIPTOR.to_dict() or accessing attributes
+                        # Let's assume a simple attribute access or a method exists
+                        if hasattr(declaration.parameters, 'to_dict') and callable(declaration.parameters.to_dict):
+                             parameters_dict = declaration.parameters.to_dict()
+                        # elif hasattr(declaration.parameters, '_pb'): # Example for protobuf-based objects
+                        #    parameters_dict = declaration.parameters._pb # Or further processing needed
+                        else:
+                             # Fallback: Assume it *might* already be a dict-like structure 
+                             # or try direct conversion if it supports dict() protocol.
+                             # This might fail if it's a complex object without direct dict conversion.
+                             parameters_dict = dict(declaration.parameters) 
+                             # If the above fails, we might need to inspect the Schema object 
+                             # type more closely and manually build the dict.
+                             log.warning(f"Direct conversion of parameters for tool '{name}' used; may be inaccurate if not dict-like.")
+                             
+                    except Exception as conversion_err:
+                         log.error(f"Failed to convert parameters schema for tool '{name}' to dict: {conversion_err}", exc_info=True)
+                         continue # Skip this tool if conversion fails
+                    # --- END FIX ---
+                    
                     tool_dict = {
                         "type": "function",
                         "function": {
                             "name": declaration.name,
                             "description": declaration.description,
-                            "parameters": declaration.parameters # Directly use the schema
+                            "parameters": parameters_dict # Use the converted dictionary
                         }
                     }
                     openai_tools.append(tool_dict)
