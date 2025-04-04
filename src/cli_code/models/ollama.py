@@ -62,18 +62,21 @@ class OllamaModel(AbstractModelAgent):
         # TODO: Add Ollama-specific tool/function calling setup if different from OpenAI standard
         # self.ollama_tools = self._prepare_ollama_tools()
         
-        # TODO: Add Ollama-specific system prompt if needed
-        # self.system_prompt = "..."
-        # Add system prompt to history
-        # self.add_to_history({"role": "system", "content": self.system_prompt})
-
-        # --- Initialize Ollama-specific History (OpenAI format) ---
+        # --- Initialize Ollama-specific History & System Prompt --- 
         self.history = []
-        # Add system prompt if needed (using "system" role)
-        # TODO: Create a good default system prompt for Ollama + Tools
-        # self.system_prompt = "You are a helpful assistant that can use tools."
-        # self.add_to_history({"role": "system", "content": self.system_prompt})
-        log.info(f"OllamaModel initialized for endpoint {self.api_url}")
+        # Define the system prompt
+        self.system_prompt = (
+            "You are a helpful AI coding assistant. You have access to a set of tools to interact with the local file system "
+            "and execute commands. Use the available tools when necessary to fulfill the user's request. "
+            "Think step-by-step if needed. When using tools, provide the required arguments accurately. "
+            "If you need to see the content of a file before editing, use the 'view' tool first. "
+            "If a file is large, consider using 'summarize_code' or viewing specific sections with 'view' offset/limit. "
+            "After performing actions, confirm the outcome or provide a summary."
+            # TODO: Potentially add details about specific tool usage or desired output format.
+        )
+        # Add system prompt as the first message
+        self.add_to_history({"role": "system", "content": self.system_prompt})
+        log.info(f"OllamaModel initialized for endpoint {self.api_url} with system prompt.")
 
     def generate(self, prompt: str) -> str | None:
         """Generate a response using the Ollama model via OpenAI API format."""
@@ -286,12 +289,13 @@ class OllamaModel(AbstractModelAgent):
         self._manage_ollama_context() # Call context management after adding
 
     def clear_history(self):
-        """Clears the Ollama conversation history."""
+        """Clears the Ollama conversation history, preserving the system prompt."""
         self.history = []
-        # TODO: Re-add system prompt if/when defined
-        # if hasattr(self, 'system_prompt') and self.system_prompt:
-        #     self.add_to_history({"role": "system", "content": self.system_prompt})
-        log.info("Ollama history cleared.")
+        # Re-add system prompt after clearing
+        if hasattr(self, 'system_prompt') and self.system_prompt:
+            # Use insert instead of add_to_history to avoid triggering context management unnecessarily here
+            self.history.insert(0, {"role": "system", "content": self.system_prompt})
+        log.info("Ollama history cleared, system prompt preserved.")
 
     def _manage_ollama_context(self):
         """Truncates Ollama history based on estimated token count."""
