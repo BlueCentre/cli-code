@@ -122,74 +122,92 @@ sequenceDiagram
 ### Level 1: System Context
 
 ```mermaid
-C4Context
-    title System Context Diagram for CLI Code Assistant
-
-    Person(user, "Developer", "Uses the CLI to interact with their codebase via different LLM providers.")
-    System(cli_app, "CLI Code Assistant", "Python CLI application providing AI coding assistance with local tool usage, supporting multiple LLM backends.")
-    System_Ext(gemini_api, "Google Gemini API")
-    System_Ext(ollama_api, "Ollama OpenAI API")
-    System_Ext(local_fs, "Local File System")
-    System_Ext(local_shell, "Local Shell")
-    System_Ext(local_tools, "Local Dev Tools")
-
-    Rel(user, cli_app, "Uses", "CLI Commands/Prompts")
-    Rel(cli_app, gemini_api, "Makes API calls (If provider=gemini)")
-    Rel(cli_app, ollama_api, "Makes API calls (If provider=ollama)")
-    Rel(cli_app, local_fs, "Reads/Writes files/dirs")
-    Rel(cli_app, local_shell, "Executes commands")
-    Rel(cli_app, local_tools, "Invokes tools")
+flowchart TD
+    user["Developer\nUses the CLI to interact with their codebase via different LLM providers"]
+    cli_app["CLI Code Assistant\nPython CLI application providing AI coding assistance with local tool usage, supporting multiple LLM backends"]
+    gemini_api["Google Gemini API"]
+    ollama_api["Ollama OpenAI API"]
+    local_fs["Local File System"]
+    local_shell["Local Shell"]
+    local_tools["Local Dev Tools"]
+    
+    user --> |"Uses\n(CLI Commands/Prompts)"| cli_app
+    cli_app --> |"Makes API calls\n(If provider=gemini)"| gemini_api
+    cli_app --> |"Makes API calls\n(If provider=ollama)"| ollama_api
+    cli_app --> |"Reads/Writes files/dirs"| local_fs
+    cli_app --> |"Executes commands"| local_shell
+    cli_app --> |"Invokes tools"| local_tools
+    
+    style user fill:#08427B,stroke:#052E56,color:#fff
+    style cli_app fill:#1168BD,stroke:#0B4884,color:#fff
+    style gemini_api fill:#999999,stroke:#6e6e6e,color:#fff
+    style ollama_api fill:#999999,stroke:#6e6e6e,color:#fff
+    style local_fs fill:#999999,stroke:#6e6e6e,color:#fff
+    style local_shell fill:#999999,stroke:#6e6e6e,color:#fff
+    style local_tools fill:#999999,stroke:#6e6e6e,color:#fff
 ```
 
 ### Level 2: Containers (Key Modules/Libraries)
 
 ```mermaid
-C4Container
-    title Container Diagram for CLI Code Assistant
-
-    Person(user, "Developer")
-
-    System_Boundary(cli_system, "CLI Code Assistant") {
-        Container(cli_main, "CLI Frontend", "Python/Click/Rich", "Handles user commands, IO, selects and initializes agent.")
-        Container(agent_interface, "Model Agent Interface", "Python/ABC", "Defines common agent behavior (generate, list_models)")
-        Container(gemini_agent, "Gemini Agent", "Python/google-generativeai", "Implements agent interface for Gemini.")
-        Container(ollama_agent, "Ollama Agent", "Python/openai", "Implements agent interface for Ollama.")
-        Container(tools, "Tool Execution Layer", "Python", "Defines and executes local actions.")
-        ContainerDb(config, "Configuration", "YAML/File", "Stores API keys/URLs, defaults.")
-
-        Rel(cli_main, config, "Reads settings")
-        Rel(cli_main, agent_interface, "Uses interface")
-        Rel_Back(cli_main, gemini_agent, "Instantiates if provider=gemini")
-        Rel_Back(cli_main, ollama_agent, "Instantiates if provider=ollama")
-
-        Rel(gemini_agent, agent_interface, "Implements")
-        Rel(ollama_agent, agent_interface, "Implements")
-
-        Rel(gemini_agent, tools, "Requests tool execution")
-        Rel(ollama_agent, tools, "Requests tool execution")
-        Rel(gemini_agent, config, "Reads Gemini key")
-        Rel(ollama_agent, config, "Reads Ollama URL")
-
-        Rel(tools, gemini_agent, "Returns results")
-        Rel(tools, ollama_agent, "Returns results")
-    }
-
-    System_Ext(gemini_api, "Google Gemini API")
-    System_Ext(ollama_api, "Ollama OpenAI API")
-    System_Ext(local_fs, "Local File System")
-    System_Ext(local_shell, "Local Shell")
-    System_Ext(local_tools, "Local Dev Tools")
-
-    Rel(user, cli_main, "Uses", "CLI")
-
-    Rel(gemini_agent, gemini_api, "API Calls")
-    Rel(ollama_agent, ollama_api, "API Calls")
-
-    Rel(tools, local_fs, "Accesses")
-    Rel(tools, local_shell, "Accesses")
-    Rel(tools, local_tools, "Accesses")
-
-    Rel(config, local_fs, "Reads/Writes config file")
+flowchart TD
+    user["Developer"]
+    
+    subgraph cli_system["CLI Code Assistant"]
+        cli_main["CLI Frontend\nPython/Click/Rich\nHandles user commands, IO, selects and initializes agent"]
+        agent_interface["Model Agent Interface\nPython/ABC\nDefines common agent behavior"]
+        gemini_agent["Gemini Agent\nPython/google-generativeai\nImplements agent interface for Gemini"]
+        ollama_agent["Ollama Agent\nPython/openai\nImplements agent interface for Ollama"]
+        tools["Tool Execution Layer\nPython\nDefines and executes local actions"]
+        config["Configuration\nYAML/File\nStores API keys/URLs, defaults"]
+    end
+    
+    gemini_api["Google Gemini API"]
+    ollama_api["Ollama OpenAI API"]
+    local_fs["Local File System"]
+    local_shell["Local Shell"]
+    local_tools["Local Dev Tools"]
+    
+    user --> |"Uses"| cli_main
+    
+    cli_main --> |"Reads settings"| config
+    cli_main --> |"Uses interface"| agent_interface
+    cli_main -.-> |"Instantiates if provider=gemini"| gemini_agent
+    cli_main -.-> |"Instantiates if provider=ollama"| ollama_agent
+    
+    gemini_agent --> |"Implements"| agent_interface
+    ollama_agent --> |"Implements"| agent_interface
+    
+    gemini_agent --> |"Requests tool execution"| tools
+    ollama_agent --> |"Requests tool execution"| tools
+    gemini_agent --> |"Reads Gemini key"| config
+    ollama_agent --> |"Reads Ollama URL"| config
+    
+    tools --> |"Returns results"| gemini_agent
+    tools --> |"Returns results"| ollama_agent
+    
+    gemini_agent --> |"API Calls"| gemini_api
+    ollama_agent --> |"API Calls"| ollama_api
+    
+    tools --> |"Accesses"| local_fs
+    tools --> |"Accesses"| local_shell
+    tools --> |"Accesses"| local_tools
+    
+    config --> |"Reads/Writes config file"| local_fs
+    
+    style user fill:#08427B,stroke:#052E56,color:#fff
+    style cli_system fill:#444,stroke:#222,color:#fff
+    style cli_main fill:#1168BD,stroke:#0B4884,color:#fff
+    style agent_interface fill:#1168BD,stroke:#0B4884,color:#fff
+    style gemini_agent fill:#1168BD,stroke:#0B4884,color:#fff
+    style ollama_agent fill:#1168BD,stroke:#0B4884,color:#fff
+    style tools fill:#1168BD,stroke:#0B4884,color:#fff
+    style config fill:#1168BD,stroke:#0B4884,color:#fff
+    style gemini_api fill:#999999,stroke:#6e6e6e,color:#fff
+    style ollama_api fill:#999999,stroke:#6e6e6e,color:#fff
+    style local_fs fill:#999999,stroke:#6e6e6e,color:#fff
+    style local_shell fill:#999999,stroke:#6e6e6e,color:#fff
+    style local_tools fill:#999999,stroke:#6e6e6e,color:#fff
 ```
 
 ## 5. Key Design Decisions & Patterns
