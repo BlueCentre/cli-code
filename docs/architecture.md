@@ -13,16 +13,16 @@ The application provides an interactive CLI experience where users can converse 
 The system is composed of several key Python modules and concepts:
 
 ```mermaid
-graph TD
-    CLI["CLI Frontend (main.py)"] --> Agent["Model Agent Abstraction (models/base.py)"];
-    Agent --> GeminiAgent["Gemini Agent (models/gemini.py)"];
-    Agent --> OllamaAgent["Ollama Agent (models/ollama.py)"];
-    GeminiAgent --> GeminiAPI["Google Gemini API"];
-    OllamaAgent --> OllamaAPI["Ollama OpenAI API"];
-    Agent --> Tools["Tool Execution Layer (tools/)"];
-    Tools --> FileSystem["Local System (Files/Shell)"];
-    GeminiAPI --> GeminiAgent;
-    OllamaAPI --> OllamaAgent;
+flowchart TD
+    CLI[CLI Frontend] --> Agent[Model Agent Abstraction]
+    Agent --> GeminiAgent[Gemini Agent]
+    Agent --> OllamaAgent[Ollama Agent]
+    GeminiAgent --> GeminiAPI[Google Gemini API]
+    OllamaAgent --> OllamaAPI[Ollama OpenAI API]
+    Agent --> Tools[Tool Execution Layer]
+    Tools --> FileSystem[Local System]
+    GeminiAPI --> GeminiAgent
+    OllamaAPI --> OllamaAgent
 ```
 
 *   **CLI (`src/cli_code/main.py`)**:
@@ -61,42 +61,21 @@ The primary interaction follows an agentic loop within the active `ModelAgent.ge
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant C as CLI
-    participant A as ActiveAgent
-    participant P as ProviderAPI
-    participant T as Tools
-
-    U->>C: Input prompt (--provider=ollama)
-    C->>A: Create OllamaAgent()
-    C->>A: generate(prompt)
-    A->>T: Get directory context
-    T-->>A: Directory listing
-
+    User->>CLI: Input prompt
+    CLI->>Agent: Create Agent & generate
+    Agent->>Tools: Get directory context
+    Tools-->>Agent: Directory listing
     loop Agent Loop
-        A->>P: generate_content() / completions.create()
-        P-->>A: Response (Text or Function/Tool Call)
-
-        alt is Function/Tool Call
-            A->>A: Parse Call
-            opt Requires Confirmation
-                 A->>C: Request confirmation
-                 C->>U: Ask user
-                 U-->>C: Confirmation status
-                 C-->>A: Status
-                 alt User Rejects
-                      A->>A: Handle rejection (inform API)
-                      continue Loop
-                 end
-            end
-            A->>T: Execute tool
-            T-->>A: Tool result
-            A->>A: Update history / Prepare tool response msg
+        Agent->>API: Send request
+        API-->>Agent: Response
+        alt is Function Call
+            Agent->>Tools: Execute tool
+            Tools-->>Agent: Tool result
+            Agent->>Agent: Update history
         end
     end
-
-    A->>C: Final Result
-    C->>U: Display result
+    Agent->>CLI: Final Result
+    CLI->>User: Display result
 ```
 
 1.  **User Input**: User provides a prompt via `cli-code`, potentially with `--provider` and `--model` flags.
@@ -123,91 +102,49 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    user["Developer\nUses the CLI to interact with their codebase via different LLM providers"]
-    cli_app["CLI Code Assistant\nPython CLI application providing AI coding assistance with local tool usage, supporting multiple LLM backends"]
-    gemini_api["Google Gemini API"]
-    ollama_api["Ollama OpenAI API"]
-    local_fs["Local File System"]
-    local_shell["Local Shell"]
-    local_tools["Local Dev Tools"]
+    user[Developer]
+    cli_app[CLI Code Assistant]
+    gemini_api[Google Gemini API]
+    ollama_api[Ollama OpenAI API]
+    local_fs[Local File System]
+    local_shell[Local Shell]
     
-    user --> |"Uses\n(CLI Commands/Prompts)"| cli_app
-    cli_app --> |"Makes API calls\n(If provider=gemini)"| gemini_api
-    cli_app --> |"Makes API calls\n(If provider=ollama)"| ollama_api
-    cli_app --> |"Reads/Writes files/dirs"| local_fs
-    cli_app --> |"Executes commands"| local_shell
-    cli_app --> |"Invokes tools"| local_tools
-    
-    style user fill:#08427B,stroke:#052E56,color:#fff
-    style cli_app fill:#1168BD,stroke:#0B4884,color:#fff
-    style gemini_api fill:#999999,stroke:#6e6e6e,color:#fff
-    style ollama_api fill:#999999,stroke:#6e6e6e,color:#fff
-    style local_fs fill:#999999,stroke:#6e6e6e,color:#fff
-    style local_shell fill:#999999,stroke:#6e6e6e,color:#fff
-    style local_tools fill:#999999,stroke:#6e6e6e,color:#fff
+    user -->|Uses| cli_app
+    cli_app -->|API calls| gemini_api
+    cli_app -->|API calls| ollama_api
+    cli_app -->|Reads/Writes| local_fs
+    cli_app -->|Executes commands| local_shell
 ```
 
 ### Level 2: Containers (Key Modules/Libraries)
 
 ```mermaid
 flowchart TD
-    user["Developer"]
+    user[Developer]
     
-    subgraph cli_system["CLI Code Assistant"]
-        cli_main["CLI Frontend\nPython/Click/Rich\nHandles user commands, IO, selects and initializes agent"]
-        agent_interface["Model Agent Interface\nPython/ABC\nDefines common agent behavior"]
-        gemini_agent["Gemini Agent\nPython/google-generativeai\nImplements agent interface for Gemini"]
-        ollama_agent["Ollama Agent\nPython/openai\nImplements agent interface for Ollama"]
-        tools["Tool Execution Layer\nPython\nDefines and executes local actions"]
-        config["Configuration\nYAML/File\nStores API keys/URLs, defaults"]
+    subgraph cli_system[CLI Code Assistant]
+        cli_main[CLI Frontend]
+        agent_interface[Model Agent Interface]
+        gemini_agent[Gemini Agent]
+        ollama_agent[Ollama Agent]
+        tools[Tool Execution Layer]
+        config[Configuration]
     end
     
-    gemini_api["Google Gemini API"]
-    ollama_api["Ollama OpenAI API"]
-    local_fs["Local File System"]
-    local_shell["Local Shell"]
-    local_tools["Local Dev Tools"]
+    gemini_api[Google Gemini API]
+    ollama_api[Ollama OpenAI API]
+    local_fs[Local File System]
     
-    user --> |"Uses"| cli_main
-    
-    cli_main --> |"Reads settings"| config
-    cli_main --> |"Uses interface"| agent_interface
-    cli_main -.-> |"Instantiates if provider=gemini"| gemini_agent
-    cli_main -.-> |"Instantiates if provider=ollama"| ollama_agent
-    
-    gemini_agent --> |"Implements"| agent_interface
-    ollama_agent --> |"Implements"| agent_interface
-    
-    gemini_agent --> |"Requests tool execution"| tools
-    ollama_agent --> |"Requests tool execution"| tools
-    gemini_agent --> |"Reads Gemini key"| config
-    ollama_agent --> |"Reads Ollama URL"| config
-    
-    tools --> |"Returns results"| gemini_agent
-    tools --> |"Returns results"| ollama_agent
-    
-    gemini_agent --> |"API Calls"| gemini_api
-    ollama_agent --> |"API Calls"| ollama_api
-    
-    tools --> |"Accesses"| local_fs
-    tools --> |"Accesses"| local_shell
-    tools --> |"Accesses"| local_tools
-    
-    config --> |"Reads/Writes config file"| local_fs
-    
-    style user fill:#08427B,stroke:#052E56,color:#fff
-    style cli_system fill:#444,stroke:#222,color:#fff
-    style cli_main fill:#1168BD,stroke:#0B4884,color:#fff
-    style agent_interface fill:#1168BD,stroke:#0B4884,color:#fff
-    style gemini_agent fill:#1168BD,stroke:#0B4884,color:#fff
-    style ollama_agent fill:#1168BD,stroke:#0B4884,color:#fff
-    style tools fill:#1168BD,stroke:#0B4884,color:#fff
-    style config fill:#1168BD,stroke:#0B4884,color:#fff
-    style gemini_api fill:#999999,stroke:#6e6e6e,color:#fff
-    style ollama_api fill:#999999,stroke:#6e6e6e,color:#fff
-    style local_fs fill:#999999,stroke:#6e6e6e,color:#fff
-    style local_shell fill:#999999,stroke:#6e6e6e,color:#fff
-    style local_tools fill:#999999,stroke:#6e6e6e,color:#fff
+    user -->|Uses| cli_main
+    cli_main -->|Reads settings| config
+    cli_main -->|Uses| agent_interface
+    agent_interface -->|Implemented by| gemini_agent
+    agent_interface -->|Implemented by| ollama_agent
+    gemini_agent -->|Uses| tools
+    ollama_agent -->|Uses| tools
+    gemini_agent -->|API Calls| gemini_api
+    ollama_agent -->|API Calls| ollama_api
+    tools -->|Accesses| local_fs
 ```
 
 ## 5. Key Design Decisions & Patterns
@@ -244,14 +181,14 @@ When determining which LLM provider to use, the application follows this precede
 ```mermaid
 flowchart TD
     A[Start] --> B{CLI Flag?}
-    B -->|Yes| C[Use provider from --provider flag]
+    B -->|Yes| C[Use --provider flag]
     B -->|No| D{Environment Variable?}
-    D -->|Yes| E[Use CLI_CODE_DEFAULT_PROVIDER]
-    D -->|No| F{Config File Setting?}
-    F -->|Yes| G[Use provider from config file]
-    F -->|No| H[Use hardcoded default provider]
+    D -->|Yes| E[Use ENV VAR]
+    D -->|No| F{Config File?}
+    F -->|Yes| G[Use config]
+    F -->|No| H[Use default]
     
-    C --> Z[Initialize selected provider]
+    C --> Z[Initialize provider]
     E --> Z
     G --> Z
     H --> Z
@@ -269,16 +206,16 @@ Once a provider is selected, the application determines which model to use for t
 ```mermaid
 flowchart TD
     A[Start] --> B{CLI Flag?}
-    B -->|Yes| C[Use model from --model flag]
-    B -->|No| D{Provider-specific Env Var?}
-    D -->|Yes| E[Use provider-specific env var\ne.g., CLI_CODE_OLLAMA_DEFAULT_MODEL]
-    D -->|No| F{Generic Model Env Var?}
-    F -->|Yes| G[Use CLI_CODE_DEFAULT_MODEL]
-    F -->|No| H{Config File Setting?}
-    H -->|Yes| I[Use model from config file]
-    H -->|No| J[Use provider's default model]
+    B -->|Yes| C[Use --model flag]
+    B -->|No| D{Provider ENV VAR?}
+    D -->|Yes| E[Use provider ENV]
+    D -->|No| F{Generic ENV VAR?}
+    F -->|Yes| G[Use generic ENV]
+    F -->|No| H{Config File?}
+    H -->|Yes| I[Use config]
+    H -->|No| J[Use provider default]
     
-    C --> Z[Initialize provider with selected model]
+    C --> Z[Initialize model]
     E --> Z
     G --> Z
     I --> Z
@@ -381,18 +318,16 @@ The following improvements to context management are planned:
 ```mermaid
 flowchart TD
     A[New Content] --> B[Token Counter]
-    B --> C{Would exceed\ntoken limit?}
+    B --> C{Exceeds limit?}
     C -->|Yes| D[Context Trimming]
     C -->|No| E[Add to Context]
     
     D --> F{Trimming strategy}
-    F -->|Sliding Window| G[Remove oldest turns]
-    F -->|Summarization| H[Summarize older turns]
-    F -->|Hybrid| I[Summarize some, remove others]
+    F -->|Window| G[Remove oldest]
+    F -->|Summarize| H[Summarize older]
     
     G --> E
     H --> E
-    I --> E
 ```
 
 1. **Token Counting**: Implement accurate token counting for both providers:
