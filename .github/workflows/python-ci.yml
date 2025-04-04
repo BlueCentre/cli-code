@@ -39,7 +39,7 @@ jobs:
 
     - name: Test with pytest
       run: |
-        pytest
+        pytest test_dir/
 
     - name: Build package
       run: python -m build 
