@@ -22,6 +22,12 @@ from .base import AbstractModelAgent
 from ..tools import AVAILABLE_TOOLS, get_tool # Import get_tool
 from ..utils import count_tokens # Import count_tokens
 
+# Import MessageToDict for schema conversion
+try:
+     from google.protobuf.json_format import MessageToDict
+except ImportError:
+     MessageToDict = None # Handle missing dependency gracefully
+
 log = logging.getLogger(__name__)
 MAX_OLLAMA_ITERATIONS = 5 # Limit tool call loops for Ollama initially
 SENSITIVE_TOOLS = ["edit", "create_file"] # Define sensitive tools requiring confirmation
@@ -341,32 +347,25 @@ class OllamaModel(AbstractModelAgent):
         """Converts available tools to the OpenAI tool format."""
         if not AVAILABLE_TOOLS:
             return None
+            
+        if not MessageToDict:
+             log.error("google.protobuf library is required for tool schema conversion. Please install it: pip install protobuf")
+             # Or raise ImportError here
+             return None # Cannot prepare tools without the library
         
         openai_tools = []
         for name, tool_instance in AVAILABLE_TOOLS.items():
             try:
                 declaration = tool_instance.get_function_declaration()
                 if declaration and declaration.parameters:
-                    # --- FIX: Convert Schema object to Dict --- 
+                    # --- FIX: Convert Schema object to Dict using MessageToDict --- 
                     try:
-                        # Attempt conversion using a hypothetical to_dict() or similar
-                        # Common patterns: .to_dict(), ._pb.DESCRIPTOR.to_dict() or accessing attributes
-                        # Let's assume a simple attribute access or a method exists
-                        if hasattr(declaration.parameters, 'to_dict') and callable(declaration.parameters.to_dict):
-                             parameters_dict = declaration.parameters.to_dict()
-                        # elif hasattr(declaration.parameters, '_pb'): # Example for protobuf-based objects
-                        #    parameters_dict = declaration.parameters._pb # Or further processing needed
-                        else:
-                             # Fallback: Assume it *might* already be a dict-like structure 
-                             # or try direct conversion if it supports dict() protocol.
-                             # This might fail if it's a complex object without direct dict conversion.
-                             parameters_dict = dict(declaration.parameters) 
-                             # If the above fails, we might need to inspect the Schema object 
-                             # type more closely and manually build the dict.
-                             log.warning(f"Direct conversion of parameters for tool '{name}' used; may be inaccurate if not dict-like.")
-                             
+                        # The declaration.parameters object should be a protobuf Message
+                        parameters_dict = MessageToDict(declaration.parameters._pb) # Access the underlying protobuf message (_pb)
+                        # Optional: Clean empty fields if MessageToDict includes them explicitly
+                        # parameters_dict = {k: v for k, v in parameters_dict.items() if v} 
                     except Exception as conversion_err:
-                         log.error(f"Failed to convert parameters schema for tool '{name}' to dict: {conversion_err}", exc_info=True)
+                         log.error(f"Failed to convert parameters schema for tool '{name}' using MessageToDict: {conversion_err}", exc_info=True)
                          continue # Skip this tool if conversion fails
                     # --- END FIX ---
                     
@@ -385,7 +384,6 @@ class OllamaModel(AbstractModelAgent):
                         "function": {
                             "name": declaration.name,
                             "description": declaration.description,
-                            # No "parameters" key if none are defined
                         }
                     }
                      openai_tools.append(tool_dict)
