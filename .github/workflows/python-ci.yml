@@ -27,7 +27,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e .[dev] # Assuming a [dev] extra for lint/test tools
+        pip install ruff # Install ruff separately first
+        pip install -e .[dev]
         # If no [dev] extra, install lint/test tools separately:
         # pip install -e .
         # pip install ruff pytest # Example tools
@@ -40,8 +41,8 @@ jobs:
 
     - name: Lint with Ruff
       run: |
-        python -m ruff check .
-        python -m ruff format --check .
+        ruff check . # Run ruff directly
+        ruff format --check . # Run ruff directly
 
     - name: Test with pytest
       run: |
