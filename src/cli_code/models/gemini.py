@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 MAX_AGENT_ITERATIONS = 10
 FALLBACK_MODEL = "gemini-1.5-pro-latest"
 CONTEXT_TRUNCATION_THRESHOLD_TOKENS = 800000 # Example token limit
+MAX_HISTORY_TURNS = 20 # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
 
 # Remove standalone list_available_models function
 # def list_available_models(api_key):
@@ -64,11 +65,10 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
         self.system_instruction = self._create_system_prompt()
         # ---
 
-        # --- Initialize Persistent History (Moved history init to base class) ---
-        # Initialize history with system prompt here, after super().__init__ has created self.history
-        if not self.history: # Only add if base class didn't already (though it does)
-             self.add_to_history({'role': 'user', 'parts': [self.system_instruction]})
-             self.add_to_history({'role': 'model', 'parts': ["Okay, I'm ready. Provide the directory context and your request."]})
+        # --- Initialize Gemini-specific History ---
+        self.history = [] # Initialize history list for this instance
+        self.add_to_history({'role': 'user', 'parts': [self.system_instruction]})
+        self.add_to_history({'role': 'model', 'parts': ["Okay, I'm ready. Provide the directory context and your request."]})
         log.info("Initialized persistent chat history for GeminiModel.")
         # ---
 
@@ -448,9 +448,7 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
 
     # --- Context Management (Consider Token Counting) ---
     def _manage_context_window(self):
-        """Basic context window management based on turn count."""
-        # Placeholder - Enhance with token counting
-        MAX_HISTORY_TURNS = 20 # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
+        """Truncates history if it exceeds limits (Gemini-specific)."""
         # Each full LLM round (request + function_call + function_response) adds 3 items
         if len(self.history) > (MAX_HISTORY_TURNS * 3 + 2): 
              log.warning(f"Chat history length ({len(self.history)}) exceeded threshold. Truncating.")
@@ -459,6 +457,7 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
              keep_from_index = len(self.history) - keep_count
              self.history = self.history[:2] + self.history[keep_from_index:]
              log.info(f"History truncated to {len(self.history)} items.")
+        # TODO: Implement token-based truncation check using count_tokens
 
     # --- Tool Definition Helper ---
     def _create_tool_definitions(self) -> list[FunctionDeclaration] | None:
@@ -572,4 +571,18 @@ The user's first message will contain initial directory context and their reques
                            return history[i]['parts'][0].text.strip()
                 except (AttributeError, IndexError):
                      continue # Ignore malformed history entries
-        return "(No previous text response found)"
+        return "(No previous model text found)"
+
+    # --- Add Gemini-specific history management methods ---
+    def add_to_history(self, entry):
+        """Adds an entry to the Gemini conversation history."""
+        self.history.append(entry)
+        self._manage_context_window() # Call truncation logic after adding
+
+    def clear_history(self):
+        """Clears the Gemini conversation history, preserving the system prompt."""
+        if self.history:
+             self.history = self.history[:2] # Keep user(system_prompt) and initial model response
+        else:
+             self.history = [] # Should not happen if initialized correctly
+        log.info("Gemini history cleared.")

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from rich.console import Console # Import Console for type hinting
+from typing import List, Dict # Add typing import
 
 class AbstractModelAgent(ABC):
     """Abstract base class for different LLM provider agents."""
@@ -14,8 +15,8 @@ class AbstractModelAgent(ABC):
         """
         self.console = console
         self.model_name = model_name # Store the specific model requested
-        self.history = [] # Initialize chat history
-        # Provider-specific initialization (e.g., API client) should happen in subclass __init__
+        # History is now managed by subclasses
+        # self.history = [] 
 
     @abstractmethod
     def generate(self, prompt: str) -> str | None:
@@ -33,7 +34,7 @@ class AbstractModelAgent(ABC):
         pass
 
     @abstractmethod
-    def list_models(self) -> list[dict] | None: # Return list of dicts for more info
+    def list_models(self) -> List[Dict] | None: # Return list of dicts for more info
         """
         List available models for the provider.
 
@@ -43,19 +44,8 @@ class AbstractModelAgent(ABC):
         """
         pass
 
-    # Helper methods common to agents could be added here (e.g., history management)
-    def add_to_history(self, entry):
-        """Adds an entry to the conversation history."""
-        # Basic history management - could be expanded (e.g., token limits)
-        self.history.append(entry)
-        # Simple truncation for now - TODO: Implement token-based truncation
-        MAX_HISTORY = 20
-        if len(self.history) > MAX_HISTORY:
-            # Keep system prompt (if any) and N most recent turns
-            # Assuming system prompt might be history[0] - adjust if needed
-            # A more robust implementation would identify the system prompt role
-            self.history = [h for i, h in enumerate(self.history) if i == 0 or i > len(self.history) - (MAX_HISTORY -1) ]
-
-    def clear_history(self):
-        """Clears the conversation history."""
-        self.history = [] 
+    # Removed shared history helper methods
+    # def add_to_history(self, entry):
+    #     ...
+    # def clear_history(self):
+    #    ... 
