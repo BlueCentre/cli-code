@@ -12,71 +12,11 @@ The system is composed of several key Python modules and concepts:
 
 ```mermaid
 graph TD
-    subgraph "User Interaction"
-        CLI["CLI (main.py - Click, Rich)"]
-    end
-
-    subgraph "Application Core"
-        Agent["Model Agent (models/gemini.py)"]
-        Config["Configuration (config.py)"]
-        Utils["Utilities (utils.py)"]
-    end
-
-    subgraph "Tools"
-        ToolRegistry["Tool Registry (tools/__init__.py)"]
-        FileTool["File Tools (file_tools.py)"]
-        DirTool["Directory Tools (directory_tools.py)"]
-        SystemTool["System Tools (system_tools.py)"]
-        QualityTool["Quality Tools (quality_tools.py)"]
-        OtherTools[...]
-    end
-
-    subgraph "External Services"
-        GeminiAPI["Google Gemini API"]
-    end
-
-    subgraph "Local System"
-        FileSystem["File System"]
-        Terminal["Shell/Terminal"]
-        Linters["Linters/Formatters"]
-    end
-
-    CLI --> Agent
-    Agent --> Config
-    Agent --> Utils
-    Agent --> ToolRegistry
-    Agent --> GeminiAPI
-
-    ToolRegistry --> FileTool
-    ToolRegistry --> DirTool
-    ToolRegistry --> SystemTool
-    ToolRegistry --> QualityTool
-    ToolRegistry --> OtherTools
-
-    FileTool --> FileSystem
-    DirTool --> FileSystem
-    SystemTool --> Terminal
-    QualityTool --> Linters
-    QualityTool --> FileSystem
-
-    Agent -- Function Call Results --> Agent
-    GeminiAPI -- Function Calls / Text --> Agent
-
-    click["Click Lib"] --> CLI
-    rich["Rich Lib"] --> CLI
-    genai["google-generativeai Lib"] --> Agent
-    genai --> GeminiAPI
-    # For confirmations
-    questionary["Questionary Lib"] --> Agent
-
-    style Agent fill:#f9f,stroke:#333,stroke-width:2px
-    style CLI fill:#ccf,stroke:#333,stroke-width:2px
-    style ToolRegistry fill:#cfc,stroke:#333,stroke-width:1px
-    style GeminiAPI fill:#ffc,stroke:#333,stroke-width:1px
-    style FileSystem fill:#eee,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
-    style Terminal fill:#eee,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
-    style Linters fill:#eee,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
-
+    CLI["CLI Frontend (main.py)"] --> Agent["Model Agent (models/gemini.py)"];
+    Agent --> GeminiAPI["Google Gemini API"];
+    Agent --> Tools["Tool Execution Layer (tools/)"];
+    Tools --> FileSystem["Local System (Files/Shell)"];
+    GeminiAPI --> Agent;
 ```
 
 *   **CLI (`src/gemini_cli/main.py`)**:
