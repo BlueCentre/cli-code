@@ -3,16 +3,13 @@ Gemini model integration for the CLI tool.
 """
 
 import google.generativeai as genai
-from google.generativeai import protos
-from google.generativeai.types import FunctionDeclaration, Tool
 import logging
 import time
 from rich.console import Console
 from rich.panel import Panel
 import questionary
 from typing import List, Dict # Add typing for list_models
-
-# Import exceptions for specific error handling if needed later
+from google.generativeai.types import FunctionDeclaration, Tool
 from google.api_core.exceptions import ResourceExhausted
 
 from ..utils import count_tokens
@@ -58,7 +55,7 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
         
         # --- Tool Definition ---
         self.function_declarations = self._create_tool_definitions()
-        self.gemini_tools = Tool(function_declarations=self.function_declarations) if self.function_declarations else None
+        self.gemini_tools = genai.Tool(function_declarations=self.function_declarations) if self.function_declarations else None
         # ---
 
         # --- System Prompt (Native Functions & Planning) ---
@@ -352,12 +349,12 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
                         
                         # === Add Function Response to History ===
                         # Create the FunctionResponse proto
-                        function_response_proto = protos.FunctionResponse(
+                        function_response_proto = genai.FunctionResponse(
                             name=tool_name,
                             response={"result": tool_result} # API expects dict
                         )
                         # Wrap it in a Part proto
-                        response_part_proto = protos.Part(function_response=function_response_proto)
+                        response_part_proto = genai.Part(function_response=function_response_proto)
                         
                         # Append to history
                         self.add_to_history({'role': 'user', # Function response acts as a 'user' turn providing data
@@ -460,7 +457,7 @@ class GeminiModel(AbstractModelAgent): # Inherit from base class
         # TODO: Implement token-based truncation check using count_tokens
 
     # --- Tool Definition Helper ---
-    def _create_tool_definitions(self) -> list[FunctionDeclaration] | None:
+    def _create_tool_definitions(self) -> list[genai.FunctionDeclaration] | None:
         """Dynamically create FunctionDeclarations from AVAILABLE_TOOLS."""
         declarations = []
         for tool_name, tool_instance in AVAILABLE_TOOLS.items():

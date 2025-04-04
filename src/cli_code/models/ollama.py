@@ -1,5 +1,4 @@
 import logging
-import os
 from rich.console import Console
 from rich.panel import Panel # Import Panel
 from typing import List, Dict
@@ -162,7 +161,7 @@ class OllamaModel(AbstractModelAgent):
                              tool_args = json.loads(tool_args_str)
                          except json.JSONDecodeError:
                              log.error(f"Failed to decode JSON arguments for tool {tool_name}: {tool_args_str}")
-                             tool_error = True
+                             tool_result = f"Error: Invalid JSON arguments provided: {tool_args_str}"
                          else:
                              # --- HUMAN IN THE LOOP CONFIRMATION --- 
                              if tool_name in SENSITIVE_TOOLS:

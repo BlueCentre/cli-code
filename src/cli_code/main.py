@@ -11,7 +11,6 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from pathlib import Path
-import yaml
 import logging
 import time
 
