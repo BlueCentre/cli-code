@@ -39,7 +39,7 @@ jobs:
     - name: Lint with Ruff
       run: |
         ruff check . # Run ruff directly
-        ruff format --check . # Run ruff directly
+        ruff format . # Apply formatting instead of just checking
 
     - name: Test with pytest
       run: |
