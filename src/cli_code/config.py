@@ -7,10 +7,10 @@ import yaml
 from pathlib import Path
 
 class Config:
-    """Manages configuration for the Gemini CLI application."""
+    """Manages configuration for the cli-code application."""
     
     def __init__(self):
-        self.config_dir = Path.home() / ".config" / "gemini-code"
+        self.config_dir = Path.home() / ".config" / "cli-code"
         self.config_file = self.config_dir / "config.yaml"
         self._ensure_config_exists()
         self.config = self._load_config()
@@ -23,6 +23,9 @@ class Config:
             default_config = {
                 "api_keys": {},
                 "default_model": "models/gemini-2.5-pro-exp-03-25",
+                "default_provider": "gemini",
+                "ollama_api_url": None,
+                "ollama_default_model": None,
                 "settings": {
                     "max_tokens": 1000000,
                     "temperature": 0.7,

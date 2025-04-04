@@ -80,7 +80,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 )
 @click.pass_context
 def cli(ctx, model):
-    """Interactive CLI for Gemini models with coding assistance tools."""
+    """Interactive CLI for the cli-code assistant with coding assistance tools."""
     if not config:
         console.print("[bold red]Configuration could not be loaded. Cannot proceed.[/bold red]")
         sys.exit(1)
@@ -110,7 +110,7 @@ def set_default_model(model_name):
 def list_models():
     if not config: console.print("[bold red]Config error.[/bold red]"); return
     api_key = config.get_api_key("google")
-    if not api_key: console.print("[bold red]Error:[/bold red] API key not found. Run 'gemini setup'."); return
+    if not api_key: console.print("[bold red]Error:[/bold red] API key not found. Run 'cli-code setup'."); return
     console.print("[yellow]Fetching models...[/yellow]")
     try:
         models_list = list_available_models(api_key)
@@ -118,7 +118,7 @@ def list_models():
              console.print(f"[red]Error listing models:[/red] {models_list[0].get('error', 'Unknown error') if models_list else 'No models found or fetch error.'}"); return
         console.print("\n[bold cyan]Available Models (Access may vary):[/bold cyan]")
         for model_data in models_list: console.print(f"- [bold green]{model_data['name']}[/bold green] (Display: {model_data.get('display_name', 'N/A')})")
-        console.print("\nUse 'gemini --model MODEL' or 'gemini set-default-model MODEL'.")
+        console.print("\nUse 'cli-code --model MODEL' or 'cli-code set-default-model MODEL'.")
     except Exception as e: console.print(f"[bold red]Error listing models:[/bold red] {e}"); log.error("List models failed", exc_info=True)
 
 
@@ -137,7 +137,7 @@ def start_interactive_session(model_name: str, console: Console):
     api_key = config.get_api_key("google")
     if not api_key:
         console.print("\n[bold red]Error:[/bold red] Google API key not found.")
-        console.print("Please run [bold]'gemini setup YOUR_API_KEY'[/bold] first.")
+        console.print("Please run [bold]'cli-code setup YOUR_API_KEY'[/bold] first.")
         return
 
     try:
@@ -149,7 +149,7 @@ def start_interactive_session(model_name: str, console: Console):
     except Exception as e:
         console.print(f"\n[bold red]Error initializing model '{model_name}':[/bold red] {e}")
         log.error(f"Failed to initialize model {model_name}", exc_info=True)
-        console.print("Please check model name, API key permissions, network. Use 'gemini list-models'.")
+        console.print("Please check model name, API key permissions, network. Use 'cli-code list-models'.")
         return
 
     # --- Session Start Message ---
@@ -196,10 +196,10 @@ def show_help():
   /help
 
  [cyan]CLI Commands:[/cyan]
-  gemini setup KEY
-  gemini list-models
-  gemini set-default-model NAME
-  gemini --model NAME
+  cli-code setup KEY
+  cli-code list-models
+  cli-code set-default-model NAME
+  cli-code --model NAME
 
  [cyan]Workflow Hint:[/cyan] Analyze -> Plan -> Execute -> Verify -> Summarize
 

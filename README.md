@@ -1,12 +1,14 @@
-# Gemini Code
+# CLI Code
 
-A powerful AI coding assistant for your terminal, powered by Gemini 2.5 Pro with support for other LLM models.
+A powerful AI coding assistant for your terminal, powered by multiple LLM providers (starting with Gemini).
+
 More information [here](https://blossom-tarsier-434.notion.site/Gemini-Code-1c6c13716ff180db86a0c7f4b2da13ab?pvs=4)
 
 ## Features
 
 - Interactive chat sessions in your terminal
-- Multiple model support (Gemini 2.5 Pro, Gemini 1.5 Pro, and more)
+- Multiple model provider support (Google Gemini, Ollama - more planned)
+- Configurable default provider and model
 - Basic history management (prevents excessive length)
 - Markdown rendering in the terminal
 - Automatic tool usage by the assistant:
@@ -22,15 +24,15 @@ More information [here](https://blossom-tarsier-434.notion.site/Gemini-Code-1c6c
 
 ```bash
 # Install directly from PyPI
-pip install gemini-code
+pip install cli-code
 ```
 
 ### Method 2: Install from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/raizamartin/gemini-code.git
-cd gemini-code
+git clone https://github.com/BlueCentre/cli-code.git
+cd cli-code
 
 # Install the package
 pip install -e .
@@ -38,27 +40,38 @@ pip install -e .
 
 ## Setup
 
-Before using Gemini CLI, you need to set up your API keys:
+Before using CLI Code, you need to set up API credentials for your desired provider:
 
 ```bash
 # Set up Google API key for Gemini models
-gemini setup YOUR_GOOGLE_API_KEY
+cli-code setup --provider=gemini YOUR_GOOGLE_API_KEY
+
+# OR Set up Ollama endpoint URL (if running Ollama locally or elsewhere)
+# cli-code setup --provider=ollama YOUR_OLLAMA_API_URL
 ```
 
 ## Usage
 
 ```bash
-# Start an interactive session with the default model
-gemini
+# Start an interactive session with the default provider/model
+cli-code
 
-# Start a session with a specific model
-gemini --model models/gemini-2.5-pro-exp-03-25
+# Start a session with a specific provider (uses provider's default model)
+cli-code --provider=ollama
 
-# Set default model
-gemini set-default-model models/gemini-2.5-pro-exp-03-25
+# Start a session with a specific provider and model
+cli-code --provider=ollama --model llama3
 
-# List all available models
-gemini list-models
+# Start a session with Gemini and a specific model
+cli-code --provider=gemini --model models/gemini-1.5-pro-latest
+
+# Set default provider and model (example)
+# cli-code set-default-provider ollama
+# cli-code set-default-model llama3
+
+# List available models for a specific provider
+cli-code list-models --provider=gemini
+cli-code list-models --provider=ollama
 ```
 
 ## Interactive Commands
@@ -72,17 +85,19 @@ During an interactive session, you can use these commands:
 
 ### Tool Usage
 
-Unlike direct command-line tools, the Gemini CLI's tools are used automatically by the assistant to help answer your questions. For example:
+Unlike direct command-line tools, the CLI Code assistant uses tools automatically to help answer your questions. For example:
 
 1. You ask: "What files are in the current directory?"
-2. The assistant uses the `ls` tool behind the scenes
-3. The assistant provides you with a formatted response
+2. The assistant (using the configured LLM provider) determines the `ls` tool is needed.
+3. The assistant calls the `ls` tool function.
+4. The tool executes locally and returns the results.
+5. The assistant formulates a response based on the tool results and its LLM capabilities.
 
-This approach makes the interaction more natural and similar to how Claude Code works.
+This approach makes the interaction more natural.
 
 ## Development
 
-This project is under active development. More models and features will be added soon!
+This project is under active development.
 
 ### Recent Changes in v0.1.69
 
@@ -143,10 +158,7 @@ This project is under active development. More models and features will be added
 
 ### Known Issues
 
-- If you created a config file with earlier versions, you may need to delete it to get the correct defaults:
-  ```bash
-  rm -rf ~/.config/gemini-code
-  ```
+- Configuration path changed from `~/.config/gemini-code` to `~/.config/cli-code`. You will need to run `cli-code setup --provider=gemini YOUR_KEY` again after updating.
 
 ## License
 
