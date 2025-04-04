@@ -10,47 +10,47 @@ import time
 from rich.console import Console
 from rich.panel import Panel
 import questionary
+from typing import List, Dict # Add typing for list_models
 
 # Import exceptions for specific error handling if needed later
 from google.api_core.exceptions import ResourceExhausted
 
 from ..utils import count_tokens
 from ..tools import get_tool, AVAILABLE_TOOLS
+from .base import AbstractModelAgent # Import the base class
 
 # Setup logging (basic config, consider moving to main.py)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
+# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s') # Removed, handled in main
 log = logging.getLogger(__name__)
 
 MAX_AGENT_ITERATIONS = 10
 FALLBACK_MODEL = "gemini-1.5-pro-latest"
 CONTEXT_TRUNCATION_THRESHOLD_TOKENS = 800000 # Example token limit
 
-def list_available_models(api_key):
-    try:
-        genai.configure(api_key=api_key)
-        models = genai.list_models()
-        gemini_models = []
-        for model in models:
-            # Filter for models supporting generateContent to avoid chat-only models if needed
-            if 'generateContent' in model.supported_generation_methods:
-                 model_info = { "name": model.name, "display_name": model.display_name, "description": model.description, "supported_generation_methods": model.supported_generation_methods }
-                 gemini_models.append(model_info)
-        return gemini_models
-    except Exception as e:
-        log.error(f"Error listing models: {str(e)}")
-        return [{"error": str(e)}]
+# Remove standalone list_available_models function
+# def list_available_models(api_key):
+#     ...
 
-
-class GeminiModel:
+class GeminiModel(AbstractModelAgent): # Inherit from base class
     """Interface for Gemini models using native function calling agentic loop."""
 
-    def __init__(self, api_key: str, console: Console, model_name: str ="gemini-2.5-pro-exp-03-25"):
+    def __init__(self, api_key: str, console: Console, model_name: str | None = "gemini-2.5-pro-exp-03-25"):
         """Initialize the Gemini model interface."""
+        super().__init__(console=console, model_name=model_name) # Call base class init
+        
+        if not api_key:
+             raise ValueError("Gemini API key is required.")
+             
         self.api_key = api_key
-        self.initial_model_name = model_name
-        self.current_model_name = model_name
-        self.console = console
-        genai.configure(api_key=api_key)
+        self.initial_model_name = self.model_name or "gemini-2.5-pro-exp-03-25" # Use passed model or default
+        self.current_model_name = self.initial_model_name # Start with the determined model
+        # self.console is set by super().__init__
+        
+        try:
+            genai.configure(api_key=api_key)
+        except Exception as config_err:
+             log.error(f"Failed to configure Gemini API: {config_err}", exc_info=True)
+             raise ConnectionError(f"Failed to configure Gemini API: {config_err}") from config_err
 
         self.generation_config = genai.types.GenerationConfig(temperature=0.4, top_p=0.95, top_k=40)
         self.safety_settings = { "HARASSMENT": "BLOCK_MEDIUM_AND_ABOVE", "HATE": "BLOCK_MEDIUM_AND_ABOVE", "SEXUAL": "BLOCK_MEDIUM_AND_ABOVE", "DANGEROUS": "BLOCK_MEDIUM_AND_ABOVE" }
@@ -64,12 +64,12 @@ class GeminiModel:
         self.system_instruction = self._create_system_prompt()
         # ---
 
-        # --- Initialize Persistent History ---
-        self.chat_history = [
-            {'role': 'user', 'parts': [self.system_instruction]},
-            {'role': 'model', 'parts': ["Okay, I'm ready. Provide the directory context and your request."]}
-        ]
-        log.info("Initialized persistent chat history.")
+        # --- Initialize Persistent History (Moved history init to base class) ---
+        # Initialize history with system prompt here, after super().__init__ has created self.history
+        if not self.history: # Only add if base class didn't already (though it does)
+             self.add_to_history({'role': 'user', 'parts': [self.system_instruction]})
+             self.add_to_history({'role': 'model', 'parts': ["Okay, I'm ready. Provide the directory context and your request."]})
+        log.info("Initialized persistent chat history for GeminiModel.")
         # ---
 
         try:
@@ -77,10 +77,13 @@ class GeminiModel:
             log.info("GeminiModel initialized successfully (Native Function Calling Agent Loop).")
         except Exception as e:
              log.error(f"Fatal error initializing Gemini model '{self.current_model_name}': {str(e)}", exc_info=True)
-             raise Exception(f"Could not initialize Gemini model: {e}") from e
+             # Raise a more specific error or just re-raise
+             raise Exception(f"Could not initialize Gemini model '{self.current_model_name}': {e}") from e
 
     def _initialize_model_instance(self):
         """Helper to create the GenerativeModel instance."""
+        if not self.current_model_name:
+             raise ValueError("Model name cannot be empty for initialization.")
         log.info(f"Initializing model instance: {self.current_model_name}")
         try:
             # Pass system instruction here, tools are passed during generate_content
@@ -95,10 +98,30 @@ class GeminiModel:
             log.error(f"Failed to create model instance for '{self.current_model_name}': {init_err}", exc_info=True)
             raise init_err
 
-    def get_available_models(self):
-        return list_available_models(self.api_key)
+    # --- Implement list_models from base class ---
+    def list_models(self) -> List[Dict] | None:
+        """List available Gemini models."""
+        try:
+            # genai should already be configured from __init__
+            models = genai.list_models()
+            gemini_models = []
+            for model in models:
+                # Filter for models supporting generateContent
+                if 'generateContent' in model.supported_generation_methods:
+                    model_info = {
+                        "id": model.name, # Use 'id' for consistency maybe?
+                        "name": model.display_name, 
+                        "description": model.description,
+                        # Add other relevant fields if needed
+                    }
+                    gemini_models.append(model_info)
+            return gemini_models
+        except Exception as e:
+            log.error(f"Error listing Gemini models: {str(e)}", exc_info=True)
+            self.console.print(f"[bold red]Error listing Gemini models:[/bold red] {e}")
+            return None # Indicate failure
 
-    # --- Native Function Calling Agent Loop ---
+    # --- generate method remains largely the same, ensure signature matches base ---
     def generate(self, prompt: str) -> str | None:
         logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
         original_user_prompt = prompt
@@ -142,7 +165,7 @@ class GeminiModel:
         turn_input_prompt = f"{orientation_context}\nUser request: {original_user_prompt}"
         
         # Add this combined input to the PERSISTENT history
-        self.chat_history.append({'role': 'user', 'parts': [turn_input_prompt]})
+        self.add_to_history({'role': 'user', 'parts': [turn_input_prompt]})
         # === START DEBUG LOGGING ===
         log.debug(f"Prepared turn_input_prompt (sent to LLM):\n---\n{turn_input_prompt}\n---")
         # === END DEBUG LOGGING ===
@@ -161,12 +184,12 @@ class GeminiModel:
                 # === Call LLM with History and Tools ===
                 llm_response = None
                 try:
-                    logging.info(f"Sending request to LLM ({self.current_model_name}). History length: {len(self.chat_history)} turns.")
+                    logging.info(f"Sending request to LLM ({self.current_model_name}). History length: {len(self.history)} turns.")
                     # === ADD STATUS FOR LLM CALL ===
                     with self.console.status(f"[yellow]Assistant thinking ({self.current_model_name})...", spinner="dots"):
                         # Pass the available tools to the generate_content call
                         llm_response = self.model.generate_content(
-                            self.chat_history,
+                            self.history,
                             generation_config=self.generation_config,
                             tools=[self.gemini_tools] if self.gemini_tools else None
                         )
@@ -203,7 +226,7 @@ class GeminiModel:
                             log.info(f"LLM requested Function Call: {tool_name} with args: {tool_args}")
 
                             # Add the function *call* part to history immediately
-                            self.chat_history.append({'role': 'model', 'parts': [part]})
+                            self.add_to_history({'role': 'model', 'parts': [part]})
                             self._manage_context_window()
                             
                             # Store details for execution after processing all parts
@@ -216,13 +239,13 @@ class GeminiModel:
                             log.info(f"LLM returned text part (Iter {iteration_count}): {llm_text[:100]}...")
                             text_response_buffer += llm_text + "\n" # Append text parts
                             # Add the text response part to history
-                            self.chat_history.append({'role': 'model', 'parts': [part]})
+                            self.add_to_history({'role': 'model', 'parts': [part]})
                             self._manage_context_window()
                             
                         else:
                             log.warning(f"LLM returned unexpected response part (Iter {iteration_count}): {part}")
                             # Add it to history anyway?
-                            self.chat_history.append({'role': 'model', 'parts': [part]})
+                            self.add_to_history({'role': 'model', 'parts': [part]})
                             self._manage_context_window()
 
                     # --- Now, decide action based on processed parts ---
@@ -337,7 +360,7 @@ class GeminiModel:
                         response_part_proto = protos.Part(function_response=function_response_proto)
                         
                         # Append to history
-                        self.chat_history.append({'role': 'user', # Function response acts as a 'user' turn providing data
+                        self.add_to_history({'role': 'user', # Function response acts as a 'user' turn providing data
                                               'parts': [response_part_proto]})
                         self._manage_context_window()
                         
@@ -365,38 +388,38 @@ class GeminiModel:
                 except ResourceExhausted as quota_error:
                     log.warning(f"Quota exceeded for model '{self.current_model_name}': {quota_error}")
                     # Check if we are already using the fallback
-                    if self.current_model_name == self.FALLBACK_MODEL:
+                    if self.current_model_name == FALLBACK_MODEL:
                         log.error("Quota exceeded even for the fallback model. Cannot proceed.")
                         self.console.print(f"[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]")
                         # Clean history before returning
-                        if self.chat_history[-1]['role'] == 'user': self.chat_history.pop()
+                        if self.history[-1]['role'] == 'user': self.history.pop()
                         return f"Error: API quota exceeded for primary and fallback models."
                     else:
-                        log.info(f"Switching to fallback model: {self.FALLBACK_MODEL}")
-                        self.console.print(f"[bold yellow]Quota limit reached for {self.current_model_name}. Switching to fallback model ({self.FALLBACK_MODEL})...[/bold yellow]")
-                        self.current_model_name = self.FALLBACK_MODEL
+                        log.info(f"Switching to fallback model: {FALLBACK_MODEL}")
+                        self.console.print(f"[bold yellow]Quota limit reached for {self.current_model_name}. Switching to fallback model ({FALLBACK_MODEL})...[/bold yellow]")
+                        self.current_model_name = FALLBACK_MODEL
                         try:
                             self._initialize_model_instance() # Recreate model instance with fallback name
                             log.info(f"Successfully switched to and initialized fallback model: {self.current_model_name}")
                             # Important: Clear the last model response (which caused the error) before retrying
-                            if self.chat_history[-1]['role'] == 'model': 
-                               last_part = self.chat_history[-1]['parts'][0]
+                            if self.history[-1]['role'] == 'model': 
+                               last_part = self.history[-1]['parts'][0]
                                # Only pop if it was a failed function call attempt or empty text response leading to error
                                if hasattr(last_part, 'function_call') or not hasattr(last_part, 'text') or not last_part.text:
-                                   self.chat_history.pop() 
+                                   self.history.pop() 
                                    log.debug("Removed last model part before retrying with fallback.")
                             continue # Retry the current loop iteration with the new model
                         except Exception as fallback_init_error:
-                            log.error(f"Failed to initialize fallback model '{self.FALLBACK_MODEL}': {fallback_init_error}", exc_info=True)
+                            log.error(f"Failed to initialize fallback model '{FALLBACK_MODEL}': {fallback_init_error}", exc_info=True)
                             self.console.print(f"[bold red]Error switching to fallback model: {fallback_init_error}[/bold red]")
-                            if self.chat_history[-1]['role'] == 'user': self.chat_history.pop()
+                            if self.history[-1]['role'] == 'user': self.history.pop()
                             return f"Error: Failed to initialize fallback model after quota error."
 
                 except Exception as generation_error:
                      # This handles other errors during the generate_content call or loop logic
                      log.error(f"Error during Agent Loop: {generation_error}", exc_info=True)
                      # Clean history
-                     if self.chat_history[-1]['role'] == 'user': self.chat_history.pop()
+                     if self.history[-1]['role'] == 'user': self.history.pop()
                      return f"Error during agent processing: {generation_error}"
 
             # === End Agent Loop ===
@@ -410,13 +433,13 @@ class GeminiModel:
             elif iteration_count >= MAX_AGENT_ITERATIONS:
                  log.warning(f"Agent loop terminated after reaching max iterations ({MAX_AGENT_ITERATIONS}).")
                  # Try to get the last *text* response the model generated, even if it wanted to call a function after
-                 last_model_response_text = self._find_last_model_text(self.chat_history)
+                 last_model_response_text = self._find_last_model_text(self.history)
                  timeout_message = f"(Task exceeded max iterations ({MAX_AGENT_ITERATIONS}). Last text from model was: {last_model_response_text})"
                  return timeout_message.strip()
             else:
                  # This case should be less likely now
                  log.error("Agent loop exited unexpectedly.")
-                 last_model_response_text = self._find_last_model_text(self.chat_history)
+                 last_model_response_text = self._find_last_model_text(self.history)
                  return f"(Agent loop finished unexpectedly. Last model text: {last_model_response_text})"
 
         except Exception as e:
@@ -429,13 +452,13 @@ class GeminiModel:
         # Placeholder - Enhance with token counting
         MAX_HISTORY_TURNS = 20 # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
         # Each full LLM round (request + function_call + function_response) adds 3 items
-        if len(self.chat_history) > (MAX_HISTORY_TURNS * 3 + 2): 
-             log.warning(f"Chat history length ({len(self.chat_history)}) exceeded threshold. Truncating.")
+        if len(self.history) > (MAX_HISTORY_TURNS * 3 + 2): 
+             log.warning(f"Chat history length ({len(self.history)}) exceeded threshold. Truncating.")
              # Keep system prompt (idx 0), initial model ack (idx 1)
              keep_count = MAX_HISTORY_TURNS * 3 # Keep N rounds
-             keep_from_index = len(self.chat_history) - keep_count
-             self.chat_history = self.chat_history[:2] + self.chat_history[keep_from_index:]
-             log.info(f"History truncated to {len(self.chat_history)} items.")
+             keep_from_index = len(self.history) - keep_count
+             self.history = self.history[:2] + self.history[keep_from_index:]
+             log.info(f"History truncated to {len(self.history)} items.")
 
     # --- Tool Definition Helper ---
     def _create_tool_definitions(self) -> list[FunctionDeclaration] | None:

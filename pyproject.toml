@@ -28,6 +28,7 @@ dependencies = [
     "PyYAML>=6.0",            # For config handling
     "tiktoken>=0.6.0",          # <-- ADDED TIKTOKEN DEPENDENCY
     "questionary>=2.0.0",     # <-- ADDED QUESTIONARY DEPENDENCY BACK
+    "openai>=1.0.0", # Add openai library dependency
     # Add any other direct dependencies your tools might have (e.g., requests for web_tools)
 ]
 
