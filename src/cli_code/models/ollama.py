@@ -255,30 +255,41 @@ class OllamaModel(AbstractModelAgent):
 
     # --- Tool Preparation Helper ---
     def _prepare_openai_tools(self) -> List[Dict] | None:
-        """Converts available tools to OpenAI tool format."""
+        """Converts available tools to the OpenAI tool format."""
         if not AVAILABLE_TOOLS:
             return None
         
         openai_tools = []
         for name, tool_instance in AVAILABLE_TOOLS.items():
             try:
-                # Assuming get_function_declaration returns something convertible
-                # Needs adjustment based on actual FunctionDeclaration structure
+                # Get the Gemini FunctionDeclaration
                 declaration = tool_instance.get_function_declaration()
-                if declaration:
-                    # Convert Gemini FunctionDeclaration to OpenAI tool format
-                    # This is a potential point of complexity/error
-                    # Example assumes declaration has .name, .description, .parameters (schema dict)
+                if declaration and declaration.parameters: # Ensure declaration and parameters exist
+                    # The .parameters attribute already holds the JSON schema in the correct format
                     tool_dict = {
                         "type": "function",
                         "function": {
                             "name": declaration.name,
                             "description": declaration.description,
-                            "parameters": declaration.parameters # Assumes direct compatibility
+                            "parameters": declaration.parameters # Directly use the schema
                         }
                     }
                     openai_tools.append(tool_dict)
+                elif declaration: # Handle case with no parameters
+                     tool_dict = {
+                        "type": "function",
+                        "function": {
+                            "name": declaration.name,
+                            "description": declaration.description,
+                            # No "parameters" key if none are defined
+                        }
+                    }
+                     openai_tools.append(tool_dict)
+                else:
+                    log.warning(f"Could not get function declaration for tool '{name}'. Skipping.")
+                    
             except Exception as e:
-                log.error(f"Error converting tool '{name}' to OpenAI format: {e}", exc_info=True)
+                log.error(f"Error preparing tool '{name}' for OpenAI format: {e}", exc_info=True)
                 
+        log.debug(f"Prepared {len(openai_tools)} tools for Ollama API call.")
         return openai_tools if openai_tools else None 
