@@ -582,37 +582,29 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
     def _create_system_prompt(self) -> str:
         """Creates the system prompt, emphasizing native functions and planning."""
         tool_descriptions = []
-        if self.function_declarations:  # Assuming this now holds a list of Tool-like objects
-            # Process tool definitions (assuming they are Tool objects or similar)
-            for tool_def in self.function_declarations:
-                # Access function declarations within the Tool object
-                # Need to check the actual structure of genai_types.Tool in v0.8.4
-                # The following logic assumes a structure like tool_def.function_declarations
-                if hasattr(tool_def, "function_declarations") and tool_def.function_declarations:
-                    for func_decl in tool_def.function_declarations:
-                        # Reuse the existing logic to extract details, using getattr for safety
-                        args_str = ""
-                        if (
-                            hasattr(func_decl, "parameters")
-                            and func_decl.parameters
-                            and hasattr(func_decl.parameters, "properties")
-                            and func_decl.parameters.properties
-                        ):
-                            args_list = []
-                            required_args = getattr(func_decl.parameters, "required", []) or []
-                            for prop, details in func_decl.parameters.properties.items():
-                                prop_type = getattr(details, "type", "UNKNOWN")
-                                prop_desc = getattr(details, "description", "")
-                                suffix = "" if prop in required_args else "?"
-                                args_list.append(f"{prop}: {prop_type}{suffix} # {prop_desc}")
-                            args_str = ", ".join(args_list)
+        if self.function_declarations:  # This is now a list of FunctionDeclaration objects
+            # Process FunctionDeclaration objects directly
+            for func_decl in self.function_declarations:
+                # Extract details directly from the FunctionDeclaration
+                args_str = ""
+                if (
+                    hasattr(func_decl, "parameters")
+                    and func_decl.parameters
+                    and hasattr(func_decl.parameters, "properties")
+                    and func_decl.parameters.properties
+                ):
+                    args_list = []
+                    required_args = getattr(func_decl.parameters, "required", []) or []
+                    for prop, details in func_decl.parameters.properties.items():
+                        prop_type = getattr(details, "type", "UNKNOWN")
+                        prop_desc = getattr(details, "description", "")
+                        suffix = "" if prop in required_args else "?"
+                        args_list.append(f"{prop}: {prop_type}{suffix} # {prop_desc}")
+                    args_str = ", ".join(args_list)
 
-                        func_name = getattr(func_decl, "name", "UNKNOWN_FUNCTION")
-                        func_desc = getattr(func_decl, "description", "(No description provided)")
-                        tool_descriptions.append(f"- `{func_name}({args_str})`: {func_desc}")
-                else:
-                    log.warning(f"Unexpected tool definition structure encountered: {tool_def}")
-                    tool_descriptions.append(f"- (Could not parse tool definition: {type(tool_def)})")
+                func_name = getattr(func_decl, "name", "UNKNOWN_FUNCTION")
+                func_desc = getattr(func_decl, "description", "(No description provided)")
+                tool_descriptions.append(f"- `{func_name}({args_str})`: {func_desc}")
         else:
             tool_descriptions.append(" - (No tools available with function declarations)")
 
