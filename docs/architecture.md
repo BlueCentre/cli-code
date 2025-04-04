@@ -98,11 +98,6 @@ sequenceDiagram
                  Agent->>Agent: Mark task completed, store summary
                  break Loop
             end
-        %% else Text Response
-        %%    Agent->>Agent: Store text response
-        %%    Agent->>Agent: Add text response to history
-        %%    Agent->>Agent: Mark task completed (text implies completion)
-        %%    break Loop
         end
     end
     Agent->>-CLI: Final Result/Summary (Markdown)
@@ -183,7 +178,7 @@ C4Container
 
     Rel(user, cli_main, "Uses", "CLI")
     Rel(cli_main, agent, "Invokes Agent")
-    Rel(agent, cli_main, "Returns results/requests confirmation") # Added return/confirmation path
+    Rel(agent, cli_main, "Returns results/requests confirmation")
 
     Rel(agent, gemini_api, "Sends prompts/history, Receives text/function calls", "HTTPS/gRPC")
     Rel(agent, tools, "Requests tool execution")
