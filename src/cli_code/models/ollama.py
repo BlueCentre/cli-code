@@ -20,10 +20,12 @@ except ImportError:
 
 from .base import AbstractModelAgent
 from ..tools import AVAILABLE_TOOLS, get_tool # Import get_tool
+from ..utils import count_tokens # Import count_tokens
 
 log = logging.getLogger(__name__)
 MAX_OLLAMA_ITERATIONS = 5 # Limit tool call loops for Ollama initially
 SENSITIVE_TOOLS = ["edit", "create_file"] # Define sensitive tools requiring confirmation
+OLLAMA_MAX_CONTEXT_TOKENS = 8000 # Example token limit for Ollama models, adjust as needed
 
 class OllamaModel(AbstractModelAgent):
     """Interface for Ollama models using the OpenAI-compatible API."""
@@ -276,22 +278,59 @@ class OllamaModel(AbstractModelAgent):
 
     # --- Ollama-specific history management ---
     def add_to_history(self, message: Dict):
-        """Adds a message dictionary (OpenAI format) to the history."""
-        # Basic validation
+        """Adds a message dictionary (OpenAI format) to the history and manages context window."""
         if not isinstance(message, dict) or "role" not in message:
              log.warning(f"Attempted to add invalid message to Ollama history: {message}")
              return
         self.history.append(message)
-        # TODO: Implement context window management for Ollama (token counting)
-        # self._manage_ollama_context()
+        self._manage_ollama_context() # Call context management after adding
 
     def clear_history(self):
         """Clears the Ollama conversation history."""
         self.history = []
-        # Re-add system prompt if we are using one
+        # TODO: Re-add system prompt if/when defined
         # if hasattr(self, 'system_prompt') and self.system_prompt:
         #     self.add_to_history({"role": "system", "content": self.system_prompt})
         log.info("Ollama history cleared.")
+
+    def _manage_ollama_context(self):
+        """Truncates Ollama history based on estimated token count."""
+        total_tokens = 0
+        for message in self.history:
+            # Estimate tokens by counting chars in JSON representation of message content
+            # This is a rough estimate; more accurate counting might be needed.
+            try:
+                # Serialize the whole message dict to include roles, tool calls etc. in estimate
+                message_str = json.dumps(message)
+                total_tokens += count_tokens(message_str)
+            except TypeError as e:
+                 log.warning(f"Could not serialize message for token counting: {message} - Error: {e}")
+                 # Fallback: estimate based on string representation length
+                 total_tokens += len(str(message)) // 4 
+        
+        log.debug(f"Estimated total tokens in Ollama history: {total_tokens}")
+
+        if total_tokens > OLLAMA_MAX_CONTEXT_TOKENS:
+            log.warning(f"Ollama history token count ({total_tokens}) exceeds limit ({OLLAMA_MAX_CONTEXT_TOKENS}). Truncating.")
+            # Simple truncation: keep system prompt (if present at index 0) and remove oldest user/assistant messages
+            # Keep removing messages (after the potential system prompt) until under the limit
+            
+            # Find index of first non-system message
+            start_index = 0
+            if self.history and self.history[0].get("role") == "system":
+                 start_index = 1
+                 
+            # Keep removing messages from the start (after system prompt) 
+            while total_tokens > OLLAMA_MAX_CONTEXT_TOKENS and len(self.history) > start_index:
+                removed_message = self.history.pop(start_index)
+                try: 
+                    removed_tokens = count_tokens(json.dumps(removed_message))
+                except TypeError: 
+                    removed_tokens = len(str(removed_message)) // 4
+                total_tokens -= removed_tokens
+                log.debug(f"Removed message ({removed_tokens} tokens). New total: {total_tokens}")
+            
+            log.info(f"Ollama history truncated to {len(self.history)} messages, estimated tokens: {total_tokens}")
 
     # --- Tool Preparation Helper ---
     def _prepare_openai_tools(self) -> List[Dict] | None:
