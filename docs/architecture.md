@@ -62,8 +62,8 @@ graph TD
     Agent -- Function Call Results --> Agent
     GeminiAPI -- Function Calls / Text --> Agent
 
-    click[Click Lib] --> CLI
-    rich[Rich Lib] --> CLI
+    click["Click Lib"] --> CLI
+    rich["Rich Lib"] --> CLI
     genai["google-generativeai Lib"] --> Agent
     genai --> GeminiAPI
     questionary["Questionary Lib"] --> Agent # For confirmations
