@@ -49,60 +49,30 @@ The primary interaction follows an agentic loop within the `GeminiModel.generate
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant CLI
-    participant Agent
-    participant GeminiAPI
-    participant ToolRegistry
-    participant Tool
-    participant FileSystem/Shell
+    participant U as User
+    participant C as CLI
+    participant A as Agent
+    participant G as GeminiAPI
+    participant T as Tools
 
-    User->>+CLI: Input prompt (e.g., "Refactor main.py")
-    CLI->>+Agent: generate(prompt)
-    Agent->>+ToolRegistry: Get 'ls' tool
-    ToolRegistry->>Agent: ls tool instance
-    Agent->>+Tool: execute() [ls]
-    Tool->>+FileSystem/Shell: list directory
-    FileSystem/Shell-->>-Tool: directory listing
-    Tool-->>-Agent: ls result
-    Agent->>Agent: Prepare prompt (context + user request)
-    Agent->>Agent: Add prompt to history
-    loop Agent Loop (Max Iterations)
-        Agent->>+GeminiAPI: generate_content(history, tools)
-        GeminiAPI-->>-Agent: Response (Text or Function Call)
-
-        alt Function Call Requested
-            Agent->>Agent: Parse Function Call (e.g., view('main.py'))
-            opt Requires Confirmation (e.g., edit)
-                Agent->>+CLI: Display confirmation panel (rich)
-                CLI->>+User: Ask for confirmation (questionary)
-                User-->>-CLI: Yes/No
-                CLI-->>-Agent: Confirmation status
-                alt User Rejects
-                    Agent->>Agent: Prepare rejection message
-                    Agent->>Agent: Add function_response(rejected) to history
-                    Agent->>GeminiAPI: generate_content(history, tools)
-                    GeminiAPI-->>Agent: Next Response (likely text acknowledging rejection)
-                    Note over Agent: Loop continues or potentially ends
-                end
-            end
-            Agent->>+ToolRegistry: Get tool instance ('view')
-            ToolRegistry-->>Agent: Tool instance
-            Agent->>+Tool: execute(file_path='main.py')
-            Tool->>+FileSystem/Shell: Read file content
-            FileSystem/Shell-->>-Tool: File content
-            Tool-->>-Agent: Tool result (file content)
-            Agent->>Agent: Prepare function_response(result)
-            Agent->>Agent: Add function_response to history
-            opt Task Complete Signal (tool_name == 'task_complete')
-                 Agent->>Agent: Mark task completed, store summary
-                 break Loop
-            end
+    U->>C: Input prompt
+    C->>A: generate(prompt)
+    A->>T: Get directory context
+    T-->>A: Directory listing
+    
+    loop Agent Loop
+        A->>G: generate_content()
+        G-->>A: Response
+        
+        alt is Function Call
+            A->>T: Execute tool
+            T-->>A: Tool result
+            A->>A: Update history
         end
     end
-    Agent->>-CLI: Final Result/Summary (Markdown)
-    CLI->>-User: Display result (rich.markdown)
-
+    
+    A->>C: Final Result
+    C->>U: Display result
 ```
 
 1.  **User Input**: User provides a prompt via the CLI.
