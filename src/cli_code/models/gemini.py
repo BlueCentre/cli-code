@@ -13,6 +13,7 @@ import google.generativeai as genai
 import questionary
 import rich
 from rich.console import Console
+import google.generativeai.types as genai_types
 
 # from rich.panel import Panel # Remove unused import
 # Local Application/Library Specific Imports
@@ -554,51 +555,59 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # TODO: Implement token-based truncation check using count_tokens
 
     # --- Tool Definition Helper ---
-    def _create_tool_definitions(self) -> list[genai.FunctionDeclaration] | None:
-        """Dynamically create FunctionDeclarations from AVAILABLE_TOOLS."""
+    def _create_tool_definitions(self) -> list[genai_types.Tool] | None:
+        """Dynamically create Tool definitions from AVAILABLE_TOOLS."""
+        # NOTE: This assumes get_function_declaration() returns objects compatible with or convertible to genai_types.Tool
         declarations = []
         for tool_name, tool_instance in AVAILABLE_TOOLS.items():
             if hasattr(tool_instance, "get_function_declaration"):
-                declaration = tool_instance.get_function_declaration()
-                if declaration:
-                    declarations.append(declaration)
-                    log.debug(f"Generated FunctionDeclaration for tool: {tool_name}")
+                declaration_obj = tool_instance.get_function_declaration()
+                if declaration_obj:
+                    # Assuming declaration_obj is structured correctly or needs conversion
+                    # For now, append directly. May need adjustment based on actual object structure.
+                    declarations.append(declaration_obj)
+                    log.debug(f"Generated tool definition for tool: {tool_name}")
                 else:
                     log.warning(f"Tool {tool_name} has 'get_function_declaration' but it returned None.")
             else:
-                # Fallback or skip tools without the method? For now, log warning.
                 log.warning(f"Tool {tool_name} does not have a 'get_function_declaration' method. Skipping.")
 
-        log.info(f"Created {len(declarations)} function declarations for native tool use.")
+        log.info(f"Created {len(declarations)} tool definitions for native tool use.")
+        # The return type of this function might need to be adjusted based on how
+        # genai.GenerativeModel expects tools (e.g., maybe a single Tool object containing declarations?)
+        # For now, returning the list as gathered.
         return declarations if declarations else None
 
     # --- System Prompt Helper ---
     def _create_system_prompt(self) -> str:
         """Creates the system prompt, emphasizing native functions and planning."""
-        # Use docstrings from tools if possible for descriptions
         tool_descriptions = []
-        if self.function_declarations:
-            for func_decl in self.function_declarations:
-                # Simple representation: name(args) - description
-                # Ensure parameters exist before trying to access properties
-                args_str = ""
-                if func_decl.parameters and func_decl.parameters.properties:
-                    args_list = []
-                    required_args = func_decl.parameters.required or []
-                    for prop, details in func_decl.parameters.properties.items():
-                        # Access attributes directly from the Schema object
-                        prop_type = details.type if hasattr(details, "type") else "UNKNOWN"
-                        prop_desc = details.description if hasattr(details, "description") else ""
+        if self.function_declarations: # Assuming this now holds a list of Tool-like objects
+            # Process tool definitions (assuming they are Tool objects or similar)
+            for tool_def in self.function_declarations:
+                 # Access function declarations within the Tool object
+                 # Need to check the actual structure of genai_types.Tool in v0.8.4
+                 # The following logic assumes a structure like tool_def.function_declarations
+                if hasattr(tool_def, 'function_declarations') and tool_def.function_declarations:
+                    for func_decl in tool_def.function_declarations:
+                        # Reuse the existing logic to extract details, using getattr for safety
+                        args_str = ""
+                        if hasattr(func_decl, 'parameters') and func_decl.parameters and hasattr(func_decl.parameters, 'properties') and func_decl.parameters.properties:
+                            args_list = []
+                            required_args = getattr(func_decl.parameters, 'required', []) or []
+                            for prop, details in func_decl.parameters.properties.items():
+                                prop_type = getattr(details, 'type', 'UNKNOWN')
+                                prop_desc = getattr(details, 'description', '')
+                                suffix = "" if prop in required_args else "?"
+                                args_list.append(f"{prop}: {prop_type}{suffix} # {prop_desc}")
+                            args_str = ", ".join(args_list)
 
-                        suffix = "" if prop in required_args else "?"  # Indicate optional args
-
-                        # Include parameter description in the string for clarity in the system prompt
-                        args_list.append(f"{prop}: {prop_type}{suffix} # {prop_desc}")
-
-                    args_str = ", ".join(args_list)
-
-                desc = func_decl.description or "(No description provided)"  # Overall func desc
-                tool_descriptions.append(f"- `{func_decl.name}({args_str})`: {desc}")
+                        func_name = getattr(func_decl, 'name', 'UNKNOWN_FUNCTION')
+                        func_desc = getattr(func_decl, 'description', '(No description provided)')
+                        tool_descriptions.append(f"- `{func_name}({args_str})`: {func_desc}")
+                else:
+                    log.warning(f"Unexpected tool definition structure encountered: {tool_def}")
+                    tool_descriptions.append(f"- (Could not parse tool definition: {type(tool_def)})")
         else:
             tool_descriptions.append(" - (No tools available with function declarations)")
 
