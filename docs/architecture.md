@@ -13,32 +13,32 @@ The system is composed of several key Python modules and concepts:
 ```mermaid
 graph TD
     subgraph "User Interaction"
-        CLI[CLI (main.py - Click, Rich)]
+        CLI["CLI (main.py - Click, Rich)"]
     end
 
     subgraph "Application Core"
-        Agent[Model Agent (models/gemini.py)]
-        Config[Configuration (config.py)]
-        Utils[Utilities (utils.py)]
+        Agent["Model Agent (models/gemini.py)"]
+        Config["Configuration (config.py)"]
+        Utils["Utilities (utils.py)"]
     end
 
     subgraph "Tools"
-        ToolRegistry[Tool Registry (tools/__init__.py)]
-        FileTool[File Tools (file_tools.py)]
-        DirTool[Directory Tools (directory_tools.py)]
-        SystemTool[System Tools (system_tools.py)]
-        QualityTool[Quality Tools (quality_tools.py)]
+        ToolRegistry["Tool Registry (tools/__init__.py)"]
+        FileTool["File Tools (file_tools.py)"]
+        DirTool["Directory Tools (directory_tools.py)"]
+        SystemTool["System Tools (system_tools.py)"]
+        QualityTool["Quality Tools (quality_tools.py)"]
         OtherTools[...]
     end
 
     subgraph "External Services"
-        GeminiAPI[Google Gemini API]
+        GeminiAPI["Google Gemini API"]
     end
 
     subgraph "Local System"
-        FileSystem[File System]
-        Terminal[Shell/Terminal]
-        Linters[Linters/Formatters]
+        FileSystem["File System"]
+        Terminal["Shell/Terminal"]
+        Linters["Linters/Formatters"]
     end
 
     CLI --> Agent
@@ -64,9 +64,9 @@ graph TD
 
     click[Click Lib] --> CLI
     rich[Rich Lib] --> CLI
-    genai[google-generativeai Lib] --> Agent
+    genai["google-generativeai Lib"] --> Agent
     genai --> GeminiAPI
-    questionary[Questionary Lib] --> Agent # For confirmations
+    questionary["Questionary Lib"] --> Agent # For confirmations
 
     style Agent fill:#f9f,stroke:#333,stroke-width:2px
     style CLI fill:#ccf,stroke:#333,stroke-width:2px
