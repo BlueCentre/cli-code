@@ -1,5 +1,7 @@
 # CLI Code
 
+[![Python CI](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml/badge.svg)](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml)
+
 A powerful AI coding assistant for your terminal, powered by multiple LLM providers (starting with Gemini).
 
 More information [here](https://blossom-tarsier-434.notion.site/Gemini-Code-1c6c13716ff180db86a0c7f4b2da13ab?pvs=4)
@@ -97,6 +99,16 @@ This approach makes the interaction more natural.
 
 ## Development
 
+This project uses Ruff for linting and formatting. Configuration is managed in the `.ruff.toml` file. Please ensure your contributions adhere to the defined style.
+
+```bash
+# Check linting
+ruff check .
+
+# Apply formatting
+ruff format .
+```
+
 This project is under active development.
 
 ### Recent Changes in v0.1.69
@@ -159,6 +171,10 @@ This project is under active development.
 ### Known Issues
 
 - Configuration path changed from `~/.config/gemini-code` to `~/.config/cli-code`. You will need to run `cli-code setup --provider=gemini YOUR_KEY` again after updating.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues or pull requests on the [GitHub repository](https://github.com/BlueCentre/cli-code).
 
 ## License
 
