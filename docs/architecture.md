@@ -98,11 +98,11 @@ sequenceDiagram
                  Agent->>Agent: Mark task completed, store summary
                  break Loop
             end
-        else Text Response
-            Agent->>Agent: Store text response
-            Agent->>Agent: Add text response to history
-            Agent->>Agent: Mark task completed (text implies completion)
-            break Loop
+        %% else Text Response
+        %%    Agent->>Agent: Store text response
+        %%    Agent->>Agent: Add text response to history
+        %%    Agent->>Agent: Mark task completed (text implies completion)
+        %%    break Loop
         end
     end
     Agent->>-CLI: Final Result/Summary (Markdown)
