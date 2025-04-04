@@ -215,4 +215,68 @@ C4Container
 *   **Tool Schema Validation/Translation**: Ensure robust handling of schema differences between Gemini and OpenAI formats.
 *   **Summarizer Tool Integration**: Clarify registration/usage.
 
+## 7. Provider and Model Selection Logic
+
+The CLI Code Assistant implements a sophisticated hierarchical resolution system for determining which provider and model to use. This system allows for flexibility in configuration while maintaining sensible defaults.
+
+### Provider Selection
+
+When determining which LLM provider to use, the application follows this precedence order (highest to lowest priority):
+
+```mermaid
+flowchart TD
+    A[Start] --> B{CLI Flag?}
+    B -->|Yes| C[Use provider from --provider flag]
+    B -->|No| D{Environment Variable?}
+    D -->|Yes| E[Use CLI_CODE_DEFAULT_PROVIDER]
+    D -->|No| F{Config File Setting?}
+    F -->|Yes| G[Use provider from config file]
+    F -->|No| H[Use hardcoded default provider]
+    
+    C --> Z[Initialize selected provider]
+    E --> Z
+    G --> Z
+    H --> Z
+```
+
+1. **Command-line flag**: If the user specifies `--provider=X`, that provider is used.
+2. **Environment variable**: If `CLI_CODE_DEFAULT_PROVIDER` is set, that provider is used.
+3. **Config file**: If a default provider is set in the configuration file, that provider is used.
+4. **Hardcoded default**: If no other selection is found, the application falls back to the hardcoded default (currently "gemini").
+
+### Model Selection
+
+Once a provider is selected, the application determines which model to use for that provider using a similar precedence system:
+
+```mermaid
+flowchart TD
+    A[Start] --> B{CLI Flag?}
+    B -->|Yes| C[Use model from --model flag]
+    B -->|No| D{Provider-specific Env Var?}
+    D -->|Yes| E[Use provider-specific env var\ne.g., CLI_CODE_OLLAMA_DEFAULT_MODEL]
+    D -->|No| F{Generic Model Env Var?}
+    F -->|Yes| G[Use CLI_CODE_DEFAULT_MODEL]
+    F -->|No| H{Config File Setting?}
+    H -->|Yes| I[Use model from config file]
+    H -->|No| J[Use provider's default model]
+    
+    C --> Z[Initialize provider with selected model]
+    E --> Z
+    G --> Z
+    I --> Z
+    J --> Z
+```
+
+1. **Command-line flag**: If the user specifies `--model=X`, that model is used.
+2. **Provider-specific environment variable**: If a provider-specific environment variable is set (e.g., `CLI_CODE_OLLAMA_DEFAULT_MODEL`), that model is used.
+3. **Generic model environment variable**: If `CLI_CODE_DEFAULT_MODEL` is set, that model is used.
+4. **Config file**: If a default model is set in the configuration file for the selected provider, that model is used.
+5. **Provider default**: If no other selection is found, the provider's default model is used (e.g., "gemini-2.5-pro-exp-03-25" for Gemini).
+
+### Implementation
+
+This logic is primarily implemented in `main.py` when processing CLI arguments and in `config.py` when loading configuration settings and environment variables. The environment variable loading system supports both direct environment variables and loading from a `.env` file, with direct environment variables taking precedence over `.env` file settings.
+
+This hierarchical approach provides a balance between flexibility (users can easily override defaults) and convenience (sensible defaults mean minimal configuration required).
+
 This analysis provides a comprehensive overview of the planned `cli-code` architecture. 
