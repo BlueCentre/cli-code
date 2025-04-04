@@ -35,9 +35,12 @@ class Config:
     def _load_dotenv(self):
         """Load environment variables from .env file if it exists."""
         env_file = Path(".env")
+        env_example_file = Path(".env.example")
+        
         if env_file.exists():
             try:
                 log.info(f"Loading environment variables from {env_file.resolve()}")
+                loaded_vars = []
                 with open(env_file, "r") as f:
                     for line in f:
                         line = line.strip()
@@ -56,9 +59,21 @@ class Config:
                                 
                             if key and value:
                                 os.environ[key] = value
-                                log.debug(f"Set environment variable: {key}")
+                                # Only add to list if it's a CLI_CODE variable to avoid logging sensitive data
+                                if key.startswith("CLI_CODE_"):
+                                    log_value = "****" if "KEY" in key or "TOKEN" in key else value
+                                    loaded_vars.append(f"{key}={log_value}")
+                
+                if loaded_vars:
+                    log.info(f"Loaded {len(loaded_vars)} CLI_CODE environment variables: {', '.join(loaded_vars)}")
+                else:
+                    log.debug("No CLI_CODE environment variables found in .env file")
             except Exception as e:
                 log.warning(f"Error loading .env file: {e}", exc_info=True)
+        elif env_example_file.exists():
+            log.info(f".env file not found, but .env.example exists. Consider creating a .env file from the example.")
+        else:
+            log.debug("No .env or .env.example file found in current directory")
                 
     def _apply_env_vars(self):
         """Apply environment variables to override config settings."""
@@ -73,12 +88,20 @@ class Config:
         
         for env_var, config_key in env_var_mapping.items():
             if env_var in os.environ:
-                log.info(f"Using environment variable {env_var} to override config")
-                self.config[config_key] = os.environ[env_var]
+                value = os.environ[env_var]
+                # Mask sensitive values in logs
+                log_value = "****" if "KEY" in env_var or "TOKEN" in env_var else value
+                log.info(f"Using environment variable {env_var}={log_value} to override config key '{config_key}'")
+                self.config[config_key] = value
                 
         # Apply and save if environment variables were found
         if any(env_var in os.environ for env_var in env_var_mapping):
             self._save_config()
+            # Log all the current config values for debugging
+            safe_config = self.config.copy()
+            if "google_api_key" in safe_config and safe_config["google_api_key"]:
+                safe_config["google_api_key"] = "****"
+            log.debug(f"Final config after applying environment variables: {safe_config}")
 
     def _ensure_config_exists(self):
         """Create config directory and file with defaults if they don't exist."""
