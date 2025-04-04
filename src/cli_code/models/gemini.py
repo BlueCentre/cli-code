@@ -2,20 +2,24 @@
 Gemini model integration for the CLI tool.
 """
 
-import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool
+# Standard Library
 import logging
 import time
+from typing import List, Dict
+
+# Third-party Libraries
+import google.generativeai as genai
+from google.generativeai.types import FunctionDeclaration, Tool
+import google.api_core.exceptions
+import questionary
+import rich
 from rich.console import Console
 # from rich.panel import Panel # Remove unused import
-import questionary
-from typing import List, Dict # Add typing for list_models
-import google.api_core.exceptions # Import the exceptions module
-import rich # Keep rich import needed for rich.panel.Panel
 
+# Local Application/Library Specific Imports
 from ..utils import count_tokens
 from ..tools import get_tool, AVAILABLE_TOOLS
-from .base import AbstractModelAgent # Import the base class
+from .base import AbstractModelAgent
 
 # Setup logging (basic config, consider moving to main.py)
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s') # Removed, handled in main
