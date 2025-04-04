@@ -71,7 +71,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # --- Tool Definition ---
         self.function_declarations = self._create_tool_definitions()
         self.gemini_tools = (
-            genai.Tool(function_declarations=self.function_declarations) if self.function_declarations else None
+            genai_types.Tool(function_declarations=self.function_declarations) if self.function_declarations else None
         )
         # ---
 
