@@ -66,7 +66,8 @@ graph TD
     rich["Rich Lib"] --> CLI
     genai["google-generativeai Lib"] --> Agent
     genai --> GeminiAPI
-    questionary["Questionary Lib"] --> Agent # For confirmations
+    # For confirmations
+    questionary["Questionary Lib"] --> Agent
 
     style Agent fill:#f9f,stroke:#333,stroke-width:2px
     style CLI fill:#ccf,stroke:#333,stroke-width:2px
