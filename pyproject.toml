@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cli-code-agent" 
-version = "0.1.107"  
+version = "0.2.0"  
 authors = [
   { name="James Nguyen", email="git@nocentre.net" }
 ]
