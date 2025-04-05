@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cli-code" 
+name = "cli-code-agent" 
 version = "0.1.107"  
 authors = [
-  { name="Raiza Martin", email="raiza@huxe.ai" }
+  { name="James Nguyen", email="git@nocentre.net" }
 ]
 description = "An AI coding assistant CLI using Google's Gemini models with function calling."
 readme = "README.md"
@@ -49,7 +49,7 @@ dev = [
 
 # This makes the `cli-code` command run the `cli` function in `main.py`
 [project.scripts]
-cli-code = "cli_code.main:cli"
+cli-code-agent = "cli_code.main:cli"
 
 # Remove the automatic package finding
 # [tool.setuptools.packages.find]

@@ -1,5 +1,5 @@
 """
-Main entry point for the Gemini CLI application.
+Main entry point for the CLI Code Agent application.
 Targets Gemini 2.5 Pro Experimental. Includes ASCII Art welcome.
 Passes console object to model.
 """
@@ -391,34 +391,27 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
 
 
 def show_help(provider: str):
-    """Show help information for interactive mode."""
-    tool_list_formatted = ""
-    if AVAILABLE_TOOLS:
-        # Add indentation for the bullet points
-        tool_list_formatted = "\n".join([f"  • [white]`{name}`[/white]" for name in sorted(AVAILABLE_TOOLS.keys())])
-    else:
-        tool_list_formatted = "  (No tools available)"
-
-    # Use direct rich markup and ensure newlines are preserved
-    help_text = f""" [bold]Help[/bold]
-
- [cyan]Interactive Commands:[/cyan]
-  /exit
-  /help
-
- [cyan]CLI Commands:[/cyan]
-  cli-code setup KEY
-  cli-code list-models
-  cli-code set-default-model NAME
-  cli-code --model NAME
-
- [cyan]Workflow Hint:[/cyan] Analyze -> Plan -> Execute -> Verify -> Summarize
-
- [cyan]Available Tools:[/cyan]
-{tool_list_formatted}
-"""
-    # Print directly to Panel without Markdown wrapper
-    console.print(Panel(help_text, title="Help", border_style="green", expand=False))
+    """Show available commands for the interactive mode."""
+    help_text = f"""
+    [bold blue]CLI Code Agent Help[/bold blue]
+    
+    [bold yellow]Chat Commands:[/bold yellow]
+      /exit    - Exit the chat session
+      /help    - Show this help message
+      
+    [bold yellow]Configuration Commands:[/bold yellow] (in terminal)
+      cli-code-agent setup --provider={provider} <api_key_or_url>     - Configure API key/URL
+      cli-code-agent list-models --provider={provider}                - List available models
+      cli-code-agent set-default-model --provider={provider} <model>  - Set default model
+      
+    [bold yellow]Tips:[/bold yellow]
+      - Ask about files or code in your current directory
+      - Request file operations (view/edit/create) 
+      - Ask for explanations of code
+      - Create or modify projects with the AI's help
+      - Run commands (with your approval)
+    """
+    return Markdown(help_text)
 
 
 if __name__ == "__main__":

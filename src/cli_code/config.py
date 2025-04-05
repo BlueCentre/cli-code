@@ -15,7 +15,7 @@ class Config:
     """Manages configuration for the cli-code application."""
 
     def __init__(self):
-        self.config_dir = Path.home() / ".config" / "cli-code"
+        self.config_dir = Path.home() / ".config" / "cli-code-agent"
         self.config_file = self.config_dir / "config.yaml"
         self.config = {}
         
@@ -162,6 +162,37 @@ class Config:
             del self.config["api_keys"]
             self._save_config()
             log.info("Finished migrating 'api_keys'.")
+        
+        # Check for old config paths and migrate if needed
+        self._migrate_old_config_paths()
+    
+    def _migrate_old_config_paths(self):
+        """Check for and migrate config from older versions with different path names."""
+        old_paths = [
+            Path.home() / ".config" / "gemini-code" / "config.yaml",
+            Path.home() / ".config" / "cli-code" / "config.yaml"
+        ]
+        
+        for old_path in old_paths:
+            if old_path.exists() and not self.config_file.exists():
+                log.info(f"Found old config at {old_path}. Migrating to {self.config_file}...")
+                try:
+                    # Ensure new directory exists
+                    self.config_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Read old config
+                    with open(old_path, "r") as old_file:
+                        old_config = yaml.safe_load(old_file) or {}
+                    
+                    # Update our config with old values
+                    self.config.update(old_config)
+                    
+                    # Save to new location
+                    self._save_config()
+                    log.info(f"Successfully migrated config from {old_path} to {self.config_file}")
+                except Exception as e:
+                    log.error(f"Error migrating config from {old_path}: {e}", exc_info=True)
+                    # Continue trying other paths on failure
 
     def get_credential(self, provider: str) -> str | None:
         """Get the credential (API key or URL) for a specific provider."""

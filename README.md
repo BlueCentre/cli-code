@@ -30,7 +30,7 @@ More information [here](https://blossom-tarsier-434.notion.site/Gemini-Code-1c6c
 
 ```bash
 # Install directly from PyPI
-pip install cli-code
+pip install cli-code-agent
 ```
 
 ### Method 2: Install from Source
@@ -50,10 +50,10 @@ Before using CLI Code, you need to set up API credentials for your desired provi
 
 ```bash
 # Set up Google API key for Gemini models
-cli-code setup --provider=gemini YOUR_GOOGLE_API_KEY
+cli-code-agent setup --provider=gemini YOUR_GOOGLE_API_KEY
 
 # OR Set up Ollama endpoint URL (if running Ollama locally or elsewhere)
-# cli-code setup --provider=ollama YOUR_OLLAMA_API_URL
+# cli-code-agent setup --provider=ollama YOUR_OLLAMA_API_URL
 ```
 
 ### Alternative Setup Using Environment Variables
@@ -80,7 +80,7 @@ You can also configure CLI Code using environment variables, either by setting t
 
 3. Run CLI Code normally, and it will automatically load the settings from your `.env` file:
    ```bash
-   cli-code
+   cli-code-agent
    ```
 
 The environment variables take precedence over saved configuration, making this approach useful for temporary settings or project-specific configurations.
@@ -89,24 +89,24 @@ The environment variables take precedence over saved configuration, making this 
 
 ```bash
 # Start an interactive session with the default provider/model
-cli-code
+cli-code-agent
 
 # Start a session with a specific provider (uses provider's default model)
-cli-code --provider=ollama
+cli-code-agent --provider=ollama
 
 # Start a session with a specific provider and model
-cli-code --provider=ollama --model llama3
+cli-code-agent --provider=ollama --model llama3
 
 # Start a session with Gemini and a specific model
-cli-code --provider=gemini --model models/gemini-1.5-pro-latest
+cli-code-agent --provider=gemini --model models/gemini-1.5-pro-latest
 
 # Set default provider and model (example)
-# cli-code set-default-provider ollama
-# cli-code set-default-model llama3
+# cli-code-agent set-default-provider ollama
+# cli-code-agent set-default-model llama3
 
 # List available models for a specific provider
-cli-code list-models --provider=gemini
-cli-code list-models --provider=ollama
+cli-code-agent list-models --provider=gemini
+cli-code-agent list-models --provider=ollama
 ```
 
 ## Interactive Commands
@@ -216,7 +216,7 @@ This project is under active development.
 
 ### Known Issues
 
-- Configuration path changed from `~/.config/gemini-code` to `~/.config/cli-code`. You will need to run `cli-code setup --provider=gemini YOUR_KEY` again after updating.
+- Configuration path changed from `~/.config/gemini-code` to `~/.config/cli-code`. You will need to run `cli-code-agent setup --provider=gemini YOUR_KEY` again after updating.
 
 ## Contributing
 
