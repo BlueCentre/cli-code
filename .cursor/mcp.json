@@ -19,10 +19,10 @@
       ]
     },
     "SlackBot Composio": {
-      "url": "https://mcp.composio.dev/slackbot/stocky-mushy-toddler-mbmAIf"
+      "url": "https://mcp.composio.dev/slackbot/{{env.COMPOSIO_UNIQUE_ID}}"
     },
     "Google Tasks MCP": {
-      "url": "https://mcp.composio.dev/googletasks/stocky-mushy-toddler-mbmAIf"
+      "url": "https://mcp.composio.dev/googletasks/{{env.COMPOSIO_UNIQUE_ID}}"
     },
     "GitHub MCP": {
       "command": "npx -y @modelcontextprotocol/server-github",
