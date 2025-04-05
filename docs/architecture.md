@@ -246,28 +246,23 @@ Each Model Agent instance (e.g., GeminiModel, OllamaModel) maintains its own per
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant A as Model Agent
-    participant H as History
-    participant LLM as LLM API
+    User->>Agent: Send prompt
+    Agent->>History: Add user prompt
+    Agent->>History: Add context (ls output)
+    Agent->>LLM: Send history + tools
+    LLM->>Agent: Response or tool call
+    Agent->>History: Add model response
     
-    U->>A: User prompt
-    A->>H: Add user prompt
-    A->>A: Add initial context (ls output)
-    A->>H: Add context
-    A->>LLM: Send history + tools
-    LLM->>A: Response or tool call
-    A->>H: Add model response
-    
-    alt is Tool Call
-        A->>A: Execute tool
-        A->>H: Add tool result
-        A->>LLM: Send updated history
-        LLM->>A: Next response
-        A->>H: Add response
+    alt Tool Call Execution
+        Agent->>Tools: Execute tool
+        Tools->>Agent: Tool result
+        Agent->>History: Add tool result
+        Agent->>LLM: Send updated history
+        LLM->>Agent: Next response
+        Agent->>History: Add response
     end
     
-    A->>U: Final response
+    Agent->>User: Final response
 ```
 
 The history structure includes:
@@ -318,21 +313,21 @@ The following improvements to context management are planned:
 ```mermaid
 flowchart TD
     A[New Content] --> B[Token Counter]
-    B --> C{Exceeds limit?}
-    C -->|Yes| D[Context Trimming]
+    B --> C{Exceeds Limit?}
+    C -->|Yes| D[Trim Context]
     C -->|No| E[Add to Context]
     
-    D --> F{Trimming strategy}
-    F -->|Window| G[Remove oldest]
-    F -->|Summarize| H[Summarize older]
+    D --> F{Select Strategy}
+    F -->|Window| G[Remove Oldest]
+    F -->|Summarize| H[Summarize Older]
     
     G --> E
     H --> E
 ```
 
 1. **Token Counting**: Implement accurate token counting for both providers:
-   - For Gemini, use the provider's token counting API.
-   - For Ollama, implement or use an existing tokenizer.
+   * For Gemini, use the provider's token counting API.
+   * For Ollama, implement or use an existing tokenizer.
 
 2. **Dynamic Trimming**: Instead of a fixed number of turns:
    - Implement a sliding window based on token count rather than turn count.
