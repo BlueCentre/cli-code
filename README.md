@@ -154,6 +154,8 @@ ruff check .
 ruff format .
 ```
 
+For information about the release process, see [Release Documentation](docs/releases.md).
+
 This project is under active development.
 
 ### Recent Changes in v0.1.69
