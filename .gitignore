@@ -25,4 +25,10 @@ build/
 
 # Operating System Files
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Coverage Reports
+.coverage
+coverage.xml
+*/.coverage
+htmlcov/ 
