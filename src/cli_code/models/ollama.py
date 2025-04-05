@@ -1,5 +1,7 @@
+import glob
 import json  # For formatting tool results
 import logging
+import os
 from typing import Dict, List
 
 import questionary  # Import questionary
@@ -97,8 +99,6 @@ class OllamaModel(AbstractModelAgent):
         Returns:
             A string containing the initial context.
         """
-        import os
-        import glob
         
         # Check if .rules directory exists
         if os.path.isdir(".rules"):
