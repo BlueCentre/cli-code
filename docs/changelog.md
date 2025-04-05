@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2]
+
+- Significantly improved test coverage across multiple modules:
+  - `config.py`: Increased to 89% coverage (from 73%)
+  - `main.py`: Increased to 67% coverage (from 46%)
+  - Overall test improvements bringing project coverage to over 75%
+- Added comprehensive test files:
+  - `test_config_comprehensive.py`: Tests for edge cases and advanced functionality
+  - `test_main_comprehensive.py`: Tests for CLI commands and interactive features
+
 ## [0.2.1]
 
 - Added Ollama provider support (see `ollama.py` model implementation)
