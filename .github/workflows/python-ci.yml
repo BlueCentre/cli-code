@@ -40,7 +40,7 @@ jobs:
 
     - name: Lint with Ruff (check)
       run: |
-        ruff check --verbose --preview .
+        ruff check --fix --verbose --preview .
 
     - name: Lint with Ruff (format)
       run: |
