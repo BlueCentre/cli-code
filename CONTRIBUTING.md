@@ -12,7 +12,7 @@ Thank you for your interest in contributing to CLI-Code! This document outlines 
   pytest --cov=src test_dir --cov-report=xml
   
   # Run local SonarCloud scan
-  sonar-scanner
+  sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
   ```
 - **Review current SonarCloud metrics**: Identify code smells, bugs, and areas with low coverage
 
@@ -44,7 +44,7 @@ Thank you for your interest in contributing to CLI-Code! This document outlines 
   pytest --cov=src test_dir --cov-report=xml
   
   # Run local SonarCloud scan
-  sonar-scanner
+  sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
   ```
 
 ### 6. Documentation
@@ -97,10 +97,20 @@ For the fastest feedback loop, run SonarCloud analysis locally before pushing ch
    pytest --cov=src test_dir --cov-report=xml
    ```
 
-3. Run local scan:
+3. Run local scan (requires your SonarCloud token):
    ```bash
+   # Option 1: Pass token directly (do not commit this command!)
+   sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
+   
+   # Option 2: Use environment variable (recommended)
+   export SONAR_TOKEN=YOUR_SONARCLOUD_TOKEN
    sonar-scanner
+   
+   # Option 3: Add to ~/.bash_profile or ~/.zshrc (for convenience)
+   # export SONAR_TOKEN=YOUR_SONARCLOUD_TOKEN
    ```
+
+   You can get your SonarCloud token from your SonarCloud account under Security settings.
 
 4. Review the results and address any issues before pushing.
 
