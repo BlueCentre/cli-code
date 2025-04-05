@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1]
+
+- Added Ollama provider support (see `ollama.py` model implementation)
+- Added support for multiple model providers with configurable defaults
+- Enhanced configuration system with hierarchical settings
+- Added new CLI commands:
+  - `set-default-provider` to select default provider
+  - `set-default-model` to set default model for a provider
+- Updated help text and documentation
+- Configuration now supports environment variables via .env file
+- Added test coverage improvements
+
 ## [0.1.21] 
 
 - Implemented native Gemini function calling for much more reliable tool usage

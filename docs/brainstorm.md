@@ -95,4 +95,4 @@ $ llm config add-api-key google GOOGLE_API_KEY
 - How to handle tool capabilities that differ between models?
 - What's the best local storage approach for conversation history?
 - How to implement efficient codebase indexing for context?
-- Should we support plugins/extensions for custom tools?
+- Should we support plugins/extensions for custom tools? 

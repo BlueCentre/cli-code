@@ -3,7 +3,7 @@
 [![Python CI](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml/badge.svg)](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=BlueCentre_cli-code&metric=coverage)](https://sonarcloud.io/summary/new_code?id=BlueCentre_cli-code)
 
-An early work-in-progress AI coding assistant for your terminal, powered by multiple LLM providers (starting with Gemini and Ollama).
+An AI coding assistant for your terminal, powered by multiple LLM providers (Gemini and Ollama).
 
 **Table of Contents**
 
@@ -16,13 +16,12 @@ An early work-in-progress AI coding assistant for your terminal, powered by mult
   - [Configuration File](#configuration-file)
 - [Usage](#usage)
 - [Interactive Commands](#interactive-commands)
+- [Documentation](#documentation)
 - [How It Works](#how-it-works)
   - [Tool Usage](#tool-usage)
 - [Advanced Features](#advanced-features)
   - [Custom Context with `.rules`](#custom-context-with-rules)
 - [Development](#development)
-- [Recent Changes](#recent-changes-v0169)
-- [Known Issues](#known-issues)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -161,6 +160,17 @@ During an interactive session, you can use these commands:
 - `/exit` - Exit the chat session
 - `/help` - Display help information
 
+## Documentation
+
+For more detailed information, please refer to the following documentation:
+
+- [Installation Guide](docs/install.md) - Detailed instructions for installing and configuring CLI-Code
+- [Contributing Guide](docs/contributing.md) - Guidelines for contributing to the project
+- [Changelog](docs/changelog.md) - History of changes and releases
+- [Architecture](docs/architecture.md) - Technical overview of the system architecture
+- [Context Guidelines](docs/context.md) - Guidelines for the CLI Code Assistant
+- [Project Brainstorm](docs/brainstorm.md) - Original brainstorming document for the CLI tool
+
 ## How It Works
 
 ### Tool Usage
@@ -172,7 +182,7 @@ Unlike direct command-line tools, the CLI Code assistant uses tools automaticall
 ```
 You: What python files are in the src/cli_code directory?
 
-Assistant:
+A:
 [tool_code]
 print(default_api.list_dir(relative_workspace_path='src/cli_code'))
 [/tool_code]
@@ -190,9 +200,32 @@ Okay, I found the following Python files in `src/cli_code/`:
 - `utils.py`
 
 There are also `models/` and `tools/` subdirectories containing more Python files.
+```
 
 This approach makes the interaction more natural, as you don't need to know the specific tool names or commands.
 
 ## Advanced Features
 
 ### Custom Context with `.rules`
+
+The CLI Code assistant can be customized with project-specific context by creating a `.rules` directory in your project root. Any markdown files (`.md`) placed in this directory will be automatically loaded as context when the assistant starts in that directory.
+
+This allows you to:
+- Define project-specific guidelines
+- Provide architectural constraints
+- Set coding standards
+- Describe the project's purpose and goals
+
+Example: Create a file `.rules/python_standards.md` with your team's Python coding standards, and the assistant will follow those guidelines when helping with your Python code.
+
+## Development
+
+To contribute to CLI Code, please see the [Contributing Guide](docs/contributing.md).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT
