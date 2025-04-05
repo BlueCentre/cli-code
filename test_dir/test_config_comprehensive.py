@@ -372,6 +372,7 @@ class TestSettingFunctions:
 class TestConfigInitialization:
     """Tests for the Config class initialization and environment variable handling."""
     
+    @pytest.mark.timeout(5)  # Add timeout to prevent hanging
     def test_config_init_with_env_vars(self):
         """Test that environment variables are correctly loaded during initialization."""
         test_env = {
@@ -384,23 +385,41 @@ class TestConfigInitialization:
             'CLI_CODE_SETTINGS_TEMPERATURE': '0.8'
         }
         
-        with patch.dict(os.environ, test_env), \
-             patch.object(Config, '_load_dotenv'), \
-             patch.object(Config, '_ensure_config_exists'), \
-             patch.object(Config, '_load_config', return_value={}), \
-             patch.object(Config, '_migrate_old_keys'):
+        # Store original env vars
+        original_env = {}
+        for key in test_env:
+            if key in os.environ:
+                original_env[key] = os.environ[key]
+        
+        try:
+            # Set test env vars without clearing everything
+            for key, value in test_env.items():
+                os.environ[key] = value
             
-            config = Config()
-            
-            # Verify environment variables override config values
-            assert config.config.get('google_api_key') == 'env-google-key'
-            assert config.config.get('default_provider') == 'env-provider'
-            assert config.config.get('default_model') == 'env-model'
-            assert config.config.get('ollama_api_url') == 'env-ollama-url'
-            assert config.config.get('ollama_default_model') == 'env-ollama-model'
-            assert config.config.get('settings', {}).get('max_tokens') == 5000
-            assert config.config.get('settings', {}).get('temperature') == 0.8
+            with patch.object(Config, '_load_dotenv'), \
+                 patch.object(Config, '_ensure_config_exists'), \
+                 patch.object(Config, '_load_config', return_value={}), \
+                 patch.object(Config, '_migrate_old_keys'):
+                
+                config = Config()
+                
+                # Verify environment variables override config values
+                assert config.config.get('google_api_key') == 'env-google-key'
+                assert config.config.get('default_provider') == 'env-provider'
+                assert config.config.get('default_model') == 'env-model'
+                assert config.config.get('ollama_api_url') == 'env-ollama-url'
+                assert config.config.get('ollama_default_model') == 'env-ollama-model'
+                assert config.config.get('settings', {}).get('max_tokens') == 5000
+                assert config.config.get('settings', {}).get('temperature') == 0.8
+        finally:
+            # Clean up environment
+            for key in test_env:
+                if key in original_env:
+                    os.environ[key] = original_env[key]
+                else:
+                    os.environ.pop(key, None)
 
+    @pytest.mark.timeout(5)  # Add timeout to prevent hanging
     def test_paths_initialization(self):
         """Test the initialization of paths in Config class."""
         with patch('os.path.expanduser', return_value='/mock/home'), \
@@ -419,6 +438,7 @@ class TestConfigInitialization:
 class TestDotEnvEdgeCases:
     """Test edge cases for the _load_dotenv method."""
     
+    @pytest.mark.timeout(5)  # Add timeout
     def test_load_dotenv_with_example_file(self, config_instance):
         """Test _load_dotenv with .env.example file when .env doesn't exist."""
         example_content = """
@@ -426,20 +446,33 @@ class TestDotEnvEdgeCases:
         CLI_CODE_GOOGLE_API_KEY=example-key
         """
         
-        with patch('pathlib.Path.exists', side_effect=[False, True]), \
-             patch('builtins.open', mock_open(read_data=example_content)), \
-             patch.dict(os.environ, {}, clear=True), \
-             patch('cli_code.config.log') as mock_logger:
+        # Store original env vars
+        original_value = os.environ.get('CLI_CODE_GOOGLE_API_KEY')
+        
+        try:
+            if 'CLI_CODE_GOOGLE_API_KEY' in os.environ:
+                del os.environ['CLI_CODE_GOOGLE_API_KEY']
             
-            config_instance._load_dotenv()
-            
-            # Verify environment variables were loaded from example file
-            assert os.environ.get('CLI_CODE_GOOGLE_API_KEY') == 'example-key'
-            
-            # Verify appropriate logging
-            mock_logger.info.assert_called_once()
-            assert "Loading environment from" in mock_logger.info.call_args[0][0]
+            with patch('pathlib.Path.exists', side_effect=[False, True]), \
+                 patch('builtins.open', mock_open(read_data=example_content)), \
+                 patch('cli_code.config.log') as mock_logger:
+                
+                config_instance._load_dotenv()
+                
+                # Verify environment variables were loaded from example file
+                assert os.environ.get('CLI_CODE_GOOGLE_API_KEY') == 'example-key'
+                
+                # Verify appropriate logging
+                mock_logger.info.assert_called_once()
+                assert "Loading environment from" in mock_logger.info.call_args[0][0]
+        finally:
+            # Restore environment
+            if original_value is not None:
+                os.environ['CLI_CODE_GOOGLE_API_KEY'] = original_value
+            elif 'CLI_CODE_GOOGLE_API_KEY' in os.environ:
+                del os.environ['CLI_CODE_GOOGLE_API_KEY']
     
+    @pytest.mark.timeout(5)  # Add timeout
     def test_load_dotenv_with_quoted_values(self, config_instance):
         """Test _load_dotenv with quoted values in .env file."""
         env_content = """
@@ -447,16 +480,36 @@ class TestDotEnvEdgeCases:
         CLI_CODE_OLLAMA_API_URL='quoted-url'
         """
         
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=env_content)), \
-             patch.dict(os.environ, {}, clear=True):
+        # Store original env vars
+        original_env = {}
+        keys_to_check = ['CLI_CODE_GOOGLE_API_KEY', 'CLI_CODE_OLLAMA_API_URL']
+        for key in keys_to_check:
+            if key in os.environ:
+                original_env[key] = os.environ[key]
+        
+        try:
+            # Clear test env vars
+            for key in keys_to_check:
+                if key in os.environ:
+                    del os.environ[key]
             
-            config_instance._load_dotenv()
-            
-            # Verify environment variables were loaded with quotes removed
-            assert os.environ.get('CLI_CODE_GOOGLE_API_KEY') == 'quoted-key-value'
-            assert os.environ.get('CLI_CODE_OLLAMA_API_URL') == 'quoted-url'
+            with patch('pathlib.Path.exists', return_value=True), \
+                 patch('builtins.open', mock_open(read_data=env_content)):
+                
+                config_instance._load_dotenv()
+                
+                # Verify environment variables were loaded with quotes removed
+                assert os.environ.get('CLI_CODE_GOOGLE_API_KEY') == 'quoted-key-value'
+                assert os.environ.get('CLI_CODE_OLLAMA_API_URL') == 'quoted-url'
+        finally:
+            # Restore environment
+            for key in keys_to_check:
+                if key in original_env:
+                    os.environ[key] = original_env[key]
+                elif key in os.environ:
+                    del os.environ[key]
     
+    @pytest.mark.timeout(5)  # Add timeout
     def test_load_dotenv_empty_or_invalid_lines(self, config_instance):
         """Test _load_dotenv with empty or invalid lines in .env file."""
         env_content = """
@@ -468,17 +521,36 @@ class TestDotEnvEdgeCases:
         CLI_CODE_MISSING_VALUE=
         """
         
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=env_content)), \
-             patch.dict(os.environ, {}, clear=True), \
-             patch('cli_code.config.log') as mock_logger:
+        # Store original env vars
+        original_env = {}
+        keys_to_check = ['CLI_CODE_VALID_KEY', 'CLI_CODE_MISSING_VALUE', 'INVALID_LINE_NO_PREFIX']
+        for key in keys_to_check:
+            if key in os.environ:
+                original_env[key] = os.environ[key]
+        
+        try:
+            # Clear test env vars
+            for key in keys_to_check:
+                if key in os.environ:
+                    del os.environ[key]
             
-            config_instance._load_dotenv()
-            
-            # Verify only valid environment variables were loaded
-            assert os.environ.get('CLI_CODE_VALID_KEY') == 'valid-value'
-            assert os.environ.get('CLI_CODE_MISSING_VALUE') == ''
-            assert 'INVALID_LINE_NO_PREFIX' not in os.environ
+            with patch('pathlib.Path.exists', return_value=True), \
+                 patch('builtins.open', mock_open(read_data=env_content)), \
+                 patch('cli_code.config.log') as mock_logger:
+                
+                config_instance._load_dotenv()
+                
+                # Verify only valid environment variables were loaded
+                assert os.environ.get('CLI_CODE_VALID_KEY') == 'valid-value'
+                assert os.environ.get('CLI_CODE_MISSING_VALUE') == ''
+                assert 'INVALID_LINE_NO_PREFIX' not in os.environ
+        finally:
+            # Restore environment
+            for key in keys_to_check:
+                if key in original_env:
+                    os.environ[key] = original_env[key]
+                elif key in os.environ:
+                    del os.environ[key]
 
 
 # Additional tests for remaining uncovered sections
@@ -703,23 +775,49 @@ class TestAdvancedConfigFunctions:
             # Verify config was not saved
             mock_save.assert_not_called()
     
+    @pytest.mark.timeout(5)  # Add timeout to prevent hanging
     def test_get_credential_for_gemini_from_env(self, config_instance):
         """Test get_credential for gemini with environment variable override."""
         # Set up config
         config_instance.config = {'google_api_key': 'config-key'}
         
-        # Test with environment variable
-        with patch.dict(os.environ, {'CLI_CODE_GOOGLE_API_KEY': 'env-key'}):
+        # Store original env var
+        original_value = os.environ.get('CLI_CODE_GOOGLE_API_KEY')
+        
+        try:
+            # Set test env var
+            os.environ['CLI_CODE_GOOGLE_API_KEY'] = 'env-key'
+            
+            # Test with environment variable
             assert config_instance.get_credential('gemini') == 'env-key'
+        finally:
+            # Restore environment
+            if original_value is not None:
+                os.environ['CLI_CODE_GOOGLE_API_KEY'] = original_value
+            else:
+                os.environ.pop('CLI_CODE_GOOGLE_API_KEY', None)
     
+    @pytest.mark.timeout(5)  # Add timeout to prevent hanging
     def test_get_credential_for_ollama_from_env(self, config_instance):
         """Test get_credential for ollama with environment variable override."""
         # Set up config
         config_instance.config = {'ollama_api_url': 'config-url'}
         
-        # Test with environment variable
-        with patch.dict(os.environ, {'CLI_CODE_OLLAMA_API_URL': 'env-url'}):
+        # Store original env var
+        original_value = os.environ.get('CLI_CODE_OLLAMA_API_URL')
+        
+        try:
+            # Set test env var
+            os.environ['CLI_CODE_OLLAMA_API_URL'] = 'env-url'
+            
+            # Test with environment variable
             assert config_instance.get_credential('ollama') == 'env-url'
+        finally:
+            # Restore environment
+            if original_value is not None:
+                os.environ['CLI_CODE_OLLAMA_API_URL'] = original_value
+            else:
+                os.environ.pop('CLI_CODE_OLLAMA_API_URL', None)
     
     def test_get_credential_for_unknown_provider(self, config_instance):
         """Test get_credential with unknown provider."""
