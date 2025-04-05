@@ -411,7 +411,7 @@ def show_help(provider: str):
       - Create or modify projects with the AI's help
       - Run commands (with your approval)
     """
-    return Markdown(help_text)
+    console.print(Markdown(help_text))  # Print the help text instead of returning it
 
 
 if __name__ == "__main__":
