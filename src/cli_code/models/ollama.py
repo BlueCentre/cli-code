@@ -102,11 +102,11 @@ class OllamaModel(AbstractModelAgent):
         1. Content of .rules/*.md files if the directory exists
         2. Content of README.md in the root directory if it exists
         3. Output of 'ls' command (fallback to original behavior)
-        
+
         Returns:
             A string containing the initial context.
         """
-        
+
         # Check if .rules directory exists
         if os.path.isdir(".rules"):
             log.info("Found .rules directory. Reading *.md files for initial context.")
@@ -124,14 +124,14 @@ class OllamaModel(AbstractModelAgent):
                                     context_content.append(f"# Content from {file_basename}\n\n{content}")
                         except Exception as read_err:
                             log.error(f"Error reading rules file '{md_file}': {read_err}", exc_info=True)
-                    
+
                     if context_content:
                         combined_content = "\n\n".join(context_content)
                         self.console.print("[dim]Context initialized from .rules/*.md files.[/dim]")
                         return f"Project rules and guidelines:\n```markdown\n{combined_content}\n```\n"
             except Exception as rules_err:
                 log.error(f"Error processing .rules directory: {rules_err}", exc_info=True)
-        
+
         # Check if README.md exists in the root
         if os.path.isfile("README.md"):
             log.info("Using README.md for initial context.")
@@ -143,7 +143,7 @@ class OllamaModel(AbstractModelAgent):
                     return f"Project README:\n```markdown\n{readme_content}\n```\n"
             except Exception as readme_err:
                 log.error(f"Error reading README.md: {readme_err}", exc_info=True)
-        
+
         # Fall back to ls output (original behavior)
         log.info("Falling back to 'ls' output for initial context.")
         try:
@@ -179,10 +179,10 @@ class OllamaModel(AbstractModelAgent):
 
         # === Step 1: Get Initial Context ===
         orientation_context = self._get_initial_context()
-        
+
         # Combine orientation with the actual user request
         full_prompt = f"{orientation_context}\nUser request: {prompt}"
-        
+
         # Add the enriched prompt to history
         self.add_to_history({"role": "user", "content": full_prompt})
         log.debug(f"Prepared full prompt:\n---\n{full_prompt}\n---")
@@ -236,21 +236,23 @@ class OllamaModel(AbstractModelAgent):
                                 summary = tool_args.get("summary", "Task completed successfully.")
                                 final_response = summary
                                 log.info(f"Task completion tool called with summary: {summary}")
-                                
+
                                 # Add the response to history for context
-                                self.add_to_history({
-                                    "role": "tool",
-                                    "tool_call_id": tool_call_id,
-                                    "name": tool_name,
-                                    "content": summary
-                                })
-                                
+                                self.add_to_history(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tool_call_id,
+                                        "name": tool_name,
+                                        "content": summary,
+                                    }
+                                )
+
                                 # Return the summary directly instead of the JSON
                                 return final_response
                             except json.JSONDecodeError:
                                 log.error(f"Failed to decode JSON for task_complete: {tool_args_str}")
                                 continue
-                        
+
                         tool_result = ""
                         tool_error = False
                         user_rejected = False  # Flag for confirmation
@@ -321,13 +323,20 @@ class OllamaModel(AbstractModelAgent):
                                         # --- Generalized Check for Required Arguments ---
                                         declaration = tool_instance.get_function_declaration()
                                         required_params = []
-                                        if declaration and declaration.parameters and declaration.parameters._pb and MessageToDict:
+                                        if (
+                                            declaration
+                                            and declaration.parameters
+                                            and declaration.parameters._pb
+                                            and MessageToDict
+                                        ):
                                             try:
                                                 # Convert the protobuf Schema to a dict to check 'required'
                                                 parameters_dict = MessageToDict(declaration.parameters._pb)
-                                                required_params = parameters_dict.get('required', [])
+                                                required_params = parameters_dict.get("required", [])
                                             except Exception as conversion_err:
-                                                log.warning(f"Failed to convert parameters schema to dict for checking required args for tool '{tool_name}': {conversion_err}")
+                                                log.warning(
+                                                    f"Failed to convert parameters schema to dict for checking required args for tool '{tool_name}': {conversion_err}"
+                                                )
                                                 # Proceed without check if conversion fails? Or raise?
                                                 # For now, log warning and assume no required params checked.
 
@@ -337,8 +346,12 @@ class OllamaModel(AbstractModelAgent):
                                                 missing_args.append(param)
 
                                         if missing_args:
-                                            log.error(f"Ollama requested {tool_name} but missing required args: {missing_args}. Provided: {tool_args}")
-                                            raise ValueError(f"Missing required arguments for tool '{tool_name}': {', '.join(missing_args)}")
+                                            log.error(
+                                                f"Ollama requested {tool_name} but missing required args: {missing_args}. Provided: {tool_args}"
+                                            )
+                                            raise ValueError(
+                                                f"Missing required arguments for tool '{tool_name}': {', '.join(missing_args)}"
+                                            )
                                         # --- End Check ---
 
                                         with self.console.status(

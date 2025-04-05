@@ -71,7 +71,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         # --- Tool Definition ---
         self.function_declarations = self._create_tool_definitions()
-        self.gemini_tools = {"function_declarations": self.function_declarations} if self.function_declarations else None
+        self.gemini_tools = (
+            {"function_declarations": self.function_declarations} if self.function_declarations else None
+        )
         # ---
 
         # --- System Prompt (Native Functions & Planning) ---
@@ -624,11 +626,11 @@ The user's first message will contain initial directory context and their reques
         1. Content of .rules/*.md files if the directory exists
         2. Content of README.md in the root directory if it exists
         3. Output of 'ls' command (fallback to original behavior)
-        
+
         Returns:
             A string containing the initial context.
         """
-        
+
         # Check if .rules directory exists
         if os.path.isdir(".rules"):
             log.info("Found .rules directory. Reading *.md files for initial context.")
@@ -646,14 +648,14 @@ The user's first message will contain initial directory context and their reques
                                     context_content.append(f"# Content from {file_basename}\n\n{content}")
                         except Exception as read_err:
                             log.error(f"Error reading rules file '{md_file}': {read_err}", exc_info=True)
-                    
+
                     if context_content:
                         combined_content = "\n\n".join(context_content)
                         self.console.print("[dim]Context initialized from .rules/*.md files.[/dim]")
                         return f"Project rules and guidelines:\n```markdown\n{combined_content}\n```\n"
             except Exception as rules_err:
                 log.error(f"Error processing .rules directory: {rules_err}", exc_info=True)
-        
+
         # Check if README.md exists in the root
         if os.path.isfile("README.md"):
             log.info("Using README.md for initial context.")
@@ -665,7 +667,7 @@ The user's first message will contain initial directory context and their reques
                     return f"Project README:\n```markdown\n{readme_content}\n```\n"
             except Exception as readme_err:
                 log.error(f"Error reading README.md: {readme_err}", exc_info=True)
-        
+
         # Fall back to ls output (original behavior)
         log.info("Falling back to 'ls' output for initial context.")
         try:
@@ -737,14 +739,14 @@ The user's first message will contain initial directory context and their reques
         for tool_name, tool_instance in AVAILABLE_TOOLS.items():
             desc = getattr(tool_instance, "description", "No description")
             # Keep only the first line or a short summary
-            if '\n' in desc:
-                desc = desc.split('\n')[0].strip()
+            if "\n" in desc:
+                desc = desc.split("\n")[0].strip()
             # Format as bullet point with tool name and description
             tool_descriptions.append(f"  • {tool_name}: {desc}")
-        
+
         # Sort the tools alphabetically
         tool_descriptions.sort()
-        
+
         # Format the help text to be comprehensive but without Rich markup
         help_text = f"""
 Help
@@ -772,5 +774,5 @@ Tips:
 
 For more information, visit: https://github.com/BlueCentre/cli-code
 """
-        
+
         return help_text

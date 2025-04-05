@@ -312,7 +312,9 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
         console.print(
             f"Please run [bold]'cli-code setup --provider={provider} YOUR_{credential_type.upper().replace(' ', '_')}'[/bold] first."
         )
-        console.print(f"Or set the environment variable [bold]CLI_CODE_{provider.upper()}_API_{'KEY' if provider == 'gemini' else 'URL'}[/bold]")
+        console.print(
+            f"Or set the environment variable [bold]CLI_CODE_{provider.upper()}_API_{'KEY' if provider == 'gemini' else 'URL'}[/bold]"
+        )
         return
 
     try:
@@ -332,7 +334,7 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
             console.print(f"[bold red]Error:[/bold red] Unknown provider '{provider}'. Cannot initialize.")
             log.error(f"Attempted to start session with unknown provider: {provider}")
             return
-        
+
         # Add information about context initialization (for all successful provider initializations)
         if os.path.isdir(".rules"):
             md_files = [f for f in os.listdir(".rules") if f.endswith(".md")]
@@ -341,7 +343,9 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
                 file_str = "file" if file_count == 1 else "files"
                 console.print(f"[dim]Context will be initialized from {file_count} .rules/*.md {file_str}.[/dim]")
             else:
-                console.print("[dim]Context will be initialized from directory listing (ls) - .rules directory exists but contains no .md files.[/dim]")
+                console.print(
+                    "[dim]Context will be initialized from directory listing (ls) - .rules directory exists but contains no .md files.[/dim]"
+                )
         elif os.path.isfile("README.md"):
             console.print("[dim]Context will be initialized from README.md.[/dim]")
         else:
@@ -395,7 +399,7 @@ def show_help(provider: str):
     # Get tool names for the help text
     tool_names = sorted(AVAILABLE_TOOLS.keys())
     tools_list = "\n  • " + "\n  • ".join(tool_names)
-    
+
     # Simple style matching the left screenshot
     help_text = f"""
 Help

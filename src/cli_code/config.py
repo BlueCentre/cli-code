@@ -18,15 +18,15 @@ class Config:
         self.config_dir = Path.home() / ".config" / "cli-code-agent"
         self.config_file = self.config_dir / "config.yaml"
         self.config = {}
-        
+
         # First load environment variables from .env file if it exists
         self._load_dotenv()
-        
+
         try:
             self._ensure_config_exists()
             self.config = self._load_config()
             self._migrate_old_keys()
-            
+
             # Override config with environment variables if they exist
             self._apply_env_vars()
         except Exception as e:
@@ -36,7 +36,7 @@ class Config:
         """Load environment variables from .env file if it exists."""
         env_file = Path(".env")
         env_example_file = Path(".env.example")
-        
+
         if env_file.exists():
             try:
                 log.info(f"Loading environment variables from {env_file.resolve()}")
@@ -46,24 +46,25 @@ class Config:
                         line = line.strip()
                         if not line or line.startswith("#"):
                             continue
-                        
+
                         if "=" in line:
                             key, value = line.split("=", 1)
                             key = key.strip()
                             value = value.strip()
-                            
+
                             # Remove quotes if present
-                            if (value.startswith('"') and value.endswith('"')) or \
-                               (value.startswith("'") and value.endswith("'")):
+                            if (value.startswith('"') and value.endswith('"')) or (
+                                value.startswith("'") and value.endswith("'")
+                            ):
                                 value = value[1:-1]
-                                
+
                             if key and value:
                                 os.environ[key] = value
                                 # Only add to list if it's a CLI_CODE variable to avoid logging sensitive data
                                 if key.startswith("CLI_CODE_"):
                                     log_value = "****" if "KEY" in key or "TOKEN" in key else value
                                     loaded_vars.append(f"{key}={log_value}")
-                
+
                 if loaded_vars:
                     log.info(f"Loaded {len(loaded_vars)} CLI_CODE environment variables: {', '.join(loaded_vars)}")
                 else:
@@ -74,7 +75,7 @@ class Config:
             log.info(f".env file not found, but .env.example exists. Consider creating a .env file from the example.")
         else:
             log.debug("No .env or .env.example file found in current directory")
-                
+
     def _apply_env_vars(self):
         """Apply environment variables to override config settings."""
         # Map of environment variable names to config keys
@@ -83,9 +84,9 @@ class Config:
             "CLI_CODE_OLLAMA_API_URL": "ollama_api_url",
             "CLI_CODE_DEFAULT_PROVIDER": "default_provider",
             "CLI_CODE_DEFAULT_MODEL": "default_model",
-            "CLI_CODE_OLLAMA_DEFAULT_MODEL": "ollama_default_model"
+            "CLI_CODE_OLLAMA_DEFAULT_MODEL": "ollama_default_model",
         }
-        
+
         for env_var, config_key in env_var_mapping.items():
             if env_var in os.environ:
                 value = os.environ[env_var]
@@ -93,7 +94,7 @@ class Config:
                 log_value = "****" if "KEY" in env_var or "TOKEN" in env_var else value
                 log.info(f"Using environment variable {env_var}={log_value} to override config key '{config_key}'")
                 self.config[config_key] = value
-                
+
         # Apply and save if environment variables were found
         if any(env_var in os.environ for env_var in env_var_mapping):
             self._save_config()
@@ -162,31 +163,31 @@ class Config:
             del self.config["api_keys"]
             self._save_config()
             log.info("Finished migrating 'api_keys'.")
-        
+
         # Check for old config paths and migrate if needed
         self._migrate_old_config_paths()
-    
+
     def _migrate_old_config_paths(self):
         """Check for and migrate config from older versions with different path names."""
         old_paths = [
             Path.home() / ".config" / "gemini-code" / "config.yaml",
-            Path.home() / ".config" / "cli-code" / "config.yaml"
+            Path.home() / ".config" / "cli-code" / "config.yaml",
         ]
-        
+
         for old_path in old_paths:
             if old_path.exists() and not self.config_file.exists():
                 log.info(f"Found old config at {old_path}. Migrating to {self.config_file}...")
                 try:
                     # Ensure new directory exists
                     self.config_dir.mkdir(parents=True, exist_ok=True)
-                    
+
                     # Read old config
                     with open(old_path, "r") as old_file:
                         old_config = yaml.safe_load(old_file) or {}
-                    
+
                     # Update our config with old values
                     self.config.update(old_config)
-                    
+
                     # Save to new location
                     self._save_config()
                     log.info(f"Successfully migrated config from {old_path} to {self.config_file}")

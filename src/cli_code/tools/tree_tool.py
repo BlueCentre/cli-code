@@ -47,7 +47,7 @@ class TreeTool(BaseTool):
                 except ValueError:
                     log.warning(f"Invalid depth value '{depth}', using default {DEFAULT_TREE_DEPTH}")
                     depth = DEFAULT_TREE_DEPTH
-                    
+
             # Clamp depth to be within reasonable limits
             depth_limit = max(1, min(depth, MAX_TREE_DEPTH))
 
@@ -110,62 +110,62 @@ class TreeTool(BaseTool):
             except Exception as fallback_error:
                 log.exception(f"Fallback tree implementation also failed: {fallback_error}")
                 return f"An unexpected error occurred while displaying directory structure: {str(e)}"
-                
+
     def _fallback_tree_implementation(self, path: str = ".", max_depth: int = DEFAULT_TREE_DEPTH) -> str:
         """
-        A simple Python implementation of the tree command as a fallback 
+        A simple Python implementation of the tree command as a fallback
         when the system tree command is not available.
         """
         log.info(f"Using Python-based tree fallback for path '{path}' with depth {max_depth}")
-        
+
         try:
             result = []
             start_path = Path(path).resolve()
-            
+
             if not start_path.exists():
                 return f"Error: Path '{path}' does not exist."
-            
+
             if not start_path.is_dir():
                 return f"Error: Path '{path}' is not a directory."
-                
+
             # Add the root directory to the output
             result.append(f".")
-            
+
             # Walk the directory tree
             for root, dirs, files in os.walk(start_path):
                 # Calculate current depth by counting path separators
                 current_depth = len(Path(root).relative_to(start_path).parts)
-                
+
                 # Stop if we've reached max depth
                 if current_depth >= max_depth:
                     dirs.clear()  # Don't go deeper
                     continue
-                    
+
                 # Sort directories and files for consistent output
                 dirs.sort()
                 files.sort()
-                
+
                 # Calculate prefix for current level
                 indent = "│   " * current_depth
-                
+
                 # Add directories
                 for i, dirname in enumerate(dirs):
-                    is_last = (i == len(dirs) - 1 and not files)
+                    is_last = i == len(dirs) - 1 and not files
                     prefix = "└── " if is_last else "├── "
                     result.append(f"{indent}{prefix}{dirname}/")
-                
+
                 # Add files
                 for i, filename in enumerate(files):
-                    is_last = (i == len(files) - 1)
+                    is_last = i == len(files) - 1
                     prefix = "└── " if is_last else "├── "
                     result.append(f"{indent}{prefix}{filename}")
-            
+
             # Limit output size
             if len(result) > 200:
                 result = result[:200] + ["... (output truncated)"]
-                
+
             return "\n".join(result)
-            
+
         except Exception as e:
             log.exception(f"Error in fallback tree implementation: {e}")
             return f"Error generating directory tree: {str(e)}"
