@@ -2,9 +2,28 @@
 
 [![Python CI](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml/badge.svg)](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml)
 
-A powerful AI coding assistant for your terminal, powered by multiple LLM providers (starting with Gemini).
+An early work-in-progress AI coding assistant for your terminal, powered by multiple LLM providers (starting with Gemini and Ollama).
 
-More information [here](https://blossom-tarsier-434.notion.site/Gemini-Code-1c6c13716ff180db86a0c7f4b2da13ab?pvs=4)
+**Table of Contents**
+
+- [Features](#features)
+- [Installation](#installation)
+  - [Method 1: Install from PyPI (Recommended)](#method-1-install-from-pypi-recommended)
+  - [Method 2: Install from Source](#method-2-install-from-source)
+- [Setup](#setup)
+  - [Alternative Setup Using Environment Variables](#alternative-setup-using-environment-variables)
+  - [Configuration File](#configuration-file)
+- [Usage](#usage)
+- [Interactive Commands](#interactive-commands)
+- [How It Works](#how-it-works)
+  - [Tool Usage](#tool-usage)
+- [Advanced Features](#advanced-features)
+  - [Custom Context with `.rules`](#custom-context-with-rules)
+- [Development](#development)
+- [Recent Changes](#recent-changes-v0169)
+- [Known Issues](#known-issues)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -85,6 +104,31 @@ You can also configure CLI Code using environment variables, either by setting t
 
 The environment variables take precedence over saved configuration, making this approach useful for temporary settings or project-specific configurations.
 
+## Configuration File
+
+CLI Code uses a configuration file located at `~/.config/cli-code-agent/config.yaml` to store settings like API keys/URLs, default providers/models, and other preferences. The file is created with defaults the first time you run the setup or the application.
+
+You can edit this file directly. Here's an example structure:
+
+```yaml
+# ~/.config/cli-code-agent/config.yaml
+
+google_api_key: YOUR_GEMINI_API_KEY_HERE # Or null if using environment variable
+ollama_api_url: http://localhost:11434/v1 # Or null if not using Ollama/using env var
+
+default_provider: gemini # Can be 'gemini' or 'ollama'
+default_model: models/gemini-2.5-pro-exp-03-25 # Your preferred default Gemini model
+ollama_default_model: llama3.2 # Your preferred default Ollama model
+
+settings:
+  max_tokens: 1000000 # Maximum token limit for models
+  temperature: 0.5 # Model generation creativity (0.0 - 1.0)
+  token_warning_threshold: 800000 # Display a warning if context approaches this limit
+  auto_compact_threshold: 950000 # Attempt to compact history if context exceeds this
+```
+
+**Note:** Environment variables (like `CLI_CODE_GOOGLE_API_KEY`) will override the values set in this file.
+
 ## Usage
 
 ```bash
@@ -122,108 +166,32 @@ During an interactive session, you can use these commands:
 
 Unlike direct command-line tools, the CLI Code assistant uses tools automatically to help answer your questions. For example:
 
-1. You ask: "What files are in the current directory?"
-2. The assistant (using the configured LLM provider) determines the `ls` tool is needed.
-3. The assistant calls the `ls` tool function.
-4. The tool executes locally and returns the results.
-5. The assistant formulates a response based on the tool results and its LLM capabilities.
+**Example Interaction:**
 
-This approach makes the interaction more natural.
+```
+You: What python files are in the src/cli_code directory?
+
+Assistant:
+[tool_code]
+print(default_api.list_dir(relative_workspace_path='src/cli_code'))
+[/tool_code]
+[tool_output]
+{
+  "list_dir_response": {
+    "results": ["Contents of directory:\n\n[file] main.py ...\n[file] config.py ...\n..."]
+  }
+}
+[/tool_output]
+Okay, I found the following Python files in `src/cli_code/`:
+- `main.py`
+- `config.py`
+- `__init__.py`
+- `utils.py`
+
+There are also `models/` and `tools/` subdirectories containing more Python files.
+
+This approach makes the interaction more natural, as you don't need to know the specific tool names or commands.
 
 ## Advanced Features
 
 ### Custom Context with `.rules`
-
-CLI Code now supports a hierarchical approach to initializing context, allowing you to customize what information the assistant has access to at the start of each session:
-
-1. Create a `.rules` directory in your project
-2. Add Markdown (`.md`) files with project guidelines, structure, and conventions
-3. The assistant will use these files as initial context instead of directory listings
-
-For detailed instructions and best practices, see [Context Rules Documentation](docs/context_rules.md).
-
-## Development
-
-This project uses Ruff for linting and formatting. Configuration is managed in the `.ruff.toml` file. Please ensure your contributions adhere to the defined style.
-
-```bash
-# Check linting
-ruff check .
-
-# Apply formatting
-ruff format .
-```
-
-For information about the release process, see [Release Documentation](docs/releases.md).
-
-This project is under active development.
-
-### Recent Changes in v0.1.69
-
-- Added hierarchical context management with support for `.rules/*.md` files and README.md
-- Added test_runner tool to execute automated tests (e.g., pytest)
-- Fixed syntax issues in the tool definitions
-- Improved error handling in tool execution
-- Updated status displays during tool execution with more informative messages
-- Added additional utility tools (directory_tools, quality_tools, task_complete_tool, summarizer_tool)
-
-### Recent Changes in v0.1.21
-
-- Implemented native Gemini function calling for much more reliable tool usage
-- Rewritten the tool execution system to use Gemini's built-in function calling capability
-- Enhanced the edit tool to better handle file creation and content updating
-- Updated system prompt to encourage function calls instead of text-based tool usage
-- Fixed issues with Gemini not actively creating or modifying files
-- Simplified the BaseTool interface to support both legacy and function call modes
-
-### Recent Changes in v0.1.20
-
-- Fixed error with Flask version check in example code
-- Improved error handling in system prompt example code
-
-### Recent Changes in v0.1.19
-
-- Improved system prompt to encourage more active tool usage
-- Added thinking/planning phase to help Gemini reason about solutions
-- Enhanced response format to prioritize creating and modifying files over printing code
-- Filtered out thinking stages from final output to keep responses clean
-- Made Gemini more proactive as a coding partner, not just an advisor
-
-### Recent Changes in v0.1.18
-
-- Updated default model to Gemini 2.5 Pro Experimental (models/gemini-2.5-pro-exp-03-25)
-- Updated system prompts to reference Gemini 2.5 Pro
-- Improved model usage and documentation
-
-### Recent Changes in v0.1.17
-
-- Added `list-models` command to show all available Gemini models
-- Improved error handling for models that don't exist or require permission
-- Added model initialization test to verify model availability
-- Updated help documentation with new commands
-
-### Recent Changes in v0.1.16
-
-- Fixed file creation issues: The CLI now properly handles creating files with content
-- Enhanced tool pattern matching: Added support for more formats that Gemini might use
-- Improved edit tool handling: Better handling of missing arguments when creating files
-- Added special case for natural language edit commands (e.g., "edit filename with content: ...")
-
-### Recent Changes in v0.1.15
-
-- Fixed tool execution issues: The CLI now properly processes tool calls and executes Bash commands correctly
-- Fixed argument parsing for Bash tool: Commands are now passed as a single argument to avoid parsing issues
-- Improved error handling in tools: Better handling of failures and timeouts
-- Updated model name throughout the codebase to use `gemini-1.5-pro` consistently
-
-### Known Issues
-
-- Configuration path changed from `~/.config/gemini-code` to `~/.config/cli-code`. You will need to run `cli-code-agent setup --provider=gemini YOUR_KEY` again after updating.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests on the [GitHub repository](https://github.com/BlueCentre/cli-code).
-
-## License
-
-MIT
