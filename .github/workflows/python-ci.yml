@@ -3,6 +3,7 @@ name: Python CI
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]  # Trigger on tags starting with v
   pull_request:
     branches: [ "main" ]
 
@@ -52,4 +53,33 @@ jobs:
         pytest test_dir/
 
     - name: Build package
-      run: python -m build 
+      run: python -m build
+      
+    - name: Store built packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+        retention-days: 7
+        
+  publish:
+    name: Publish to PyPI
+    needs: build-and-test
+    # Only publish when a tag is pushed
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cli-code-agent
+    permissions:
+      id-token: write  # Required for PyPI publishing with trusted publishing
+      
+    steps:
+    - name: Download built packages
+      uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+        
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1 
