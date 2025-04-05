@@ -731,38 +731,46 @@ The user's first message will contain initial directory context and their reques
 
     # --- Help Text Generator ---
     def _get_help_text(self) -> str:
-        """Generates help text for the command line interface."""
+        """Generates comprehensive help text for the command line interface."""
         # Get tool descriptions for the help text
         tool_descriptions = []
         for tool_name, tool_instance in AVAILABLE_TOOLS.items():
             desc = getattr(tool_instance, "description", "No description")
             # Keep only the first line or a short summary
             if '\n' in desc:
-                desc = desc.split('\n')[0]
-            # Format as bullet point with tool name
-            tool_descriptions.append(f"  • {tool_name}")
+                desc = desc.split('\n')[0].strip()
+            # Format as bullet point with tool name and description
+            tool_descriptions.append(f"  • {tool_name}: {desc}")
         
         # Sort the tools alphabetically
         tool_descriptions.sort()
         
-        # Format the help text to match the left screenshot
-        help_text = """
+        # Format the help text to be comprehensive but without Rich markup
+        help_text = f"""
 Help
 
 Interactive Commands:
-  /exit
-  /help
+  /exit     - Exit the CLI tool
+  /help     - Display this help message
 
 CLI Commands:
-  gemini setup KEY
-  gemini list-models
-  gemini set-default-model NAME
-  gemini --model NAME
+  gemini setup KEY                - Configure the Gemini API key
+  gemini list-models              - List available Gemini models
+  gemini set-default-model NAME   - Set the default Gemini model
+  gemini --model NAME             - Use a specific Gemini model
 
-Workflow Hint: Analyze → Plan → Execute → Verify → Summarize
+Workflow: Analyze → Plan → Execute → Verify → Summarize
 
 Available Tools:
-{tools}
-""".format(tools="\n".join(tool_descriptions))
+{chr(10).join(tool_descriptions)}
+
+Tips:
+  • You can use Ctrl+C to cancel any operation
+  • Tools like 'edit' and 'create_file' will request confirmation before modifying files
+  • Use 'view' to examine file contents before modifying them
+  • Use 'task_complete' to signal completion of a multi-step operation
+
+For more information, visit: https://github.com/BlueCentre/cli-code
+"""
         
         return help_text
