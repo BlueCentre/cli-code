@@ -392,26 +392,29 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
 
 def show_help(provider: str):
     """Show available commands for the interactive mode."""
-    help_text = f"""
-    [bold blue]CLI Code Agent Help[/bold blue]
+    # Get tool names for the help text
+    tool_names = sorted(AVAILABLE_TOOLS.keys())
+    tools_list = "\n  • " + "\n  • ".join(tool_names)
     
-    [bold yellow]Chat Commands:[/bold yellow]
-      /exit    - Exit the chat session
-      /help    - Show this help message
-      
-    [bold yellow]Configuration Commands:[/bold yellow] (in terminal)
-      cli-code-agent setup --provider={provider} <api_key_or_url>     - Configure API key/URL
-      cli-code-agent list-models --provider={provider}                - List available models
-      cli-code-agent set-default-model --provider={provider} <model>  - Set default model
-      
-    [bold yellow]Tips:[/bold yellow]
-      - Ask about files or code in your current directory
-      - Request file operations (view/edit/create) 
-      - Ask for explanations of code
-      - Create or modify projects with the AI's help
-      - Run commands (with your approval)
-    """
-    console.print(Markdown(help_text))  # Print the help text instead of returning it
+    # Simple style matching the left screenshot
+    help_text = f"""
+Help
+
+Interactive Commands:
+  /exit
+  /help
+
+CLI Commands:
+  gemini setup KEY
+  gemini list-models
+  gemini set-default-model NAME
+  gemini --model NAME
+
+Workflow Hint: Analyze → Plan → Execute → Verify → Summarize
+
+Available Tools:{tools_list}
+"""
+    console.print(help_text)
 
 
 if __name__ == "__main__":
