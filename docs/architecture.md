@@ -245,14 +245,24 @@ The CLI Code Assistant implements a context management system to maintain cohere
 Each Model Agent instance (e.g., GeminiModel, OllamaModel) maintains its own persistent conversation history throughout the session:
 
 ```mermaid
-graph TD
-    User-->Agent
-    Agent-->History
-    Agent-->LLM
-    LLM-->Agent
-    Agent-->Tools
-    Tools-->Agent
-    Agent-->User
+sequenceDiagram
+    User->>Agent: Send prompt
+    Agent->>History: Add user prompt
+    Agent->>History: Add context (ls output)
+    Agent->>LLM: Send history + tools
+    LLM->>Agent: Response or tool call
+    Agent->>History: Add model response
+    
+    alt Tool Call Execution
+        Agent->>Tools: Execute tool
+        Tools->>Agent: Tool result
+        Agent->>History: Add tool result
+        Agent->>LLM: Send updated history
+        LLM->>Agent: Next response
+        Agent->>History: Add response
+    end
+    
+    Agent->>User: Final response
 ```
 
 The history structure includes:
@@ -301,16 +311,18 @@ The following improvements to context management are planned:
 #### Token-Aware Context Management
 
 ```mermaid
-graph TD
-    A-->B
-    B-->C
-    C-->|Yes|D
-    C-->|No|E
-    D-->F
-    F-->|Window|G
-    F-->|Summarize|H
-    G-->E
-    H-->E
+flowchart TD
+    A[New Content] --> B[Token Counter]
+    B --> C{Exceeds Limit?}
+    C -->|Yes| D[Trim Context]
+    C -->|No| E[Add to Context]
+    
+    D --> F{Select Strategy}
+    F -->|Window| G[Remove Oldest]
+    F -->|Summarize| H[Summarize Older]
+    
+    G --> E
+    H --> E
 ```
 
 1. **Token Counting**: Implement accurate token counting for both providers:
