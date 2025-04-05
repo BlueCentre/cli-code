@@ -157,38 +157,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 logging.info(f"Handled command: {command}")
                 return None  # Or return specific help text
 
-        # === Step 1: Mandatory Orientation ===
-        orientation_context = ""
-        ls_result = None  # Initialize to None
-        try:
-            logging.info("Performing mandatory orientation (ls).")
-            ls_tool = get_tool("ls")
-            if ls_tool:
-                # Clear args just in case, assuming ls takes none for basic root listing
-                ls_result = ls_tool.execute()
-                # === START DEBUG LOGGING ===
-                log.debug(f"LsTool raw result:\n---\n{ls_result}\n---")
-                # === END DEBUG LOGGING ===
-                log.info(
-                    f"Orientation ls result length: {len(ls_result) if ls_result else 0}"
-                )  # Changed from logging full result
-                self.console.print("[dim]Directory context acquired via 'ls'.[/dim]")
-                orientation_context = f"Current directory contents (from initial `ls`):\n```\n{ls_result}\n```\n"
-            else:
-                log.error("CRITICAL: Could not find 'ls' tool for mandatory orientation.")
-                # Stop execution if ls tool is missing - fundamental context is unavailable
-                return "Error: The essential 'ls' tool is missing. Cannot proceed."
-
-        except Exception as orient_error:
-            log.error(
-                f"Error during mandatory orientation (ls): {orient_error}",
-                exc_info=True,
-            )
-            error_message = f"Error during initial directory scan: {orient_error}"
-            orientation_context = f"{error_message}\n"
-            self.console.print(f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]")
-            # Stop execution if initial ls fails - context is unreliable
-            return f"Error: Failed to get initial directory listing. Cannot reliably proceed. Details: {orient_error}"
+        # === Step 1: Get Initial Context ===
+        orientation_context = self._get_initial_context()
 
         # === Step 2: Prepare Initial User Turn ===
         # Combine orientation with the actual user request
@@ -645,6 +615,74 @@ Important Rules:
     *   If code was generated or modified, the summary **MUST** contain the **actual, specific commands** needed to run or test the result (e.g., show `pip install Flask` and `python app.py`, not just say "instructions provided"). Use Markdown code blocks for commands.
 
 The user's first message will contain initial directory context and their request."""
+
+    def _get_initial_context(self) -> str:
+        """
+        Gets the initial context for the conversation based on the following hierarchy:
+        1. Content of .rules/*.md files if the directory exists
+        2. Content of README.md in the root directory if it exists
+        3. Output of 'ls' command (fallback to original behavior)
+        
+        Returns:
+            A string containing the initial context.
+        """
+        import os
+        import glob
+        
+        # Check if .rules directory exists
+        if os.path.isdir(".rules"):
+            log.info("Found .rules directory. Reading *.md files for initial context.")
+            try:
+                md_files = glob.glob(".rules/*.md")
+                if md_files:
+                    context_content = []
+                    for md_file in md_files:
+                        log.info(f"Reading rules file: {md_file}")
+                        try:
+                            with open(md_file, "r", encoding="utf-8", errors="ignore") as f:
+                                content = f.read().strip()
+                                if content:
+                                    file_basename = os.path.basename(md_file)
+                                    context_content.append(f"# Content from {file_basename}\n\n{content}")
+                        except Exception as read_err:
+                            log.error(f"Error reading rules file '{md_file}': {read_err}", exc_info=True)
+                    
+                    if context_content:
+                        combined_content = "\n\n".join(context_content)
+                        self.console.print("[dim]Context initialized from .rules/*.md files.[/dim]")
+                        return f"Project rules and guidelines:\n```markdown\n{combined_content}\n```\n"
+            except Exception as rules_err:
+                log.error(f"Error processing .rules directory: {rules_err}", exc_info=True)
+        
+        # Check if README.md exists in the root
+        if os.path.isfile("README.md"):
+            log.info("Using README.md for initial context.")
+            try:
+                with open("README.md", "r", encoding="utf-8", errors="ignore") as f:
+                    readme_content = f.read().strip()
+                if readme_content:
+                    self.console.print("[dim]Context initialized from README.md.[/dim]")
+                    return f"Project README:\n```markdown\n{readme_content}\n```\n"
+            except Exception as readme_err:
+                log.error(f"Error reading README.md: {readme_err}", exc_info=True)
+        
+        # Fall back to ls output (original behavior)
+        log.info("Falling back to 'ls' output for initial context.")
+        try:
+            ls_tool = get_tool("ls")
+            if ls_tool:
+                ls_result = ls_tool.execute()
+                log.info(f"Orientation ls result length: {len(ls_result) if ls_result else 0}")
+                self.console.print("[dim]Directory context acquired via 'ls'.[/dim]")
+                return f"Current directory contents (from initial `ls`):\n```\n{ls_result}\n```\n"
+            else:
+                log.error("CRITICAL: Could not find 'ls' tool for mandatory orientation.")
+                return "Error: The essential 'ls' tool is missing. Cannot proceed."
+        except Exception as orient_error:
+            log.error(f"Error during mandatory orientation (ls): {orient_error}", exc_info=True)
+            error_message = f"Error during initial directory scan: {orient_error}"
+            self.console.print(f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]")
+            return f"{error_message}\n"
 
     # --- Text Extraction Helper (if needed for final output) ---
     def _extract_text_from_response(self, response) -> str | None:

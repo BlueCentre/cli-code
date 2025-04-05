@@ -11,6 +11,10 @@ More information [here](https://blossom-tarsier-434.notion.site/Gemini-Code-1c6c
 - Interactive chat sessions in your terminal
 - Multiple model provider support (Google Gemini, Ollama - more planned)
 - Configurable default provider and model
+- Hierarchical context initialization from:
+  - `.rules/*.md` files (if directory exists)
+  - `README.md` file (fallback)
+  - Directory listing (final fallback)
 - Basic history management (prevents excessive length)
 - Markdown rendering in the terminal
 - Automatic tool usage by the assistant:
@@ -126,6 +130,18 @@ Unlike direct command-line tools, the CLI Code assistant uses tools automaticall
 
 This approach makes the interaction more natural.
 
+## Advanced Features
+
+### Custom Context with `.rules`
+
+CLI Code now supports a hierarchical approach to initializing context, allowing you to customize what information the assistant has access to at the start of each session:
+
+1. Create a `.rules` directory in your project
+2. Add Markdown (`.md`) files with project guidelines, structure, and conventions
+3. The assistant will use these files as initial context instead of directory listings
+
+For detailed instructions and best practices, see [Context Rules Documentation](docs/context_rules.md).
+
 ## Development
 
 This project uses Ruff for linting and formatting. Configuration is managed in the `.ruff.toml` file. Please ensure your contributions adhere to the defined style.
@@ -142,6 +158,7 @@ This project is under active development.
 
 ### Recent Changes in v0.1.69
 
+- Added hierarchical context management with support for `.rules/*.md` files and README.md
 - Added test_runner tool to execute automated tests (e.g., pytest)
 - Fixed syntax issues in the tool definitions
 - Improved error handling in tool execution

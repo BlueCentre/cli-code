@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cli-code" 
-version = "0.1.106"  
+version = "0.1.107"  
 authors = [
   { name="Raiza Martin", email="raiza@huxe.ai" }
 ]

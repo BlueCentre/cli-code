@@ -87,6 +87,76 @@ class OllamaModel(AbstractModelAgent):
         self.add_to_history({"role": "system", "content": self.system_prompt})
         log.info(f"OllamaModel initialized for endpoint {self.api_url} with system prompt.")
 
+    def _get_initial_context(self) -> str:
+        """
+        Gets the initial context for the conversation based on the following hierarchy:
+        1. Content of .rules/*.md files if the directory exists
+        2. Content of README.md in the root directory if it exists
+        3. Output of 'ls' command (fallback to original behavior)
+        
+        Returns:
+            A string containing the initial context.
+        """
+        import os
+        import glob
+        
+        # Check if .rules directory exists
+        if os.path.isdir(".rules"):
+            log.info("Found .rules directory. Reading *.md files for initial context.")
+            try:
+                md_files = glob.glob(".rules/*.md")
+                if md_files:
+                    context_content = []
+                    for md_file in md_files:
+                        log.info(f"Reading rules file: {md_file}")
+                        try:
+                            with open(md_file, "r", encoding="utf-8", errors="ignore") as f:
+                                content = f.read().strip()
+                                if content:
+                                    file_basename = os.path.basename(md_file)
+                                    context_content.append(f"# Content from {file_basename}\n\n{content}")
+                        except Exception as read_err:
+                            log.error(f"Error reading rules file '{md_file}': {read_err}", exc_info=True)
+                    
+                    if context_content:
+                        combined_content = "\n\n".join(context_content)
+                        self.console.print("[dim]Context initialized from .rules/*.md files.[/dim]")
+                        return f"Project rules and guidelines:\n```markdown\n{combined_content}\n```\n"
+            except Exception as rules_err:
+                log.error(f"Error processing .rules directory: {rules_err}", exc_info=True)
+        
+        # Check if README.md exists in the root
+        if os.path.isfile("README.md"):
+            log.info("Using README.md for initial context.")
+            try:
+                with open("README.md", "r", encoding="utf-8", errors="ignore") as f:
+                    readme_content = f.read().strip()
+                if readme_content:
+                    self.console.print("[dim]Context initialized from README.md.[/dim]")
+                    return f"Project README:\n```markdown\n{readme_content}\n```\n"
+            except Exception as readme_err:
+                log.error(f"Error reading README.md: {readme_err}", exc_info=True)
+        
+        # Fall back to ls output (original behavior)
+        log.info("Falling back to 'ls' output for initial context.")
+        try:
+            ls_tool = get_tool("ls")
+            if ls_tool:
+                ls_result = ls_tool.execute()
+                log.info(f"Orientation ls result length: {len(ls_result) if ls_result else 0}")
+                self.console.print("[dim]Directory context acquired via 'ls'.[/dim]")
+                return f"Current directory contents (from initial `ls`):\n```\n{ls_result}\n```\n"
+            else:
+                log.error("CRITICAL: Could not find 'ls' tool for mandatory orientation.")
+                # Stop execution if ls tool is missing - fundamental context is unavailable
+                return "Error: The essential 'ls' tool is missing. Cannot proceed."
+        except Exception as orient_error:
+            log.error(f"Error during mandatory orientation (ls): {orient_error}", exc_info=True)
+            error_message = f"Error during initial directory scan: {orient_error}"
+            self.console.print(f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]")
+            # Stop execution if initial ls fails - context is unreliable
+            return f"Error: Failed to get initial directory listing. Cannot reliably proceed. Details: {orient_error}"
+
     def generate(self, prompt: str) -> str | None:
         """Generate a response using the Ollama model via OpenAI API format."""
         if not self.client:
@@ -96,27 +166,19 @@ class OllamaModel(AbstractModelAgent):
         # Ensure model name is set (either from constructor or config default resolved in main)
         if not self.model_name:
             log.error("Ollama generate called without a model name specified.")
-            # Try getting default from config as a fallback, though main.py should handle this
-            # config = Config() # Need config access or pass it in
-            # self.model_name = config.get_default_model(provider='ollama')
-            # if not self.model_name:
             return "Error: No Ollama model name configured or specified."
 
         log.info(f"Ollama Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.model_name}'")
 
-        # === Step 1: Mandatory Orientation (if desired for Ollama) ===
-        # Decide if Ollama should also perform an initial 'ls' like Gemini
-        # For simplicity, let's skip it for now and add the user prompt directly.
-        # orientation_context = ""
-        # try:
-        #     ls_tool = get_tool("ls")
-        #     if ls_tool: ls_result = ls_tool.execute(); orientation_context = f"Current directory:\n{ls_result}\n"
-        # except Exception as e: log.error(f"Ollama initial ls failed: {e}")
-        # full_prompt = f"{orientation_context}\nUser request: {prompt}"
-        # self.add_to_history({"role": "user", "content": full_prompt})
-
-        # Add the user prompt directly to history
-        self.add_to_history({"role": "user", "content": prompt})
+        # === Step 1: Get Initial Context ===
+        orientation_context = self._get_initial_context()
+        
+        # Combine orientation with the actual user request
+        full_prompt = f"{orientation_context}\nUser request: {prompt}"
+        
+        # Add the enriched prompt to history
+        self.add_to_history({"role": "user", "content": full_prompt})
+        log.debug(f"Prepared full prompt:\n---\n{full_prompt}\n---")
 
         iteration_count = 0
         final_response = None

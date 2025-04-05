@@ -51,7 +51,7 @@ log.info(f"Logging initialized with level: {log_level}")
 # --- ASCII Art Definition ---
 CLI_CODE_ART = r"""
 
-[medium_purple]
+[medium_blue]
 
  ░▒▓██████▓▒░░▒▓█▓▒░      ░▒▓█▓▒░       ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓███████▓▒░░▒▓████████▓▒░ 
 ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
@@ -61,7 +61,7 @@ CLI_CODE_ART = r"""
 ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
  ░▒▓██████▓▒░░▒▓████████▓▒░▒▓█▓▒░       ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓███████▓▒░░▒▓████████▓▒░ 
                                                                                              
- [/medium_purple]
+ [/medium_blue]
 """
 # --- End ASCII Art ---
 
@@ -323,16 +323,30 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
         # --- Instantiate the correct agent ---
         if provider == "gemini":
             model_agent = GeminiModel(api_key=credential, console=console, model_name=model_name)
-            console.print("[green]Gemini model initialized successfully.[/green]\n")
+            console.print("[green]Gemini model initialized successfully.[/green]")
         elif provider == "ollama":
             # Instantiate OllamaModel agent
             model_agent = OllamaModel(api_url=credential, console=console, model_name=model_name)
-            console.print("[green]Ollama provider initialized successfully.[/green]\n")
-            # Note: Generate method is not implemented yet, session will show warnings.
+            console.print("[green]Ollama provider initialized successfully.[/green]")
         else:
             console.print(f"[bold red]Error:[/bold red] Unknown provider '{provider}'. Cannot initialize.")
             log.error(f"Attempted to start session with unknown provider: {provider}")
             return
+        
+        # Add information about context initialization (for all successful provider initializations)
+        if os.path.isdir(".rules"):
+            md_files = [f for f in os.listdir(".rules") if f.endswith(".md")]
+            file_count = len(md_files)
+            if file_count > 0:
+                file_str = "file" if file_count == 1 else "files"
+                console.print(f"[dim]Context will be initialized from {file_count} .rules/*.md {file_str}.[/dim]")
+            else:
+                console.print("[dim]Context will be initialized from directory listing (ls) - .rules directory exists but contains no .md files.[/dim]")
+        elif os.path.isfile("README.md"):
+            console.print("[dim]Context will be initialized from README.md.[/dim]")
+        else:
+            console.print("[dim]Context will be initialized from directory listing (ls).[/dim]")
+        console.print()  # Empty line for spacing
 
     except Exception as e:
         console.print(f"\n[bold red]Error initializing model '{model_name}':[/bold red] {e}")

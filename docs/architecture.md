@@ -275,12 +275,49 @@ The history structure includes:
 
 #### Initial Context Gathering
 
-Before processing a user's request, the agent performs mandatory orientation:
+Before processing a user's request, the agent performs mandatory orientation to gather context:
 
-1. By default, the agent executes an `ls` command to gather directory context.
-2. This orientation helps the LLM understand the user's working environment.
-3. The results are formatted and prepended to the user's actual prompt:
+1. **Hierarchical Context Initialization**:
+   - First, the agent checks if a `.rules` directory exists and contains Markdown (*.md) files.
+   - If found, it reads all Markdown files in this directory and uses their combined content as the initial context.
+   - If no `.rules` directory with Markdown files exists, the agent falls back to checking for a `README.md` file in the root directory.
+   - If a `README.md` is found, its content is used as the initial context.
+   - If neither `.rules/*.md` files nor `README.md` exists, the agent falls back to the original behavior of executing an `ls` command to gather directory context.
 
+2. **Purpose and Benefits**:
+   - This hierarchy allows projects to customize the initial context using dedicated rule files (via the `.rules` directory).
+   - It provides a more meaningful initial context based on project-specific documentation rather than just directory listings.
+   - The approach maintains backward compatibility with the original behavior while adding more flexibility.
+
+3. **Context Formatting**: The context is formatted and prepended to the user's actual prompt:
+
+For `.rules/*.md` files:
+```
+Project rules and guidelines:
+```markdown
+# Content from file1.md
+
+<file1 content>
+
+# Content from file2.md
+
+<file2 content>
+```
+
+User request: <actual user prompt>
+```
+
+For `README.md`:
+```
+Project README:
+```markdown
+<README.md content>
+```
+
+User request: <actual user prompt>
+```
+
+For `ls` fallback:
 ```
 Current directory contents (from initial `ls`):
 ```
@@ -307,6 +344,15 @@ The current approach to handling context window constraints includes:
 ### Planned Enhancements
 
 The following improvements to context management are planned:
+
+#### ✅ Hierarchical Context Initialization (Implemented)
+
+The hierarchical context initialization feature has been implemented, allowing the system to:
+- Use `.rules/*.md` files as the primary source of context
+- Fall back to `README.md` in the root directory
+- Use directory listing (`ls` output) as the final fallback
+
+This enhancement provides more meaningful initial context based on project-specific documentation rather than relying solely on directory listings.
 
 #### Token-Aware Context Management
 
