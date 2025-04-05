@@ -34,6 +34,8 @@ jobs:
         pip install ruff # Install ruff separately first
         # Ensure pytest-cov is installed via [dev] extras
         pip install -e .[dev] 
+        # Explicitly install pytest-cov to ensure it's available
+        pip install pytest-cov
 
     # - name: Debug Python Path
     #   run: python -c "import sys; print(sys.path)"
@@ -53,7 +55,7 @@ jobs:
       run: |
         # Run pytest with coverage, targeting your source code directory
         # Generate XML report for SonarCloud
-        pytest --cov=src/cli_code --cov-report=xml test_dir/
+        python -m pytest --cov=src/cli_code --cov-report=xml test_dir/
 
     - name: SonarCloud Scan
       uses: SonarSource/sonarcloud-github-action@master # Or use a specific version like @v2.1
