@@ -1,5 +1,5 @@
 """
-Configuration management for Gemini CLI.
+Configuration management for CLI Code.
 """
 
 import logging
@@ -110,13 +110,13 @@ class Config:
         if not self.config_file.exists():
             default_config = {
                 "google_api_key": None,
-                "ollama_api_url": None,
                 "default_provider": "gemini",
                 "default_model": "models/gemini-2.5-pro-exp-03-25",
-                "ollama_default_model": None,
+                "ollama_api_url": None,
+                "ollama_default_model": "llama3.2",
                 "settings": {
                     "max_tokens": 1000000,
-                    "temperature": 0.7,
+                    "temperature": 0.5,
                     "token_warning_threshold": 800000,
                     "auto_compact_threshold": 950000,
                 },
@@ -250,13 +250,12 @@ class Config:
         self._save_config()
 
     def get_setting(self, setting, default=None):
-        """Get a specific setting."""
+        """Get a specific setting value from the 'settings' section."""
         return self.config.get("settings", {}).get(setting, default)
 
     def set_setting(self, setting, value):
-        """Set a specific setting."""
+        """Set a specific setting value in the 'settings' section."""
         if "settings" not in self.config:
             self.config["settings"] = {}
-
         self.config["settings"][setting] = value
         self._save_config()

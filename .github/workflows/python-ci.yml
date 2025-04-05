@@ -19,6 +19,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        # SonarCloud needs the full history to assign issues properly
+        fetch-depth: 0 
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
@@ -29,13 +32,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install ruff # Install ruff separately first
-        pip install -e .[dev]
-        # If no [dev] extra, install lint/test tools separately:
-        # pip install -e .
-        # pip install ruff pytest # Example tools
+        # Ensure pytest-cov is installed via [dev] extras
+        pip install -e .[dev] 
 
-    - name: Debug Python Path
-      run: python -c "import sys; print(sys.path)"
+    # - name: Debug Python Path
+    #   run: python -c "import sys; print(sys.path)"
 
     - name: Lint with Ruff (check)
       run: |
@@ -43,14 +44,29 @@ jobs:
 
     - name: Lint with Ruff (format)
       run: |
-        ruff format .
+        ruff format --check . # Use --check in CI to fail on formatting issues
 
-    - name: Test with pytest
+    - name: Test with pytest and Generate Coverage
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      if: env.GEMINI_API_KEY != ''
+        # Ensure API key exists for tests that might need it, but allow skipping
       run: |
-        pytest test_dir/
+        # Run pytest with coverage, targeting your source code directory
+        # Generate XML report for SonarCloud
+        pytest --cov=src/cli_code --cov-report=xml test_dir/
+
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master # Or use a specific version like @v2.1
+      env:
+        # GITHUB_TOKEN: {{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Required: Store your SonarCloud token as a GitHub secret
+      with:
+        args: >
+          # Tell scanner where the coverage report is
+          -Dsonar.python.coverage.reportPaths=coverage.xml
+          # Add organization and project key if not using sonar-project.properties
+          # -Dsonar.organization=your-org-key 
+          # -Dsonar.projectKey=your-project-key
 
     - name: Build package
       run: python -m build

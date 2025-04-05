@@ -405,10 +405,10 @@ Interactive Commands:
   /help
 
 CLI Commands:
-  gemini setup KEY
-  gemini list-models
-  gemini set-default-model NAME
-  gemini --model NAME
+  cli-code-agent setup API_KEY
+  cli-code-agent list-models
+  cli-code-agent set-default-model NAME
+  cli-code-agent --model NAME
 
 Workflow Hint: Analyze → Plan → Execute → Verify → Summarize
 

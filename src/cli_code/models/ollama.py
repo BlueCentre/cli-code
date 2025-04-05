@@ -78,10 +78,17 @@ class OllamaModel(AbstractModelAgent):
         # Define the system prompt
         self.system_prompt = (
             "You are a helpful AI coding assistant. You have access to a set of tools to interact with the local file system "
-            "and execute commands. Use the available tools when necessary to fulfill the user's request. "
-            "Think step-by-step if needed. When using tools, provide the required arguments accurately. "
-            "If you need to see the content of a file before editing, use the 'view' tool first. "
-            "If a file is large, consider using 'summarize_code' or viewing specific sections with 'view' offset/limit. "
+            "and execute commands. \n\n"
+            "**CRITICAL:** When you decide to use a tool, you **MUST** provide **ALL** required arguments for that tool. "
+            "Check the tool's definition for its required parameters (like 'file_path', 'pattern', 'content', etc.) and ensure you include them in your request. "
+            "Failure to provide required arguments will result in an error.\n\n"
+            "**IMPORTANT CONTEXT INFORMATION:** Your context about this project comes from the .rules/*.md files (specifically "
+            ".rules/context.md and .rules/tools.md). If asked about context, refer to these files using their full paths with '.rules/' prefix. "
+            "Do not try to access 'context.md' directly in the root directory.\n\n"
+            "Use the available tools when necessary to fulfill the user's request. "
+            "Think step-by-step if needed. "
+            "If you need to see the content of a file before editing, use the 'view' tool first (providing the 'file_path'). "
+            "If a file is large, consider using 'summarize_code' or viewing specific sections with 'view' offset/limit (always provide 'file_path'). "
             "After performing actions, confirm the outcome or provide a summary."
             # TODO: Potentially add details about specific tool usage or desired output format.
         )
@@ -292,7 +299,6 @@ class OllamaModel(AbstractModelAgent):
                                         "Proceed with this action?",
                                         default=False,
                                         auto_enter=False,
-                                        ask_if_answered=True,
                                     ).ask()
                                 except KeyboardInterrupt:  # Handle Ctrl+C during question
                                     user_confirmed = False
@@ -312,6 +318,29 @@ class OllamaModel(AbstractModelAgent):
                                 tool_instance = get_tool(tool_name)
                                 if tool_instance:
                                     try:
+                                        # --- Generalized Check for Required Arguments ---
+                                        declaration = tool_instance.get_function_declaration()
+                                        required_params = []
+                                        if declaration and declaration.parameters and declaration.parameters._pb and MessageToDict:
+                                            try:
+                                                # Convert the protobuf Schema to a dict to check 'required'
+                                                parameters_dict = MessageToDict(declaration.parameters._pb)
+                                                required_params = parameters_dict.get('required', [])
+                                            except Exception as conversion_err:
+                                                log.warning(f"Failed to convert parameters schema to dict for checking required args for tool '{tool_name}': {conversion_err}")
+                                                # Proceed without check if conversion fails? Or raise?
+                                                # For now, log warning and assume no required params checked.
+
+                                        missing_args = []
+                                        for param in required_params:
+                                            if param not in tool_args:
+                                                missing_args.append(param)
+
+                                        if missing_args:
+                                            log.error(f"Ollama requested {tool_name} but missing required args: {missing_args}. Provided: {tool_args}")
+                                            raise ValueError(f"Missing required arguments for tool '{tool_name}': {', '.join(missing_args)}")
+                                        # --- End Check ---
+
                                         with self.console.status(
                                             f"[cyan]Executing tool: {tool_name}...", spinner="dots"
                                         ):

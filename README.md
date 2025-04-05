@@ -1,6 +1,7 @@
 # CLI Code
 
 [![Python CI](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml/badge.svg)](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=BlueCentre_cli-code&metric=coverage)](https://sonarcloud.io/summary/new_code?id=BlueCentre_cli-code)
 
 An early work-in-progress AI coding assistant for your terminal, powered by multiple LLM providers (starting with Gemini and Ollama).
 

@@ -1,5 +1,5 @@
 """
-Gemini CLI - A command-line interface for interacting with various LLM models.
+CLI Code - A command-line interface for interacting with various LLM models.
 """
 
-__version__ = "0.1.69"
+__version__ = "0.2.1"
