@@ -84,3 +84,18 @@ ignore = ["E701", "E702", "E501", "F401", "F541", "E402", "E721", "F841"]
 # Allow autofix for all enabled rules (when `--fix`) is used.
 fixable = ["ALL"]
 unfixable = []
+
+# Add pytest and pytest-cov configuration
+[tool.pytest.ini_options]
+testpaths = ["test_dir"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.coverage.run]
+source = ["cli_code"]
+omit = [
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/.venv/*",
+]
