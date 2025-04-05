@@ -1,0 +1,107 @@
+# Contributing to CLI-Code
+
+Thank you for your interest in contributing to CLI-Code! This document outlines the development workflow and best practices to follow when making changes.
+
+## Development Workflow
+
+### 1. Analysis and Planning
+- **Analyze the issue/feature**: Understand the requirements thoroughly
+- **Run local SonarCloud scan**: Get a baseline of current code quality and coverage
+  ```bash
+  # Generate coverage report
+  pytest --cov=src test_dir --cov-report=xml
+  
+  # Run local SonarCloud scan
+  sonar-scanner
+  ```
+- **Review current SonarCloud metrics**: Identify code smells, bugs, and areas with low coverage
+
+### 2. Plan Implementation Steps
+- Break down the solution into logical, manageable steps
+- Document the plan, considering all edge cases
+- Consider how the changes might affect existing functionality
+
+### 3. Implementation
+- Execute the plan one step at a time
+- Follow the project's code style and conventions
+- Keep changes focused and avoid scope creep
+- Regularly commit your changes with descriptive messages
+
+### 4. Testing
+- Add or update tests to ensure changes are properly covered
+- Ensure overall code coverage does not decrease
+- Run the test suite frequently during development:
+  ```bash
+  pytest --cov=src test_dir
+  ```
+
+### 5. Verification
+- Perform end-to-end testing with real usage scenarios
+- Get user feedback when applicable
+- Run a final local SonarCloud scan to verify quality improvements:
+  ```bash
+  # Generate final coverage report
+  pytest --cov=src test_dir --cov-report=xml
+  
+  # Run local SonarCloud scan
+  sonar-scanner
+  ```
+
+### 6. Documentation
+- Update relevant documentation
+- Add comments to complex sections of code
+- Consider updating README.md if user-facing changes are made
+
+### 7. Commit Preparation
+- Prepare a detailed commit description
+- Write a clear, concise commit message summary
+- Reference any related issues in your commit message
+
+### 8. Review and Submit
+- Review your changes one final time
+- Only push completed, well-tested changes
+- Submit pull request if working in fork/branch model
+
+## Additional Guidelines
+
+### Code Quality
+- Follow the project's code style (enforced by ruff)
+- Address SonarCloud issues proactively
+- Document public functions and methods with docstrings
+
+### Testing Standards
+- Aim for comprehensive test coverage (unit tests, integration tests)
+- Test edge cases and failure scenarios
+- Mock external dependencies appropriately
+
+### Performance Considerations
+- Be mindful of performance implications of your changes
+- Profile code for expensive operations when necessary
+- Consider memory usage for larger data processing
+
+## SonarCloud Local Analysis
+
+For the fastest feedback loop, run SonarCloud analysis locally before pushing changes:
+
+1. Ensure you have sonar-scanner installed:
+   ```bash
+   # On macOS with Homebrew
+   brew install sonar-scanner
+   
+   # On NixOS
+   nix-env -iA nixpkgs.sonar-scanner-cli.out
+   ```
+
+2. Generate coverage report:
+   ```bash
+   pytest --cov=src test_dir --cov-report=xml
+   ```
+
+3. Run local scan:
+   ```bash
+   sonar-scanner
+   ```
+
+4. Review the results and address any issues before pushing.
+
+This local workflow complements (but doesn't replace) the GitHub Actions workflow that runs automatically on push. 
