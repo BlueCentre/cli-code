@@ -152,9 +152,12 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         if prompt.startswith("/"):
             command = prompt.split()[0].lower()
             # Handle commands like /compact here eventually
-            if command in ["/exit", "/help"]:
+            if command == "/exit":
                 logging.info(f"Handled command: {command}")
-                return None  # Or return specific help text
+                return None  # Exit command will be handled by the caller
+            elif command == "/help":
+                logging.info(f"Handled command: {command}")
+                return self._get_help_text()  # Return help text
 
         # === Step 1: Get Initial Context ===
         orientation_context = self._get_initial_context()
@@ -725,3 +728,41 @@ The user's first message will contain initial directory context and their reques
         else:
             self.history = []  # Should not happen if initialized correctly
         log.info("Gemini history cleared.")
+
+    # --- Help Text Generator ---
+    def _get_help_text(self) -> str:
+        """Generates help text for the command line interface."""
+        # Get tool descriptions for the help text
+        tool_descriptions = []
+        for tool_name, tool_instance in AVAILABLE_TOOLS.items():
+            desc = getattr(tool_instance, "description", "No description")
+            # Keep only the first line or a short summary
+            if '\n' in desc:
+                desc = desc.split('\n')[0]
+            # Format as bullet point with tool name
+            tool_descriptions.append(f"  • {tool_name}")
+        
+        # Sort the tools alphabetically
+        tool_descriptions.sort()
+        
+        # Format the help text to match the left screenshot
+        help_text = """
+Help
+
+Interactive Commands:
+  /exit
+  /help
+
+CLI Commands:
+  gemini setup KEY
+  gemini list-models
+  gemini set-default-model NAME
+  gemini --model NAME
+
+Workflow Hint: Analyze → Plan → Execute → Verify → Summarize
+
+Available Tools:
+{tools}
+""".format(tools="\n".join(tool_descriptions))
+        
+        return help_text
