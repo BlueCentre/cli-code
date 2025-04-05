@@ -394,13 +394,13 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                             # We break *after* adding the function response below
 
                         # === Add Function Response to History ===
-                        # Create the FunctionResponse proto
-                        function_response_proto = genai.FunctionResponse(
-                            name=tool_name,
-                            response={"result": tool_result},  # API expects dict
+                        # Create a Part with function_response directly
+                        response_part_proto = genai.types.Part(
+                            function_response={
+                                "name": tool_name,
+                                "response": {"result": tool_result},  # API expects dict
+                            }
                         )
-                        # Wrap it in a Part proto
-                        response_part_proto = genai.Part(function_response=function_response_proto)
 
                         # Append to history
                         self.add_to_history(
