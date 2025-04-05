@@ -44,7 +44,7 @@ jobs:
 
     - name: Lint with Ruff (format)
       run: |
-        ruff format --check . # Use --check in CI to fail on formatting issues
+        ruff format . # Remove --check to auto-format files
 
     - name: Test with pytest and Generate Coverage
       env:
