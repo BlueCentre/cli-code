@@ -12,12 +12,11 @@ import google.api_core.exceptions
 
 # Third-party Libraries
 import google.generativeai as genai
-import google.generativeai.types as genai_types
 import questionary
 import rich
 from rich.console import Console
+from rich.panel import Panel
 
-# from rich.panel import Panel # Remove unused import
 # Local Application/Library Specific Imports
 from ..tools import AVAILABLE_TOOLS, get_tool
 from .base import AbstractModelAgent
@@ -62,7 +61,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             log.error(f"Failed to configure Gemini API: {config_err}", exc_info=True)
             raise ConnectionError(f"Failed to configure Gemini API: {config_err}") from config_err
 
-        self.generation_config = genai.types.GenerationConfig(temperature=0.4, top_p=0.95, top_k=40)
+        self.generation_config = genai.GenerationConfig(temperature=0.4, top_p=0.95, top_k=40)
         self.safety_settings = {
             "HARASSMENT": "BLOCK_MEDIUM_AND_ABOVE",
             "HATE": "BLOCK_MEDIUM_AND_ABOVE",
@@ -72,9 +71,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         # --- Tool Definition ---
         self.function_declarations = self._create_tool_definitions()
-        self.gemini_tools = (
-            genai_types.Tool(function_declarations=self.function_declarations) if self.function_declarations else None
-        )
+        self.gemini_tools = {"function_declarations": self.function_declarations} if self.function_declarations else None
         # ---
 
         # --- System Prompt (Native Functions & Planning) ---
@@ -394,13 +391,13 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                             # We break *after* adding the function response below
 
                         # === Add Function Response to History ===
-                        # Create a Part with function_response directly
-                        response_part_proto = genai.types.Part(
-                            function_response={
+                        # Create a dictionary for function_response instead of using Part class
+                        response_part_proto = {
+                            "function_response": {
                                 "name": tool_name,
                                 "response": {"result": tool_result},  # API expects dict
                             }
-                        )
+                        }
 
                         # Append to history
                         self.add_to_history(
@@ -527,9 +524,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # TODO: Implement token-based truncation check using count_tokens
 
     # --- Tool Definition Helper ---
-    def _create_tool_definitions(self) -> list[genai_types.Tool] | None:
+    def _create_tool_definitions(self) -> list | None:
         """Dynamically create Tool definitions from AVAILABLE_TOOLS."""
-        # NOTE: This assumes get_function_declaration() returns objects compatible with or convertible to genai_types.Tool
+        # NOTE: This assumes get_function_declaration() returns objects compatible with or convertible to genai Tools
         declarations = []
         for tool_name, tool_instance in AVAILABLE_TOOLS.items():
             if hasattr(tool_instance, "get_function_declaration"):
@@ -705,8 +702,12 @@ The user's first message will contain initial directory context and their reques
             if history[i]["role"] == "model":
                 try:
                     # Check if parts exists and has content
-                    if history[i]["parts"] and hasattr(history[i]["parts"][0], "text"):
-                        return history[i]["parts"][0].text.strip()
+                    if "parts" in history[i] and history[i]["parts"]:
+                        part = history[i]["parts"][0]
+                        if isinstance(part, dict) and "text" in part:
+                            return part["text"].strip()
+                        elif hasattr(part, "text"):
+                            return part.text.strip()
                 except (AttributeError, IndexError):
                     continue  # Ignore malformed history entries
         return "(No previous model text found)"
