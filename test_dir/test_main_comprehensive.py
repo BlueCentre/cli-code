@@ -1,480 +1,395 @@
 """
-Comprehensive tests for the main CLI module in src/cli_code/main.py.
-Focusing on improving test coverage beyond the basic test_main.py
+Comprehensive tests for the main module to improve coverage.
+This file extends the existing tests in test_main.py with more edge cases,
+error conditions, and specific code paths that weren't previously tested.
 """
 
 import os
 import sys
-from pathlib import Path
+import pytest
+from unittest.mock import patch, MagicMock, call
+from click.testing import CliRunner
 
 # Add the src directory to the path to allow importing cli_code
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import pytest
-from unittest.mock import patch, MagicMock, call, ANY
-
-from cli_code.main import cli, start_interactive_session, show_help, log
+from cli_code.main import cli, start_interactive_session, show_help, PROVIDER_CHOICES, console
 
 
 @pytest.fixture
 def mock_config():
     """Fixture to provide a mocked Config object."""
     with patch('cli_code.main.config') as mock_config:
-        # Set reasonable default behavior for the config mock
+        # Set some reasonable default behavior for the config mock
         mock_config.get_default_provider.return_value = "gemini"
-        mock_config.get_default_model.return_value = "gemini-1.0-pro"
+        mock_config.get_default_model.return_value = "gemini-pro"
         mock_config.get_credential.return_value = "fake-api-key"
         yield mock_config
 
 
 @pytest.fixture
+def runner():
+    """Fixture to provide a CliRunner instance."""
+    return CliRunner()
+
+
+@pytest.fixture
 def mock_console():
-    """Fixture to provide a mocked Console instance."""
+    """Fixture to provide a mocked Console object."""
     with patch('cli_code.main.console') as mock_console:
+        mock_console.input.side_effect = ["/help", "/exit"]
         yield mock_console
 
 
-class TestInteractiveSession:
-    """Tests for the start_interactive_session function."""
+class TestCliErrors:
+    """Tests for error handling in the CLI commands."""
     
-    def test_session_missing_config(self, mock_console):
-        """Test start_interactive_session behavior when config is None."""
-        with patch('cli_code.main.config', None):
-            # Call the function
-            start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
+    def test_cli_with_no_config(self, runner):
+        """Test CLI behavior when config is None."""
+        with patch('cli_code.main.config', None), \
+             patch('cli_code.main.sys.exit') as mock_exit:
             
-            # Verify error message
-            mock_console.print.assert_called_with("[bold red]Config error.[/bold red]")
+            runner.invoke(cli)
+            mock_exit.assert_called_once_with(1)
     
-    def test_session_missing_credential(self, mock_console, mock_config):
-        """Test start_interactive_session when credential is missing."""
-        # Set up mock to return None for get_credential
-        mock_config.get_credential.return_value = None
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify error messages
-        assert mock_console.print.call_count >= 2
-        assert any("Error:" in str(args) and "not found" in str(args) 
-                  for args, kwargs in mock_console.print.call_args_list)
+    def test_cli_with_missing_model(self, runner):
+        """Test CLI behavior when model is not specified and no default exists."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.sys.exit') as mock_exit:
+            
+            mock_config.get_default_provider.return_value = "gemini"
+            mock_config.get_default_model.return_value = None
+            
+            runner.invoke(cli)
+            mock_exit.assert_called_once_with(1)
     
-    @patch('cli_code.main.GeminiModel')
-    @patch('cli_code.main.time.sleep')  # Mock sleep to speed up test
-    def test_session_gemini_initialization(self, mock_sleep, mock_gemini_model, mock_console, mock_config):
-        """Test start_interactive_session with Gemini provider initialization."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_gemini_model.return_value = mock_model_instance
-        
-        # Create a generator function to allow breaking out of the input loop
-        user_input_values = ["Hello", KeyboardInterrupt()]
-        
-        def mock_input_side_effect(prompt):
-            value = user_input_values.pop(0)
-            if isinstance(value, Exception):
-                raise value
-            return value
-        
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function with interruption
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify model was initialized
-        mock_gemini_model.assert_called_once_with(
-            api_key=mock_config.get_credential.return_value,
-            console=mock_console,
-            model_name="gemini-1.0-pro"
-        )
-        
-        # Verify model generate was called with user input
-        mock_model_instance.generate.assert_called_once_with("Hello")
-        
-        # Verify session end message
-        assert any("Session interrupted" in str(args) for args, kwargs in mock_console.print.call_args_list)
+    def test_setup_with_no_config(self, runner):
+        """Test setup command when config is None."""
+        with patch('cli_code.main.config', None):
+            result = runner.invoke(cli, ['setup', '--provider', 'gemini', 'fake-api-key'])
+            assert result.exit_code == 0
+            assert "Config error" in result.output
     
-    @patch('cli_code.main.OllamaModel')
-    @patch('cli_code.main.time.sleep')  # Mock sleep to speed up test
-    def test_session_ollama_initialization(self, mock_sleep, mock_ollama_model, mock_console, mock_config):
-        """Test start_interactive_session with Ollama provider initialization."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_ollama_model.return_value = mock_model_instance
+    def test_setup_with_exception(self, runner, mock_config):
+        """Test setup command when an exception occurs."""
+        mock_config.set_credential.side_effect = Exception("Failed to save")
         
-        # Create a generator function to allow breaking out of the input loop
-        user_input_values = ["/exit"]
+        result = runner.invoke(cli, ['setup', '--provider', 'gemini', 'fake-api-key'])
+        assert result.exit_code == 0
+        assert "Error saving API Key" in result.output
+    
+    def test_set_default_provider_with_no_config(self, runner):
+        """Test set-default-provider command when config is None."""
+        with patch('cli_code.main.config', None):
+            result = runner.invoke(cli, ['set-default-provider', 'gemini'])
+            assert result.exit_code == 0
+            assert "Config error" in result.output
+    
+    def test_set_default_provider_with_exception(self, runner, mock_config):
+        """Test set-default-provider command when an exception occurs."""
+        mock_config.set_default_provider.side_effect = Exception("Failed to set provider")
         
-        def mock_input_side_effect(prompt):
-            return user_input_values.pop(0)
+        result = runner.invoke(cli, ['set-default-provider', 'gemini'])
+        assert result.exit_code == 0
+        assert "Error setting default provider" in result.output
+    
+    def test_set_default_model_with_no_config(self, runner):
+        """Test set-default-model command when config is None."""
+        with patch('cli_code.main.config', None):
+            result = runner.invoke(cli, ['set-default-model', 'gemini-pro'])
+            assert result.exit_code == 0
+            assert "Config error" in result.output
+    
+    def test_set_default_model_with_exception(self, runner, mock_config):
+        """Test set-default-model command when an exception occurs."""
+        mock_config.set_default_model.side_effect = Exception("Failed to set model")
         
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function with exit command
-        start_interactive_session(provider="ollama", model_name="llama3", console=mock_console)
-        
-        # Verify model was initialized
-        mock_ollama_model.assert_called_once_with(
-            api_url=mock_config.get_credential.return_value,
-            console=mock_console,
-            model_name="llama3"
-        )
-        
-        # Verify the loop exited cleanly (no generate call)
-        mock_model_instance.generate.assert_not_called()
+        result = runner.invoke(cli, ['set-default-model', 'gemini-pro'])
+        assert result.exit_code == 0
+        assert "Error setting default model" in result.output
 
 
-class TestExitHandling:
-    """Tests for exit commands handling in start_interactive_session."""
+class TestListModelsCommand:
+    """Comprehensive tests for the list-models command."""
     
-    @patch('cli_code.main.GeminiModel')
-    @patch('cli_code.main.time.sleep')  # Mock sleep to speed up test
-    def test_exit_command(self, mock_sleep, mock_model, mock_console, mock_config):
-        """Test /exit command terminates the session."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_model.return_value = mock_model_instance
-        
-        # Set up input with exit command
-        mock_console.input.return_value = "/exit"
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify model.generate was not called
-        mock_model_instance.generate.assert_not_called()
-        
-        # Verify exit message
-        assert any("Exiting" in str(args) for args, kwargs in mock_console.print.call_args_list)
+    def test_list_models_with_no_config(self, runner):
+        """Test list-models command when config is None."""
+        with patch('cli_code.main.config', None):
+            result = runner.invoke(cli, ['list-models'])
+            assert result.exit_code == 0
+            assert "Config error" in result.output
+    
+    def test_list_models_with_no_credential(self, runner):
+        """Test list-models command when no credential is found."""
+        with patch('cli_code.main.config') as mock_config:
+            mock_config.get_default_provider.return_value = "gemini"
+            mock_config.get_credential.return_value = None
+            
+            result = runner.invoke(cli, ['list-models'])
+            assert result.exit_code == 0
+            assert "Error: Gemini API Key not found" in result.output
+    
+    def test_list_models_with_empty_result(self, runner, mock_config):
+        """Test list-models command when an empty list is returned."""
+        with patch('cli_code.main.GeminiModel') as mock_model_class:
+            mock_instance = MagicMock()
+            mock_instance.list_models.return_value = []
+            mock_model_class.return_value = mock_instance
+            
+            result = runner.invoke(cli, ['list-models', '--provider', 'gemini'])
+            assert result.exit_code == 0
+            assert "No models found" in result.output
+    
+    def test_list_models_with_none_result(self, runner, mock_config):
+        """Test list-models command when None is returned."""
+        with patch('cli_code.main.GeminiModel') as mock_model_class:
+            mock_instance = MagicMock()
+            mock_instance.list_models.return_value = None
+            mock_model_class.return_value = mock_instance
+            
+            result = runner.invoke(cli, ['list-models', '--provider', 'gemini'])
+            assert result.exit_code == 0
+            # No specific error message needed as the agent's list_models handles it
+    
+    def test_list_models_with_exception(self, runner, mock_config):
+        """Test list-models command when an exception occurs."""
+        with patch('cli_code.main.GeminiModel') as mock_model_class:
+            mock_model_class.side_effect = Exception("Connection error")
+            
+            result = runner.invoke(cli, ['list-models', '--provider', 'gemini'])
+            assert result.exit_code == 0
+            assert "Error listing models" in result.output
+    
+    def test_list_models_with_no_default_model(self, runner, mock_config):
+        """Test list-models command when no default model is set."""
+        with patch('cli_code.main.GeminiModel') as mock_model_class:
+            mock_instance = MagicMock()
+            mock_instance.list_models.return_value = [{"id": "model1", "name": "Model 1"}]
+            mock_model_class.return_value = mock_instance
+            
+            mock_config.get_default_model.return_value = None
+            
+            result = runner.invoke(cli, ['list-models', '--provider', 'gemini'])
+            assert result.exit_code == 0
+            assert "No default model set" in result.output
 
 
-class TestShowHelp:
+class TestInteractiveSession:
+    """Tests for the interactive session functionality."""
+    
+    def test_interactive_session_with_no_config(self, mock_console):
+        """Test interactive session when config is None."""
+        with patch('cli_code.main.config', None):
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call("[bold red]Config error.[/bold red]")
+    
+    def test_interactive_session_with_no_credential(self, mock_console):
+        """Test interactive session when no credential is found."""
+        with patch('cli_code.main.config') as mock_config:
+            mock_config.get_credential.return_value = None
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "\n[bold red]Error:[/bold red] Gemini API Key not found."
+            )
+    
+    def test_interactive_session_with_initialization_error(self, mock_console):
+        """Test interactive session when model initialization fails."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_model_class.side_effect = Exception("Initialization error")
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "\n[bold red]Error initializing model 'gemini-pro':[/bold red] Initialization error"
+            )
+    
+    def test_interactive_session_unknown_provider(self, mock_console):
+        """Test interactive session with an unknown provider."""
+        with patch('cli_code.main.config') as mock_config:
+            mock_config.get_credential.return_value = "fake-api-key"
+            
+            start_interactive_session(provider="unknown", model_name="model", console=mock_console)
+            mock_console.print.assert_any_call(
+                "[bold red]Error:[/bold red] Unknown provider 'unknown'. Cannot initialize."
+            )
+    
+    @patch('os.path.isdir')
+    @patch('os.path.isfile')
+    @patch('os.listdir')
+    def test_interactive_session_context_rules_dir(self, mock_listdir, mock_isfile, mock_isdir, mock_console):
+        """Test interactive session context initialization with .rules directory."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_model_class.return_value = MagicMock()
+            
+            mock_isdir.return_value = True
+            mock_isfile.return_value = False
+            mock_listdir.return_value = ["rule1.md", "rule2.md"]
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "[dim]Context will be initialized from 2 .rules/*.md files.[/dim]"
+            )
+    
+    @patch('os.path.isdir')
+    @patch('os.path.isfile')
+    def test_interactive_session_context_readme(self, mock_isfile, mock_isdir, mock_console):
+        """Test interactive session context initialization with README.md."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_model_class.return_value = MagicMock()
+            
+            mock_isdir.return_value = False
+            mock_isfile.return_value = True
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "[dim]Context will be initialized from README.md.[/dim]"
+            )
+    
+    @patch('os.path.isdir')
+    @patch('os.path.isfile')
+    def test_interactive_session_context_ls(self, mock_isfile, mock_isdir, mock_console):
+        """Test interactive session context initialization with directory listing."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_model_class.return_value = MagicMock()
+            
+            mock_isdir.return_value = False
+            mock_isfile.return_value = False
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "[dim]Context will be initialized from directory listing (ls).[/dim]"
+            )
+    
+    def test_interactive_session_help_command(self, mock_console):
+        """Test interactive session with help command."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class, \
+             patch('cli_code.main.show_help') as mock_show_help:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_instance = MagicMock()
+            # Return None for the first generate call (the /help command)
+            mock_instance.generate.side_effect = [None]
+            mock_model_class.return_value = mock_instance
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_show_help.assert_called_once_with("gemini")
+    
+    def test_interactive_session_model_error(self, mock_console):
+        """Test interactive session when the model returns a None response."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_instance = MagicMock()
+            # Input is not a command but generate still returns None
+            mock_console.input.side_effect = ["normal question", "/exit"]
+            mock_instance.generate.side_effect = [None]
+            mock_model_class.return_value = mock_instance
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "[red]Received an empty response from the model.[/red]"
+            )
+    
+    def test_interactive_session_keyboard_interrupt(self, mock_console):
+        """Test interactive session with KeyboardInterrupt."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_instance = MagicMock()
+            mock_console.input.side_effect = KeyboardInterrupt()
+            mock_model_class.return_value = mock_instance
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "\n[yellow]Session interrupted. Exiting.[/yellow]"
+            )
+    
+    def test_interactive_session_general_exception(self, mock_console):
+        """Test interactive session with a general exception."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.GeminiModel') as mock_model_class:
+            
+            mock_config.get_credential.return_value = "fake-api-key"
+            mock_instance = MagicMock()
+            mock_console.input.side_effect = Exception("Test exception")
+            mock_model_class.return_value = mock_instance
+            
+            start_interactive_session(provider="gemini", model_name="gemini-pro", console=mock_console)
+            mock_console.print.assert_any_call(
+                "\n[bold red]An error occurred during the session:[/bold red] Test exception"
+            )
+
+
+class TestHelpFunction:
     """Tests for the show_help function."""
     
-    def test_show_help(self, mock_console):
-        """Test show_help displays correct information."""
-        # Call the function
-        with patch('cli_code.main.AVAILABLE_TOOLS', {'tool1': {'description': 'Test tool'}}):
+    def test_show_help(self):
+        """Test the show_help function."""
+        with patch('cli_code.main.console') as mock_console, \
+             patch('cli_code.main.AVAILABLE_TOOLS', {"tool1": None, "tool2": None}):
+            
             show_help("gemini")
-            
-            # Verify help output
             mock_console.print.assert_called_once()
-            help_text = mock_console.print.call_args[0][0]
             
-            # Verify basic elements are present
-            assert "Interactive Commands:" in help_text
-            assert "/exit" in help_text
-            assert "/help" in help_text
-            assert "Available Tools:" in help_text
-            assert "tool1" in help_text
+            # Check if the help content mentions the tools
+            call_args = mock_console.print.call_args[0][0]
+            assert "tool1" in call_args
+            assert "tool2" in call_args
+            assert "Interactive Commands" in call_args
+            assert "/exit" in call_args
+            assert "/help" in call_args
 
 
-class TestCommandHandling:
-    """Tests for command handling in start_interactive_session."""
+class TestOllamaProvider:
+    """Tests specifically for the Ollama provider functionality."""
     
-    @patch('cli_code.main.GeminiModel')
-    @patch('cli_code.main.show_help')
-    def test_help_command(self, mock_show_help, mock_model, mock_console, mock_config):
-        """Test /help command shows help and continues the session."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_model.return_value = mock_model_instance
-        
-        # Create a generator function for input sequence
-        user_input_values = ["/help", "/exit"]
-        
-        def mock_input_side_effect(prompt):
-            return user_input_values.pop(0)
-        
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify help was shown for the correct provider
-        mock_show_help.assert_called_once_with("gemini")
-        
-        # Verify model.generate was not called
-        mock_model_instance.generate.assert_not_called()
+    def test_setup_ollama_provider(self, runner, mock_config):
+        """Test setting up the Ollama provider."""
+        result = runner.invoke(cli, ['setup', '--provider', 'ollama', 'http://localhost:11434'])
+        assert result.exit_code == 0
+        assert "Ollama API URL saved" in result.output
+        assert "Ensure your Ollama server is running" in result.output
     
-    @patch('cli_code.main.GeminiModel')
-    def test_unknown_command(self, mock_model, mock_console, mock_config):
-        """Test handling of unknown command."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_model.return_value = mock_model_instance
-        
-        # Create a generator function for input sequence
-        user_input_values = ["/unknown_command", "/exit"]
-        
-        def mock_input_side_effect(prompt):
-            return user_input_values.pop(0)
-        
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify unknown command message
-        assert any("Unknown command" in str(args) for args, kwargs in mock_console.print.call_args_list)
-        
-        # Verify model.generate was not called
-        mock_model_instance.generate.assert_not_called()
-
-
-class TestErrorHandling:
-    """Tests for error handling in start_interactive_session."""
-    
-    @patch('cli_code.main.GeminiModel')
-    def test_model_generation_error(self, mock_model, mock_console, mock_config):
-        """Test handling of errors during model generation."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_model_instance.generate.side_effect = Exception("Model error")
-        mock_model.return_value = mock_model_instance
-        
-        # Create a generator function for input sequence
-        user_input_values = ["Generate something", "/exit"]
-        
-        def mock_input_side_effect(prompt):
-            return user_input_values.pop(0)
-        
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify error handling
-        assert any("Error:" in str(args) for args, kwargs in mock_console.print.call_args_list)
-        
-        # Verify model.generate was called
-        mock_model_instance.generate.assert_called_once_with("Generate something")
-
-
-class TestCliCommands:
-    """Tests for CLI commands in main.py."""
-    
-    @patch('cli_code.main.start_interactive_session')
-    def test_cli_with_provider_override(self, mock_start_session, mock_config):
-        """Test CLI with provider override."""
-        # Set up the test
-        runner = pytest.CliRunner()
-        
-        # Call the CLI with provider override
-        result = runner.invoke(cli, ["--provider", "ollama"])
-        
-        # Verify start_interactive_session was called with correct provider
-        mock_start_session.assert_called_once()
-        assert mock_start_session.call_args[1]["provider"] == "ollama"
-        assert mock_start_session.call_args[1]["model_name"] == mock_config.get_default_model.return_value
-    
-    @patch('cli_code.main.start_interactive_session')
-    def test_cli_with_model_override(self, mock_start_session, mock_config):
-        """Test CLI with model override."""
-        # Set up the test
-        runner = pytest.CliRunner()
-        
-        # Call the CLI with model override
-        result = runner.invoke(cli, ["--model", "custom-model"])
-        
-        # Verify start_interactive_session was called with correct model
-        mock_start_session.assert_called_once()
-        assert mock_start_session.call_args[1]["provider"] == mock_config.get_default_provider.return_value
-        assert mock_start_session.call_args[1]["model_name"] == "custom-model"
-    
-    @patch('cli_code.main.Config')
-    def test_setup_command_successful(self, mock_config_class, mock_config):
-        """Test setup command for successful credential setting."""
-        # Set up the test
-        runner = pytest.CliRunner()
-        mock_config_instance = MagicMock()
-        mock_config_class.return_value = mock_config_instance
-        
-        # Call the setup command
-        result = runner.invoke(cli, ["setup", "gemini", "test-api-key"], input="y\n")
-        
-        # Verify set_credential was called with correct values
-        mock_config_instance.set_credential.assert_called_once_with("gemini", "test-api-key")
-        
-        # Verify the output indicates success
-        assert "Setup complete" in result.output
-    
-    @patch('cli_code.main.Config')
-    def test_setup_command_cancelled(self, mock_config_class, mock_config):
-        """Test setup command when user cancels."""
-        # Set up the test
-        runner = pytest.CliRunner()
-        mock_config_instance = MagicMock()
-        mock_config_class.return_value = mock_config_instance
-        
-        # Call the setup command with user cancellation
-        result = runner.invoke(cli, ["setup", "gemini", "test-api-key"], input="n\n")
-        
-        # Verify set_credential was not called
-        mock_config_instance.set_credential.assert_not_called()
-        
-        # Verify the output indicates cancellation
-        assert "Setup cancelled" in result.output
-    
-    @patch('cli_code.main.Config')
-    def test_set_default_provider_command(self, mock_config_class, mock_config):
-        """Test set-default-provider command."""
-        # Set up the test
-        runner = pytest.CliRunner()
-        mock_config_instance = MagicMock()
-        mock_config_class.return_value = mock_config_instance
-        
-        # Call the command
-        result = runner.invoke(cli, ["set-default-provider", "ollama"])
-        
-        # Verify set_default_provider was called
-        mock_config_instance.set_default_provider.assert_called_once_with("ollama")
-        
-        # Verify the output
-        assert "Default provider set to: ollama" in result.output
-    
-    @patch('cli_code.main.Config')
-    def test_set_default_model_command(self, mock_config_class, mock_config):
-        """Test set-default-model command."""
-        # Set up the test
-        runner = pytest.CliRunner()
-        mock_config_instance = MagicMock()
-        mock_config_class.return_value = mock_config_instance
-        
-        # Call the command
-        result = runner.invoke(cli, ["set-default-model", "gemini", "gemini-1.5-flash"])
-        
-        # Verify set_default_model was called
-        mock_config_instance.set_default_model.assert_called_once_with("gemini", "gemini-1.5-flash")
-        
-        # Verify the output
-        assert "Default model for provider gemini set to: gemini-1.5-flash" in result.output
-    
-    @patch('cli_code.main.Config')
-    @patch('cli_code.main.GeminiModel')
-    def test_list_models_gemini_command(self, mock_gemini_model, mock_config_class, mock_config):
-        """Test list-models command for Gemini provider."""
-        # Set up the test
-        runner = pytest.CliRunner()
-        mock_config_instance = MagicMock()
-        mock_config_class.return_value = mock_config_instance
-        mock_config_instance.get_credential.return_value = "test-api-key"
-        
-        # Mock the list_models method
-        mock_model_instance = MagicMock()
-        mock_model_instance.list_models.return_value = ["gemini-1.5-pro", "gemini-1.5-flash"]
-        mock_gemini_model.return_value = mock_model_instance
-        
-        # Call the command
-        result = runner.invoke(cli, ["list-models", "gemini"])
-        
-        # Verify the GeminiModel was created and list_models was called
-        mock_gemini_model.assert_called_once_with(api_key="test-api-key", console=ANY, model_name=None)
-        mock_model_instance.list_models.assert_called_once()
-        
-        # Verify the output
-        assert "Available models for provider: gemini" in result.output
-        assert "gemini-1.5-pro" in result.output
-        assert "gemini-1.5-flash" in result.output
-
-
-class TestToolCommandHandling:
-    """Tests for tool command handling in start_interactive_session."""
-    
-    @patch('cli_code.main.GeminiModel')
-    @patch('cli_code.main.process_tool_command')
-    def test_tool_command_processing(self, mock_process_tool, mock_model, mock_console, mock_config):
-        """Test processing of tool commands."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_model.return_value = mock_model_instance
-        mock_process_tool.return_value = True  # Indicate command was processed
-        
-        # Create input sequence
-        user_input_values = ["/tree", "/exit"]
-        
-        def mock_input_side_effect(prompt):
-            return user_input_values.pop(0)
-        
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify process_tool_command was called with correct arguments
-        mock_process_tool.assert_called_once_with("/tree", mock_model_instance, mock_console)
-        
-        # Verify model.generate was not called (since tool was processed)
-        mock_model_instance.generate.assert_not_called()
-    
-    @patch('cli_code.main.GeminiModel')
-    @patch('cli_code.main.process_tool_command')
-    def test_non_tool_command_processing(self, mock_process_tool, mock_model, mock_console, mock_config):
-        """Test processing of non-tool commands that start with '/'."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_model.return_value = mock_model_instance
-        mock_process_tool.return_value = False  # Indicate command was not processed as a tool
-        
-        # Create input sequence
-        user_input_values = ["/not_a_tool", "/exit"]
-        
-        def mock_input_side_effect(prompt):
-            return user_input_values.pop(0)
-        
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify process_tool_command was called
-        mock_process_tool.assert_called_once_with("/not_a_tool", mock_model_instance, mock_console)
-        
-        # Verify unknown command message was printed (since not a tool)
-        assert any("Unknown command" in str(args) for args, kwargs in mock_console.print.call_args_list)
-
-
-class TestSpecialCases:
-    """Tests for special cases and edge conditions in main.py."""
-    
-    @patch('cli_code.main.show_ascii_art')
-    @patch('cli_code.main.start_interactive_session')
-    def test_cli_with_no_config(self, mock_start_session, mock_show_ascii, mock_config):
-        """Test CLI behavior when config is None."""
-        # Set config to None for this test
-        with patch('cli_code.main.config', None):
-            # Set up the test
-            runner = pytest.CliRunner()
+    def test_interactive_session_ollama(self, mock_console):
+        """Test interactive session with Ollama provider."""
+        with patch('cli_code.main.config') as mock_config, \
+             patch('cli_code.main.OllamaModel') as mock_model_class:
             
-            # Call the CLI
-            result = runner.invoke(cli)
+            mock_config.get_credential.return_value = "http://localhost:11434"
+            mock_instance = MagicMock()
+            mock_model_class.return_value = mock_instance
             
-            # Verify start_interactive_session was not called
-            mock_start_session.assert_not_called()
-            
-            # Verify error message
-            assert "Error:" in result.output
-            assert "configuration" in result.output.lower()
+            start_interactive_session(provider="ollama", model_name="llama2", console=mock_console)
+            mock_console.print.assert_any_call(
+                "[green]Ollama provider initialized successfully.[/green]"
+            )
     
-    @patch('cli_code.main.GeminiModel')
-    def test_multiline_input(self, mock_model, mock_console, mock_config):
-        """Test handling of multiline input in interactive session."""
-        # Set up mocks
-        mock_model_instance = MagicMock()
-        mock_model.return_value = mock_model_instance
+    @patch('cli_code.main.OllamaModel')
+    def test_list_models_ollama_with_default(self, mock_ollama_model, runner, mock_config):
+        """Test list-models command for Ollama with a default model set."""
+        mock_instance = MagicMock()
+        mock_instance.list_models.return_value = [
+            {"id": "llama2", "name": "Llama 2"},
+            {"id": "mistral", "name": "Mistral"}
+        ]
+        mock_ollama_model.return_value = mock_instance
+        mock_config.get_default_model.return_value = "llama2"
         
-        # Create a generator function for multiline input
-        user_input_values = ["```\nMultiline\nInput\n```", "/exit"]
-        
-        def mock_input_side_effect(prompt):
-            return user_input_values.pop(0)
-        
-        mock_console.input.side_effect = mock_input_side_effect
-        
-        # Call the function
-        start_interactive_session(provider="gemini", model_name="gemini-1.0-pro", console=mock_console)
-        
-        # Verify model.generate was called with the processed multiline input
-        mock_model_instance.generate.assert_called_once()
-        # Strip the backticks and check the actual content
-        assert "Multiline\nInput" in mock_model_instance.generate.call_args[0][0] 
+        result = runner.invoke(cli, ['list-models', '--provider', 'ollama'])
+        assert result.exit_code == 0
+        assert "Current default Ollama model: llama2" in result.output 
