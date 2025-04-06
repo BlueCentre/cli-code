@@ -51,6 +51,7 @@ jobs:
     - name: Test with pytest and Generate Coverage
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        PYTHONPATH: ${{ github.workspace }}/src
         # Ensure API key exists for tests that might need it, but allow skipping
       run: |
         # List available test files to debug

@@ -31,6 +31,9 @@ def main():
     # Change to the root directory
     os.chdir(root_dir)
     
+    # Add the src directory to Python path to ensure proper imports
+    sys.path.insert(0, str(root_dir / 'src'))
+    
     if not args.skip_tests:
         # Ensure we have the necessary packages
         print("Installing required packages...")
