@@ -53,38 +53,17 @@ jobs:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         # Ensure API key exists for tests that might need it, but allow skipping
       run: |
-        # Debug information
-        echo "Python version:"
-        python --version
-        echo "Pytest version:"
-        python -m pytest --version
-        echo "Installed packages:"
-        pip list
-        
-        # List available source files
-        echo "Source files structure:"
-        find src -type f -name "*.py" | sort
-        
-        # List available test files
+        # List available test files to debug
         echo "Available test files:"
-        find test_dir -type f -name "*.py" | sort
+        ls -la test_dir/
         
-        # Verify the specific test files exist
-        echo "Checking specific test files:"
-        ls -la test_dir/test_config.py || echo "test_config.py not found!"
-        ls -la test_dir/test_main.py || echo "test_main.py not found!"
+        # Run pytest with only specific test files that we know work in CI
+        # Generate XML report for SonarCloud
+        python -m pytest --cov=src/cli_code --cov-report=term --cov-report=xml test_dir/test_config.py test_dir/test_main.py
         
-        # Try running pytest with verbose output and without coverage first
-        echo "Running basic pytest to diagnose issues:"
-        python -m pytest -v test_dir/test_config.py || echo "Basic test run failed"
-        
-        # If basic tests pass, try with minimal coverage
-        echo "Running with minimal coverage:"
-        python -m pytest --cov=src/cli_code test_dir/test_config.py test_dir/test_main.py || echo "Tests with coverage failed"
-        
-        # Generate coverage report separately if tests pass
-        echo "Generating coverage report:"
-        python -m coverage xml || echo "Coverage report generation failed"
+        # Display the overall coverage percentage
+        echo "Overall coverage percentage:"
+        python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(f\"Coverage: {root.attrib['line-rate']}%\")"
 
     - name: SonarCloud Scan
       uses: SonarSource/sonarcloud-github-action@master # Or use a specific version like @v2.1
