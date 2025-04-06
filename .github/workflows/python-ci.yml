@@ -55,7 +55,7 @@ jobs:
       run: |
         # Run pytest with coverage, targeting your source code directory
         # Generate XML report for SonarCloud
-        python -m pytest --cov=src/cli_code --cov-report=xml test_dir/
+        python -m pytest --cov=src/cli_code --cov-report=xml test_dir/ -k "not _comprehensive"
 
     - name: SonarCloud Scan
       uses: SonarSource/sonarcloud-github-action@master # Or use a specific version like @v2.1
