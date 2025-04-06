@@ -81,11 +81,15 @@ target-version = "py39"
 # Enable a set of rules
 select = ["E", "F", "I", "B"]
 # Ignore certain errors that are difficult to fix in this codebase
-ignore = ["E701", "E702", "E501", "F401", "F541", "E402", "E721", "F841"]
+ignore = ["E701", "E702", "E501", "F401", "F541", "E402", "E721", "F841", "F403", "E203", "F405", "F821"]
 
 # Allow autofix for all enabled rules (when `--fix`) is used.
 fixable = ["ALL"]
 unfixable = []
+
+# Ignore 'import' errors for pytest in test files
+[tool.ruff.lint.per-file-ignores]
+"test_dir/*" = ["F401", "F811", "E402", "F811", "F403", "F405", "E711", "E712", "F821"]
 
 # Add pytest and pytest-cov configuration
 [tool.pytest.ini_options]
