@@ -58,9 +58,21 @@ jobs:
         echo "Available test files:"
         ls -la test_dir/
         
+        # Debug Python path and available modules
+        echo "Current PYTHONPATH: $PYTHONPATH"
+        echo "Available Python modules:"
+        ls -la src/cli_code
+
+        # Install dependencies again to be safe
+        pip install -e .
+        pip list
+        
         # Run pytest with more comprehensive coverage
         # Generate both XML and HTML reports
-        python -m pytest --cov=cli_code --cov-report=term --cov-report=xml --cov-report=html --verbose test_dir/
+        python -m pytest --cov=cli_code --cov-report=term --cov-report=xml --cov-report=html -v test_dir/test_basic_functions.py
+
+        # If that passes, run the rest of the tests
+        python -m pytest --cov=cli_code --cov-report=term --cov-report=xml:coverage.xml --cov-report=html --cov-append -v test_dir/
 
         # Display the overall coverage percentage
         echo "Overall coverage percentage:"
