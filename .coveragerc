@@ -1,0 +1,33 @@
+[run]
+source = cli_code
+omit = 
+    */.rules/*
+    */.venv/*
+    */docs/*
+    */test_*
+    */__pycache__/*
+    */venv/*
+    */.pytest_cache/*
+    */site-packages/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass
+    raise ImportError
+    except ImportError
+    raise AssertionError
+    if TYPE_CHECKING
+
+precision = 2
+show_missing = true
+
+[html]
+directory = coverage_html
+title = CLI Code Coverage Report
+
+[xml]
+output = coverage.xml 

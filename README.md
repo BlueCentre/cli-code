@@ -2,6 +2,7 @@
 
 [![Python CI](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml/badge.svg)](https://github.com/BlueCentre/cli-code/actions/workflows/python-ci.yml)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=BlueCentre_cli-code&metric=coverage)](https://sonarcloud.io/summary/new_code?id=BlueCentre_cli-code)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=BlueCentre_cli-code&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=BlueCentre_cli-code)
 
 An AI coding assistant for your terminal, powered by multiple LLM providers (Gemini and Ollama).
 
@@ -166,6 +167,7 @@ For more detailed information, please refer to the following documentation:
 
 - [Installation Guide](docs/install.md) - Detailed instructions for installing and configuring CLI-Code
 - [Contributing Guide](docs/contributing.md) - Guidelines for contributing to the project
+- [Code Coverage Guide](CODE_COVERAGE.md) - Information on code coverage tools and practices
 - [Changelog](docs/changelog.md) - History of changes and releases
 - [Architecture](docs/architecture.md) - Technical overview of the system architecture
 - [Context Guidelines](docs/context.md) - Guidelines for the CLI Code Assistant
@@ -220,7 +222,27 @@ Example: Create a file `.rules/python_standards.md` with your team's Python codi
 
 ## Development
 
-To contribute to CLI Code, please see the [Contributing Guide](docs/contributing.md).
+To set up a development environment:
+
+```bash
+# Clone the repository
+git clone https://github.com/BlueCentre/cli-code.git
+cd cli-code
+
+# Install in development mode with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+python -m pytest
+
+# Run coverage analysis
+./run_coverage.sh
+
+# Run SonarCloud analysis locally (requires sonar-scanner CLI)
+./run_sonar_scan.sh
+```
+
+The project uses [pytest](https://docs.pytest.org/) for testing and [SonarCloud](https://sonarcloud.io/) for code quality and coverage analysis.
 
 ## Contributing
 

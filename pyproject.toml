@@ -66,12 +66,13 @@ package-dir = {"" = "src"}
 exclude = [
     ".git",
     ".env",
+    "env",
     ".venv",
     "venv",
-    "env",
-    "__pycache__",
     ".vscode",
-    ".rules"
+    ".rules",
+    "docs",
+    "__pycache__",
 ]
 line-length = 120
 target-version = "py39"
@@ -96,7 +97,29 @@ python_functions = "test_*"
 [tool.coverage.run]
 source = ["cli_code"]
 omit = [
+    "*/.rules/*",
+    "*/.venv/*",
+    "*/docs/*",
     "*/test_*",
     "*/__pycache__/*",
-    "*/.venv/*",
 ]
+
+# Add these new sections for better coverage configuration
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
+precision = 2
+show_missing = true
+fail_under = 60  # Minimum coverage percentage required
+
+[tool.coverage.html]
+directory = "coverage_html"
+
+[tool.coverage.xml]
+output = "coverage.xml"
