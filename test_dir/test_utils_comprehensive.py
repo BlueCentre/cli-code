@@ -30,6 +30,7 @@ SKIP_REASON = "Required imports not available and not in CI environment"
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_tiktoken
 class TestUtilsModule(unittest.TestCase):
     """Test cases for the utils module functions."""
 
@@ -69,6 +70,7 @@ class TestUtilsModule(unittest.TestCase):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_tiktoken
 def test_count_tokens_mocked_failure(monkeypatch):
     """Test the fallback method when tiktoken raises an exception."""
     def mock_encoding_that_fails(*args, **kwargs):

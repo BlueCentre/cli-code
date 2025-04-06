@@ -66,6 +66,7 @@ def mock_config():
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_get_credential(mock_config):
     """Test get_credential method."""
     # Skip if not available and not in CI
@@ -84,6 +85,7 @@ def test_get_credential(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_set_credential(mock_config):
     """Test set_credential method."""
     # Skip if not available and not in CI
@@ -104,6 +106,7 @@ def test_set_credential(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_get_default_provider(mock_config):
     """Test get_default_provider method."""
     # Skip if not available and not in CI
@@ -123,6 +126,7 @@ def test_get_default_provider(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_set_default_provider(mock_config):
     """Test set_default_provider method."""
     # Skip if not available and not in CI
@@ -139,6 +143,7 @@ def test_set_default_provider(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_get_default_model(mock_config):
     """Test get_default_model method."""
     # Skip if not available and not in CI
@@ -156,6 +161,7 @@ def test_get_default_model(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_set_default_model(mock_config):
     """Test set_default_model method."""
     # Skip if not available and not in CI
@@ -176,6 +182,7 @@ def test_set_default_model(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_get_setting(mock_config):
     """Test get_setting method."""
     # Skip if not available and not in CI
@@ -195,6 +202,7 @@ def test_get_setting(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_set_setting(mock_config):
     """Test set_setting method."""
     # Skip if not available and not in CI
@@ -216,6 +224,7 @@ def test_set_setting(mock_config):
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_save_config():
     """Test _save_config method."""
     if not IMPORTS_AVAILABLE:
@@ -240,6 +249,7 @@ def test_save_config():
 
 
 @pytest.mark.skipif(SHOULD_SKIP, reason=SKIP_REASON)
+@pytest.mark.requires_yaml
 def test_save_config_error():
     """Test error handling in _save_config method."""
     if not IMPORTS_AVAILABLE:
