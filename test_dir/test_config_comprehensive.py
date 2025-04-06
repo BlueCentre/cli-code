@@ -1,6 +1,13 @@
 """
 Comprehensive tests for the config module in src/cli_code/config.py.
 Focusing on improving test coverage beyond the basic test_config.py
+
+Configuration in CLI Code supports two approaches:
+1. File-based configuration (.yaml): Primary approach for end users who install from pip
+2. Environment variables: Used mainly during development for quick experimentation
+
+Both approaches are supported simultaneously - there is no migration needed as both
+configuration methods can coexist.
 """
 
 import os
@@ -177,32 +184,6 @@ class TestConfigErrorHandling:
             assert "Error saving config file" in mock_logger.error.call_args[0][0]
 
 
-class TestMigrationFunctionality:
-    """Tests for the migration functionality in Config class."""
-    
-    def test_migrate_old_keys(self, config_instance):
-        """Test migration from old api_keys format to new format."""
-        old_config = {
-            'api_keys': {
-                'google': 'old-key'
-            },
-            'default_provider': 'gemini'
-        }
-        
-        expected_new_config = {
-            'google_api_key': 'old-key',
-            'default_provider': 'gemini'
-        }
-        
-        with patch.object(Config, '_save_config') as mock_save:
-            config_instance.config = old_config.copy()
-            config_instance._migrate_old_keys()
-            
-            # Verify the config was migrated and saved
-            assert config_instance.config == expected_new_config
-            mock_save.assert_called_once()
-
-
 class TestCredentialAndProviderFunctions:
     """Tests for credential, provider, and model getter and setter methods."""
     
@@ -329,8 +310,7 @@ class TestConfigInitialization:
         with patch.dict(os.environ, test_env, clear=False), \
              patch.object(Config, '_load_dotenv'), \
              patch.object(Config, '_ensure_config_exists'), \
-             patch.object(Config, '_load_config', return_value={}), \
-             patch.object(Config, '_migrate_old_keys'):
+             patch.object(Config, '_load_config', return_value={}):
             
             config = Config()
             
@@ -349,8 +329,7 @@ class TestConfigInitialization:
         with patch('os.path.expanduser', return_value='/mock/home'), \
              patch.object(Config, '_load_dotenv'), \
              patch.object(Config, '_ensure_config_exists'), \
-             patch.object(Config, '_load_config', return_value={}), \
-             patch.object(Config, '_migrate_old_keys'):
+             patch.object(Config, '_load_config', return_value={}):
             
             config = Config()
             
