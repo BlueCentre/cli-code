@@ -72,6 +72,7 @@ skip_if_imports_unavailable = pytest.mark.skipif(
     reason="Required imports not available"
 )
 
+
 @skip_if_imports_unavailable
 class TestMainCLICommands(TestCase):
     """Tests for main CLI commands that weren't well covered previously."""
@@ -112,6 +113,7 @@ class TestMainCLICommands(TestCase):
         assert result.exit_code != 0
         assert "Invalid provider" in result.output
         mock_get_models.assert_not_called()
+
 
 @skip_if_imports_unavailable
 class TestInteractiveSession(TestCase):
@@ -190,5 +192,6 @@ class TestInteractiveSession(TestCase):
                 mock_start.return_value = True
                 cli()
                 # Should be called with default provider and model
-                mock_start.assert_called_once_with('gemini', 'gemini-model', 
-                                                  initial_prompt='Write a hello world program') 
+                mock_start.assert_called_once_with(
+                    'gemini', 'gemini-model', initial_prompt='Write a hello world program'
+                ) 
