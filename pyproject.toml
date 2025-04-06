@@ -102,6 +102,9 @@ omit = [
     "*/docs/*",
     "*/test_*",
     "*/__pycache__/*",
+    "*/venv/*",
+    "*/.pytest_cache/*",
+    "*/site-packages/*",
 ]
 
 # Add these new sections for better coverage configuration
