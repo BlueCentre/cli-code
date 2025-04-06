@@ -59,7 +59,7 @@ jobs:
         
         # Run pytest with more comprehensive coverage
         # Generate both XML and HTML reports
-        python -m pytest --cov=src/cli_code --cov-report=term --cov-report=xml --cov-report=html --verbose test_dir/
+        python -m pytest --cov=cli_code --cov-report=term --cov-report=xml --cov-report=html --verbose test_dir/
 
         # Display the overall coverage percentage
         echo "Overall coverage percentage:"

@@ -235,14 +235,29 @@ pip install -e ".[dev]"
 # Run tests
 python -m pytest
 
-# Run coverage analysis
-./run_coverage.sh
+# Run coverage analysis with the new convenience script
+python run_tests_with_coverage.py --html
 
-# Run SonarCloud analysis locally (requires sonar-scanner CLI)
-./run_sonar_scan.sh
+# For more options:
+python run_tests_with_coverage.py --help
 ```
 
 The project uses [pytest](https://docs.pytest.org/) for testing and [SonarCloud](https://sonarcloud.io/) for code quality and coverage analysis.
+
+### Code Coverage
+
+We've implemented comprehensive code coverage tracking to ensure the quality and reliability of the codebase. Coverage reports are generated in HTML and XML formats for:
+
+- Local development with the `run_tests_with_coverage.py` script
+- CI/CD pipeline with GitHub Actions
+- SonarCloud analysis for visualizing coverage over time
+
+To improve code coverage, focus on:
+1. Adding tests for any new code
+2. Identifying and filling gaps in existing test coverage
+3. Testing edge cases and error handling paths
+
+Our coverage goal is to maintain at least 70% overall code coverage.
 
 ## Contributing
 
