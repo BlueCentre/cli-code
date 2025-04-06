@@ -60,6 +60,41 @@ Before the automated publishing will work, you need to configure trusted publish
 
 - For pre-release versions, use suffixes like `-alpha.1`, `-beta.2`, etc.
 
+### Detailed Version Bump Criteria
+
+#### When to Bump MAJOR Version (0.x.x → 1.0.0 or 1.x.x → 2.0.0)
+- Breaking changes to the API or command structure
+- Significant rewrites that change how users interact with the tool
+- When the API is considered stable and feature-complete for a first official release (0.x.x → 1.0.0)
+- Dropping support for previously supported Python versions or dependencies
+- Changes that require users to modify their usage or configuration
+
+#### When to Bump MINOR Version (0.2.x → 0.3.0)
+- Adding new commands or features that don't break existing functionality
+- Adding support for new model providers or significant model upgrades
+- Implementing new tools or capabilities
+- Significant improvements to performance or UX that don't change existing behavior
+- Adding new configuration options
+- Deprecating features (but not removing them yet)
+
+#### When to Bump PATCH Version (0.2.1 → 0.2.2)
+- Bug fixes and error corrections
+- Minor documentation updates
+- Test coverage improvements
+- Non-functional code refactoring
+- Performance optimizations that don't change behavior
+- Dependency version updates for security fixes
+
+### Version Bump Checklist
+
+Before releasing a new version:
+
+1. Ensure all changes are documented in the changelog (`docs/changelog.md`)
+2. Update version number in `pyproject.toml`
+3. Make sure all tests pass and CI checks are green
+4. Confirm that the README.md and documentation are up to date
+5. For MAJOR or significant MINOR releases, create a GitHub Release with detailed notes
+
 ## Release Notes
 
 When creating significant releases, consider:
