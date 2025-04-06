@@ -1,5 +1,17 @@
 """
-Configuration management for CLI Code.
+Configuration management for the CLI Code application.
+
+This module provides a Config class that manages configuration for the CLI Code
+application, including loading environment variables, ensuring the configuration
+file exists, and loading and saving configuration.
+
+Configuration in CLI Code supports two approaches:
+1. File-based configuration (.yaml): Primary approach for end users who install from pip
+2. Environment variables: Used mainly during development for quick experimentation
+
+Both approaches are supported simultaneously - there is no migration needed as both
+configuration methods can coexist. Environment variables take precedence over file-based
+configuration when both are present.
 """
 
 import logging
@@ -12,25 +24,40 @@ log = logging.getLogger(__name__)
 
 
 class Config:
-    """Manages configuration for the cli-code application."""
+    """
+    Configuration management for the CLI Code application.
+    
+    This class manages loading configuration from a YAML file, creating a
+    default configuration file if one doesn't exist, and loading environment
+    variables.
+    
+    The configuration is loaded in the following order of precedence:
+    1. Environment variables (highest precedence)
+    2. Configuration file
+    3. Default values (lowest precedence)
+    """
 
     def __init__(self):
-        self.config_dir = Path.home() / ".config" / "cli-code-agent"
+        """
+        Initialize the configuration.
+        
+        This will load environment variables, ensure the configuration file
+        exists, and load the configuration from the file.
+        """
+        self.config_dir = Path(os.path.expanduser("~/.config/cli-code"))
         self.config_file = self.config_dir / "config.yaml"
-        self.config = {}
-
-        # First load environment variables from .env file if it exists
+        
+        # Load environment variables
         self._load_dotenv()
-
-        try:
-            self._ensure_config_exists()
-            self.config = self._load_config()
-            self._migrate_old_keys()
-
-            # Override config with environment variables if they exist
-            self._apply_env_vars()
-        except Exception as e:
-            log.error(f"Error initializing configuration from {self.config_file}: {e}", exc_info=True)
+        
+        # Ensure config file exists
+        self._ensure_config_exists()
+        
+        # Load config from file
+        self.config = self._load_config()
+        
+        # Apply environment variable overrides
+        self._apply_env_vars()
 
     def _load_dotenv(self):
         """Load environment variables from .env file if it exists."""
@@ -77,32 +104,50 @@ class Config:
             log.debug("No .env or .env.example file found in current directory")
 
     def _apply_env_vars(self):
-        """Apply environment variables to override config settings."""
-        # Map of environment variable names to config keys
-        env_var_mapping = {
-            "CLI_CODE_GOOGLE_API_KEY": "google_api_key",
-            "CLI_CODE_OLLAMA_API_URL": "ollama_api_url",
-            "CLI_CODE_DEFAULT_PROVIDER": "default_provider",
-            "CLI_CODE_DEFAULT_MODEL": "default_model",
-            "CLI_CODE_OLLAMA_DEFAULT_MODEL": "ollama_default_model",
+        """
+        Apply environment variable overrides to the configuration.
+        
+        Environment variables take precedence over configuration file values.
+        Environment variables are formatted as:
+        CLI_CODE_SETTING_NAME
+        
+        For example:
+        CLI_CODE_GOOGLE_API_KEY=my-api-key
+        CLI_CODE_DEFAULT_PROVIDER=gemini
+        CLI_CODE_SETTINGS_MAX_TOKENS=4096
+        """
+        
+        # Direct mappings from env to config keys
+        env_mappings = {
+            'CLI_CODE_GOOGLE_API_KEY': 'google_api_key',
+            'CLI_CODE_DEFAULT_PROVIDER': 'default_provider',
+            'CLI_CODE_DEFAULT_MODEL': 'default_model',
+            'CLI_CODE_OLLAMA_API_URL': 'ollama_api_url',
+            'CLI_CODE_OLLAMA_DEFAULT_MODEL': 'ollama_default_model',
         }
-
-        for env_var, config_key in env_var_mapping.items():
-            if env_var in os.environ:
-                value = os.environ[env_var]
-                # Mask sensitive values in logs
-                log_value = "****" if "KEY" in env_var or "TOKEN" in env_var else value
-                log.info(f"Using environment variable {env_var}={log_value} to override config key '{config_key}'")
-                self.config[config_key] = value
-
-        # Apply and save if environment variables were found
-        if any(env_var in os.environ for env_var in env_var_mapping):
-            self._save_config()
-            # Log all the current config values for debugging
-            safe_config = self.config.copy()
-            if "google_api_key" in safe_config and safe_config["google_api_key"]:
-                safe_config["google_api_key"] = "****"
-            log.debug(f"Final config after applying environment variables: {safe_config}")
+        
+        # Apply direct mappings
+        for env_key, config_key in env_mappings.items():
+            if env_key in os.environ:
+                self.config[config_key] = os.environ[env_key]
+        
+        # Settings with CLI_CODE_SETTINGS_ prefix go into settings dict
+        if 'settings' not in self.config:
+            self.config['settings'] = {}
+            
+        for env_key, env_value in os.environ.items():
+            if env_key.startswith('CLI_CODE_SETTINGS_'):
+                setting_name = env_key[len('CLI_CODE_SETTINGS_'):].lower()
+                
+                # Try to convert to appropriate type (int, float, bool)
+                if env_value.isdigit():
+                    self.config['settings'][setting_name] = int(env_value)
+                elif env_value.replace('.', '', 1).isdigit() and env_value.count('.') <= 1:
+                    self.config['settings'][setting_name] = float(env_value)
+                elif env_value.lower() in ('true', 'false'):
+                    self.config['settings'][setting_name] = env_value.lower() == 'true'
+                else:
+                    self.config['settings'][setting_name] = env_value
 
     def _ensure_config_exists(self):
         """Create config directory and file with defaults if they don't exist."""
@@ -153,47 +198,6 @@ class Config:
                 yaml.dump(self.config, f, default_flow_style=False)
         except Exception as e:
             log.error(f"Error saving config file {self.config_file}: {e}", exc_info=True)
-
-    def _migrate_old_keys(self):
-        """Migrate from old nested 'api_keys': {'google': ...} structure if present."""
-        if "api_keys" in self.config and isinstance(self.config["api_keys"], dict):
-            log.info("Migrating old 'api_keys' structure in config file.")
-            if "google" in self.config["api_keys"] and "google_api_key" not in self.config:
-                self.config["google_api_key"] = self.config["api_keys"]["google"]
-            del self.config["api_keys"]
-            self._save_config()
-            log.info("Finished migrating 'api_keys'.")
-
-        # Check for old config paths and migrate if needed
-        self._migrate_old_config_paths()
-
-    def _migrate_old_config_paths(self):
-        """Check for and migrate config from older versions with different path names."""
-        old_paths = [
-            Path.home() / ".config" / "gemini-code" / "config.yaml",
-            Path.home() / ".config" / "cli-code" / "config.yaml",
-        ]
-
-        for old_path in old_paths:
-            if old_path.exists() and not self.config_file.exists():
-                log.info(f"Found old config at {old_path}. Migrating to {self.config_file}...")
-                try:
-                    # Ensure new directory exists
-                    self.config_dir.mkdir(parents=True, exist_ok=True)
-
-                    # Read old config
-                    with open(old_path, "r") as old_file:
-                        old_config = yaml.safe_load(old_file) or {}
-
-                    # Update our config with old values
-                    self.config.update(old_config)
-
-                    # Save to new location
-                    self._save_config()
-                    log.info(f"Successfully migrated config from {old_path} to {self.config_file}")
-                except Exception as e:
-                    log.error(f"Error migrating config from {old_path}: {e}", exc_info=True)
-                    # Continue trying other paths on failure
 
     def get_credential(self, provider: str) -> str | None:
         """Get the credential (API key or URL) for a specific provider."""
