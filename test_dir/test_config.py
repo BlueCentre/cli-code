@@ -113,7 +113,6 @@ def test_ensure_config_exists_creates_default(
 
 @patch("cli_code.config.Config._load_dotenv", MagicMock())  # Mock dotenv loading
 @patch("cli_code.config.Config._apply_env_vars", MagicMock())  # Mock env var application
-@patch("cli_code.config.Config._migrate_old_keys", MagicMock())  # Mock migration
 @patch("cli_code.config.Config._load_config")
 @patch("cli_code.config.Config._ensure_config_exists")  # Keep patch but don't assert not called
 def test_config_init_loads_existing(mock_ensure_config, mock_load_config, mock_config_paths):
@@ -152,7 +151,6 @@ def test_config_setters_getters(mock_load_config, mock_save, mock_config_paths):
         patch.dict(os.environ, {}, clear=True),
         patch("cli_code.config.Config._load_dotenv", MagicMock()),
         patch("cli_code.config.Config._ensure_config_exists", MagicMock()),
-        patch("cli_code.config.Config._migrate_old_keys", MagicMock()),
         patch("cli_code.config.Config._apply_env_vars", MagicMock()),
     ):
         cfg = Config()
@@ -220,12 +218,11 @@ def test_config_setters_getters(mock_load_config, mock_save, mock_config_paths):
 
 # New test combining env var logic check
 @patch("cli_code.config.Config._load_dotenv", MagicMock())  # Mock dotenv loading step
-@patch("cli_code.config.Config._migrate_old_keys", MagicMock())  # Mock migration
 @patch("cli_code.config.Config._load_config")
 @patch("cli_code.config.Config._ensure_config_exists", MagicMock())  # Mock ensure config
 @patch("cli_code.config.Config._save_config")  # Mock save to check if called
 def test_config_env_var_override(mock_save, mock_load_config, mock_config_paths):
-    """Test that _apply_env_vars correctly overrides loaded config and saves."""
+    """Test that _apply_env_vars correctly overrides loaded config."""
     config_dir, config_file = mock_config_paths
     initial_config_data = {
         "google_api_key": "config_key",
@@ -247,7 +244,6 @@ def test_config_env_var_override(mock_save, mock_load_config, mock_config_paths)
     assert cfg.config["ollama_api_url"] == "env_url"
     assert cfg.config["default_provider"] == "ollama"
     assert cfg.config["ollama_default_model"] == "config_ollama"
-    mock_save.assert_called_once()
 
 
 # New simplified test for _migrate_old_config_paths
