@@ -3,8 +3,8 @@ Tests for basic model functionality that doesn't require API access.
 These tests focus on increasing coverage for the model classes.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
+from unittest import TestCase, skipIf
+from unittest.mock import MagicMock, patch
 
 # Import necessary modules safely
 try:
@@ -19,9 +19,10 @@ except ImportError:
     class GeminiModelAgent: pass
     class OllamaModelAgent: pass
 
+
 # Skip all tests if imports aren't available
-@unittest.skipIf(not IMPORTS_AVAILABLE, "Required model imports not available")
-class TestGeminiModelBasics(unittest.TestCase):
+@skipIf(not IMPORTS_AVAILABLE, "Required model imports not available")
+class TestGeminiModelBasics(TestCase):
     """Test basic GeminiModelAgent functionality that doesn't require API calls."""
     
     def test_gemini_init(self):
@@ -82,8 +83,9 @@ class TestGeminiModelBasics(unittest.TestCase):
         self.assertEqual(agent.history[1]["role"], "model")
         self.assertEqual(agent.history[1]["parts"][0]["text"], "Hi there!")
 
-@unittest.skipIf(not IMPORTS_AVAILABLE, "Required model imports not available")
-class TestOllamaModelBasics(unittest.TestCase):
+
+@skipIf(not IMPORTS_AVAILABLE, "Required model imports not available")
+class TestOllamaModelBasics(TestCase):
     """Test basic OllamaModelAgent functionality that doesn't require API calls."""
     
     def test_ollama_init(self):

@@ -5,8 +5,8 @@ This file focuses on areas that aren't well covered by existing tests.
 
 import os
 import sys
-import unittest
-from unittest.mock import patch, MagicMock, call
+from unittest import TestCase, mock
+from unittest.mock import MagicMock, call, patch
 
 # Import pytest only if available
 try:
@@ -35,8 +35,12 @@ except ImportError:
 try:
     from cli_code.config import Config
     from cli_code.main import (
-        cli, set_default_provider, set_default_model, list_models,
-        setup_command, start_interactive_session
+        cli,
+        list_models,
+        set_default_model,
+        set_default_provider,
+        setup_command,
+        start_interactive_session,
     )
     # Import click testing if available
     try:
@@ -69,7 +73,7 @@ skip_if_imports_unavailable = pytest.mark.skipif(
 )
 
 @skip_if_imports_unavailable
-class TestMainCLICommands(unittest.TestCase):
+class TestMainCLICommands(TestCase):
     """Tests for main CLI commands that weren't well covered previously."""
     
     @patch('cli_code.main.Config')
@@ -110,7 +114,7 @@ class TestMainCLICommands(unittest.TestCase):
         mock_get_models.assert_not_called()
 
 @skip_if_imports_unavailable
-class TestInteractiveSession(unittest.TestCase):
+class TestInteractiveSession(TestCase):
     """Tests for interactive session functionality."""
     
     @patch('cli_code.main.get_agent_for_provider')
