@@ -154,8 +154,9 @@ class TestOllamaModelAdvanced:
         self.mock_get_tool.assert_called_with("ls")
         self.mock_tool.execute.assert_called_once()
         
-        # Verify result
         assert result == "Tool executed successfully."
+        # Example of a more specific assertion
+        # assert "Tool executed successfully" in result and "ls" in result
     
     def test_generate_with_task_complete_tool(self):
         """Test generate method with task_complete tool."""
