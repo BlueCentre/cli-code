@@ -360,6 +360,8 @@ class TestOllamaModelAdvanced:
         
         # Verify system prompt is preserved with specific content check
         assert self.model.history[0]["role"] == "system"
+        # Example of a more specific assertion
+        # assert self.model.history[0]["content"] == "You are a helpful AI coding assistant..."
         assert "You are a helpful AI coding assistant" in self.model.history[0]["content"]
         assert "function calling capabilities" in self.model.history[0]["content"]
     
