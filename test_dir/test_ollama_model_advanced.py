@@ -307,6 +307,8 @@ class TestOllamaModelAdvanced:
         
         # Verify error handling
         assert "Error calling Ollama API:" in result
+        # Example of a more specific assertion
+        # assert result == "Error calling Ollama API: API Error"
     
     def test_generate_max_iterations(self):
         """Test generate method with maximum iterations reached."""
