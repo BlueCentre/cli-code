@@ -58,8 +58,8 @@ Set up Trusted Publishing between GitHub and PyPI:
 3. Create and push a tag:
    ```bash
    git tag -a vx.y.z -m "Release version x.y.z"
-   git push origin main
-   git push origin vx.y.z
+git push origin main
+git push origin vx.y.z
    ```
 
 4. Monitor the CI workflow in GitHub Actions to verify the release process completes successfully.
