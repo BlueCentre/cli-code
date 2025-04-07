@@ -118,7 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: publish
     permissions:
-      id-token: write  # Required for PyPI publishing with trusted publishing
+      id-token: write  # Required for PyPI trusted publishing
+      contents: read   # Required for actions/checkout
       
     steps:
     - name: Download built packages
@@ -127,5 +128,24 @@ jobs:
         name: dist
         path: dist/
         
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1 
+    - name: Display packages to be published
+      run: |
+        echo "Packages to be published:"
+        ls -la dist/
+
+    # Option 1: Use Trusted Publishing (OIDC)
+    - name: Publish to PyPI using Trusted Publishing
+      if: ${{ !env.ACT && env.USE_TRUSTED_PUBLISHING == 'true' }}
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        verbose: true
+        print-hash: true
+
+    # Option 2: Use API Token
+    - name: Publish to PyPI using Token
+      if: ${{ !env.ACT && (env.USE_TRUSTED_PUBLISHING != 'true') }}
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        verbose: true
+        print-hash: true 
