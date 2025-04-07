@@ -66,6 +66,41 @@ git push origin vx.y.z
 
 5. Check that the package appears on PyPI at https://pypi.org/project/cli-code-agent/
 
+## Verification Steps
+
+After publishing, always verify the package works correctly:
+
+1. **Check PyPI Listing**:
+   - Verify the package is visible on PyPI at https://pypi.org/project/cli-code-agent/
+   - Confirm the correct version is displayed
+   - Verify the package metadata (description, classifiers, dependencies) matches pyproject.toml
+
+2. **Installation Test**:
+   ```bash
+   # Create a fresh virtual environment
+   python -m venv test_install_env
+   source test_install_env/bin/activate  # On Windows: test_install_env\Scripts\activate
+   
+   # Install the package directly from PyPI
+   pip install cli-code-agent==x.y.z
+   ```
+
+3. **Import Test**:
+   ```bash
+   # Verify the version is correct
+   python -c "import cli_code; print(cli_code.__version__)"
+   ```
+
+4. **CLI Execution Test**:
+   ```bash
+   # Verify CLI command works
+   cli-code-agent --help
+   ```
+
+5. **Basic Functionality Test**:
+   - Run a simple test that exercises the core functionality
+   - Verify outputs match expectations
+
 ## Troubleshooting
 
 If the release fails, check:
