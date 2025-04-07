@@ -300,7 +300,7 @@ class TestGeminiModelAdvanced:
         
         # Verify only the first function is executed (since we only process one per turn)
         self.mock_get_tool.assert_called_with("ls")
-        assert "All functions executed" in result
+        self.mock_tool.execute.assert_called_once_with() # Verify no arguments are passed
     
     def test_manage_context_window_truncation(self):
         """Test specific context window management truncation with many messages."""
