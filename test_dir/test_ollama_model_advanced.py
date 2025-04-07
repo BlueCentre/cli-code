@@ -355,8 +355,10 @@ class TestOllamaModelAdvanced:
         # Verify truncation
         assert len(self.model.history) < initial_length
         
-        # Verify system prompt is preserved
+        # Verify system prompt is preserved with specific content check
         assert self.model.history[0]["role"] == "system"
+        assert "You are a helpful AI coding assistant" in self.model.history[0]["content"]
+        assert "function calling capabilities" in self.model.history[0]["content"]
     
     def test_generate_with_token_counting(self):
         """Test generate method with token counting and context management."""
@@ -413,7 +415,8 @@ class TestOllamaModelAdvanced:
         self.mock_client.chat.completions.create.return_value = mock_response
         
         # Make tool execution fail
-        self.mock_tool.execute.side_effect = Exception("Tool execution failed")
+        error_message = "Tool execution failed"
+        self.mock_tool.execute.side_effect = Exception(error_message)
         
         # Create a second response for after tool failure
         mock_message2 = MagicMock()
@@ -432,5 +435,13 @@ class TestOllamaModelAdvanced:
         # Call generate
         result = self.model.generate("List the files")
         
-        # Verify error was handled gracefully
-        assert result == "I encountered an error." 
+        # Verify error was handled gracefully with specific assertions
+        assert result == "I encountered an error."
+        # Verify that error details were added to history
+        error_found = False
+        for message in self.model.history:
+            if message.get("role") == "tool" and message.get("name") == "ls":
+                assert "error" in message.get("content", "").lower()
+                assert error_message in message.get("content", "")
+                error_found = True
+        assert error_found, "Error message not found in history" 

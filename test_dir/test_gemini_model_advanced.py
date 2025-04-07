@@ -214,13 +214,15 @@ class TestGeminiModelAdvanced:
     def test_generate_with_api_error(self):
         """Test generate method when API throws an error."""
         # Mock API error
-        self.mock_model_instance.generate_content.side_effect = Exception("API Error")
+        api_error_message = "API Error"
+        self.mock_model_instance.generate_content.side_effect = Exception(api_error_message)
         
         # Call generate
         result = self.model.generate("Generate something")
         
-        # Verify error handling
+        # Verify error handling with specific assertions
         assert "Error calling Gemini API:" in result
+        assert api_error_message in result
         
     def test_generate_max_iterations(self):
         """Test generate method with maximum iterations reached."""
@@ -316,5 +318,7 @@ class TestGeminiModelAdvanced:
         # Verify truncation occurred
         assert len(self.model.history) < initial_length
         
-        # Verify the first message is still the system prompt
-        assert "System Prompt" in str(self.model.history[0]) 
+        # Verify the first message is still the system prompt with specific content check
+        assert "System Prompt" in str(self.model.history[0])
+        assert "function calling capabilities" in str(self.model.history[0])
+        assert "CLI-Code" in str(self.model.history[0]) 
