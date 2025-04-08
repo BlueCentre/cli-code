@@ -240,6 +240,32 @@ python run_tests_with_coverage.py --html
 
 # For more options:
 python run_tests_with_coverage.py --help
+
+### Running Tests Reliably
+
+When running tests, use these approaches for better control and reliability:
+
+```bash
+# Run specific test files
+python -m pytest test_dir/test_ollama_model_context.py
+
+# Run specific test classes or methods
+python -m pytest test_dir/test_ollama_model_context.py::TestOllamaModelContext
+python -m pytest test_dir/test_ollama_model_context.py::TestOllamaModelContext::test_clear_history
+
+# Use pattern matching with -k to select specific tests
+python -m pytest -k "tree_tool or ollama_context"
+
+# Exclude problematic tests with pattern matching
+python -m pytest -k "not config_comprehensive"
+
+# Run tests in parallel for faster execution
+pip install pytest-xdist
+python -m pytest -xvs -n 4
+
+# Monitor test progress with output redirection
+python -m pytest > test_results.log 2>&1 & 
+tail -f test_results.log
 ```
 
 The project uses [pytest](https://docs.pytest.org/) for testing and [SonarCloud](https://sonarcloud.io/) for code quality and coverage analysis.

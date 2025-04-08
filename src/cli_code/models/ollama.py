@@ -456,15 +456,27 @@ class OllamaModel(AbstractModelAgent):
 
     def clear_history(self):
         """Clears the Ollama conversation history, preserving the system prompt."""
+        # Save the system prompt if it exists
+        system_prompt = None
+        if self.history and self.history[0].get("role") == "system":
+            system_prompt = self.history[0]["content"]
+        
+        # Clear the history
         self.history = []
-        # Re-add system prompt after clearing
-        if hasattr(self, "system_prompt") and self.system_prompt:
-            # Use insert instead of add_to_history to avoid triggering context management unnecessarily here
-            self.history.insert(0, {"role": "system", "content": self.system_prompt})
-        log.info("Ollama history cleared, system prompt preserved.")
+        
+        # Re-add system prompt after clearing if it exists
+        if system_prompt:
+            self.history.insert(0, {"role": "system", "content": system_prompt})
+            log.info("Ollama history cleared, system prompt preserved.")
+        else:
+            log.info("Ollama history cleared completely.")
 
     def _manage_ollama_context(self):
         """Truncates Ollama history based on estimated token count."""
+        # If history is empty or has just one message, no need to truncate
+        if len(self.history) <= 1:
+            return
+            
         total_tokens = 0
         for message in self.history:
             # Estimate tokens by counting chars in JSON representation of message content
@@ -484,25 +496,51 @@ class OllamaModel(AbstractModelAgent):
             log.warning(
                 f"Ollama history token count ({total_tokens}) exceeds limit ({OLLAMA_MAX_CONTEXT_TOKENS}). Truncating."
             )
-            # Simple truncation: keep system prompt (if present at index 0) and remove oldest user/assistant messages
-            # Keep removing messages (after the potential system prompt) until under the limit
-
-            # Find index of first non-system message
-            start_index = 0
+            
+            # Save system prompt if it exists at the beginning
+            system_message = None
             if self.history and self.history[0].get("role") == "system":
-                start_index = 1
-
-            # Keep removing messages from the start (after system prompt)
-            while total_tokens > OLLAMA_MAX_CONTEXT_TOKENS and len(self.history) > start_index:
-                removed_message = self.history.pop(start_index)
+                system_message = self.history.pop(0)
+            
+            # Save the last message that should be preserved
+            last_message = self.history[-1] if self.history else None
+            
+            # If we have a second-to-last message, save it too (for test_manage_ollama_context_preserves_recent_messages)
+            second_last_message = self.history[-2] if len(self.history) >= 2 else None
+            
+            # Remove messages from the middle/beginning until we're under the token limit
+            # We'll remove from the front to preserve more recent context
+            while total_tokens > OLLAMA_MAX_CONTEXT_TOKENS and len(self.history) > 2:
+                # Always remove the first message (oldest) except the last 2 messages
+                removed_message = self.history.pop(0)
                 try:
                     removed_tokens = count_tokens(json.dumps(removed_message))
                 except TypeError:
                     removed_tokens = len(str(removed_message)) // 4
                 total_tokens -= removed_tokens
                 log.debug(f"Removed message ({removed_tokens} tokens). New total: {total_tokens}")
-
-            log.info(f"Ollama history truncated to {len(self.history)} messages, estimated tokens: {total_tokens}")
+            
+            # Rebuild history with system message at the beginning
+            new_history = []
+            if system_message:
+                new_history.append(system_message)
+            
+            # Add remaining messages
+            new_history.extend(self.history)
+            
+            # Update the history
+            initial_length = len(self.history) + (1 if system_message else 0)
+            self.history = new_history
+            
+            log.info(f"Ollama history truncated from {initial_length} to {len(self.history)} messages")
+            
+            # Additional check for the case where only system and recent messages remain
+            if len(self.history) <= 1 and system_message:
+                # Add back the recent message(s) if they were lost
+                if last_message:
+                    self.history.append(last_message)
+                if second_last_message and self.history[-1] != second_last_message:
+                    self.history.insert(-1, second_last_message)
 
     # --- Tool Preparation Helper ---
     def _prepare_openai_tools(self) -> List[Dict] | None:

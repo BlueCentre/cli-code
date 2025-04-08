@@ -1,5 +1,14 @@
 """
 Tests for the Ollama Model context management functionality.
+
+To run these tests specifically:
+    python -m pytest test_dir/test_ollama_model_context.py
+    
+To run a specific test:
+    python -m pytest test_dir/test_ollama_model_context.py::TestOllamaModelContext::test_manage_ollama_context_truncation_needed
+    
+To run all tests related to context management:
+    python -m pytest -k "ollama_context"
 """
 import os
 import logging
@@ -94,12 +103,18 @@ class TestOllamaModelContext:
     @patch("src.cli_code.models.ollama.count_tokens")
     def test_manage_ollama_context_truncation_needed(self, mock_count_tokens, ollama_model):
         """Test _manage_ollama_context when truncation is needed."""
-        # Setup count_tokens to return a specific value that exceeds the limit for each call
-        # This is simpler than trying to mock the actual truncation behavior
-        mock_count_tokens.return_value = OLLAMA_MAX_CONTEXT_TOKENS * 2  # Double the limit
+        # Reset the mock to ensure consistent behavior
+        mock_count_tokens.reset_mock()
         
-        # Add some messages to the history to trigger truncation
-        for i in range(10):
+        # Initial history should be just the system message
+        assert len(ollama_model.history) == 1
+        assert ollama_model.history[0]["role"] == "system"
+        
+        # Initial total token setup - return a small value so messages are added without truncation
+        mock_count_tokens.return_value = 10  # Each message is very small
+        
+        # Add many messages to the history
+        for i in range(5):
             ollama_model.add_to_history({"role": "user", "content": f"User message {i}"})
             ollama_model.add_to_history({"role": "assistant", "content": f"Assistant response {i}"})
             
@@ -107,51 +122,59 @@ class TestOllamaModelContext:
         last_message = {"role": "user", "content": "This is the very last message"}
         ollama_model.add_to_history(last_message)
             
-        # Save the initial history length
+        # Verify we now have 12 messages (1 system + 5 user + 5 assistant + 1 last)
+        assert len(ollama_model.history) == 12
         initial_history_length = len(ollama_model.history)
         
-        # Get the system message before truncation
-        system_message = ollama_model.history[0].copy()
+        # Now modify the mock to ensure truncation will happen in _manage_ollama_context
+        # Make each message very large to force aggressive truncation
+        mock_count_tokens.return_value = OLLAMA_MAX_CONTEXT_TOKENS // 2  # Each message is half the limit
         
         # Call the function that should truncate history
         ollama_model._manage_ollama_context()
         
-        # Based on the logs, we can see the implementation resets to just the system message
-        # Verify the history was reset to just the system message
-        assert len(ollama_model.history) == 1
+        # After truncation, verify the history was actually truncated
+        assert len(ollama_model.history) < initial_history_length, f"Expected fewer than {initial_history_length} messages, got {len(ollama_model.history)}"
+        
+        # Verify system message is still at position 0
         assert ollama_model.history[0]["role"] == "system"
-        # Verify the system message content is preserved
-        assert ollama_model.history[0]["content"] == system_message["content"]
+        
+        # Verify the most recent message is still present (last message we added)
+        assert ollama_model.history[-1] == last_message
 
     @patch("src.cli_code.models.ollama.count_tokens")
     def test_manage_ollama_context_preserves_recent_messages(self, mock_count_tokens, ollama_model):
-        """Test the behavior of _manage_ollama_context with very long history."""
-        # First, we need to understand the implementation:
-        # In the actual implementation, ollama will set a threshold token limit
-        # When exceeded, it resets history to just the system prompt
+        """Test _manage_ollama_context preserves recent messages."""
+        # Set up token count to exceed the limit to trigger truncation
+        mock_count_tokens.side_effect = lambda text: OLLAMA_MAX_CONTEXT_TOKENS * 2  # Double the limit
         
-        # Setup mock to always return a large number
-        mock_count_tokens.return_value = OLLAMA_MAX_CONTEXT_TOKENS * 2  # Well over the limit
+        # Add a system message first
+        system_message = {"role": "system", "content": "System instruction"}
+        ollama_model.history = [system_message]
         
-        # Save the system message
-        system_message = ollama_model.history[0]
-        
-        # Add several messages
-        for i in range(5):
+        # Add multiple messages to the history
+        for i in range(20):
             ollama_model.add_to_history({"role": "user", "content": f"User message {i}"})
             ollama_model.add_to_history({"role": "assistant", "content": f"Assistant response {i}"})
         
-        # Save the length before truncation
-        initial_length = len(ollama_model.history)
+        # Mark some recent messages to verify they're preserved
+        recent_messages = [
+            {"role": "user", "content": "Important recent user message"},
+            {"role": "assistant", "content": "Important recent assistant response"}
+        ]
         
-        # Call the context management function and check if it actually does truncate
-        # Since we're testing an actual implementation, we need to be more adaptive
+        for msg in recent_messages:
+            ollama_model.add_to_history(msg)
+            
+        # Call the function that should truncate history
         ollama_model._manage_ollama_context()
         
-        # Rather than checking if truncation always happens as expected (which may be implementation-specific),
-        # we'll assert that the system message is always preserved
+        # Verify system message is preserved
         assert ollama_model.history[0]["role"] == "system"
-        assert ollama_model.history[0]["content"] == system_message["content"]
+        assert ollama_model.history[0]["content"] == "System instruction"
+        
+        # Verify the most recent messages are preserved at the end of history
+        assert ollama_model.history[-2:] == recent_messages
 
     @patch("os.path.isdir")
     @patch("os.path.isfile")

@@ -1,5 +1,14 @@
 """
-Tests for tree tool edge cases and boundary conditions.
+Tests for edge cases in the TreeTool functionality.
+
+To run these tests specifically:
+    python -m pytest test_dir/test_tree_tool_edge_cases.py
+    
+To run a specific test:
+    python -m pytest test_dir/test_tree_tool_edge_cases.py::TestTreeToolEdgeCases::test_tree_empty_result
+    
+To run all tests related to tree tool:
+    python -m pytest -k "tree_tool"
 """
 import os
 import subprocess
