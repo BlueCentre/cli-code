@@ -25,6 +25,7 @@ An AI coding assistant for your terminal, powered by multiple LLM providers (Gem
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
+- [Running Tests](#running-tests)
 
 ## Features
 
@@ -292,3 +293,29 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 MIT
+
+## Running Tests
+
+The test suite is divided into two categories:
+
+1. **Core Tests** - Tests that don't require API access and run quickly:
+   ```bash
+   ./run_core_tests.sh
+   ```
+
+2. **API-Dependent Tests** - Tests that require access to external APIs (Ollama, Gemini):
+   ```bash
+   ./run_api_tests.sh
+   ```
+
+3. **All Tests** - Run all tests with a timeout to prevent hanging:
+   ```bash
+   ./run_all_tests.sh
+   ```
+
+Alternatively, you can run pytest directly:
+```bash
+python -m pytest
+```
+
+Note that running all tests without a timeout may cause hanging if API services are not available.
