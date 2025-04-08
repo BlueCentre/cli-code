@@ -1,13 +1,19 @@
 """
 Tests for the Gemini Model error handling scenarios.
 """
-import json
-from unittest.mock import patch, MagicMock
-
 import pytest
+import json
+from unittest.mock import MagicMock, patch, call
+import sys
+from pathlib import Path
+
+# Add the src directory to the path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from rich.console import Console
 
 from cli_code.models.gemini import GeminiModel
+from cli_code.models.base import Tool
 from cli_code.tools import AVAILABLE_TOOLS
 
 
@@ -218,4 +224,297 @@ class TestGeminiModelErrorHandling:
         
         # Verify empty response is handled
         assert result is not None
-        assert "empty response" in result.lower() or "no response" in result.lower() 
+        assert "empty response" in result.lower() or "no response" in result.lower()
+
+    @pytest.fixture
+    def mock_console(self):
+        console = MagicMock()
+        console.print = MagicMock()
+        console.status = MagicMock()
+        # Make status return a context manager
+        status_cm = MagicMock()
+        console.status.return_value = status_cm
+        status_cm.__enter__ = MagicMock(return_value=None)
+        status_cm.__exit__ = MagicMock(return_value=None)
+        return console
+    
+    @pytest.fixture
+    def mock_genai(self):
+        genai = MagicMock()
+        genai.GenerativeModel = MagicMock()
+        return genai
+    
+    def test_init_without_api_key(self, mock_console):
+        """Test initialization when API key is not provided."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            # Execute
+            model = GeminiModel(None, mock_console)
+            
+            # Assert
+            assert model.api_key is None
+            assert model.genai_client is None
+    
+    def test_init_with_invalid_api_key(self, mock_console):
+        """Test initialization with an invalid API key."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            with patch('cli_code.models.gemini.genai', side_effect=ImportError("No module named 'google.generativeai'")):
+                # Execute
+                model = GeminiModel("invalid_key", mock_console)
+                
+                # Assert
+                assert model.api_key == "invalid_key"
+                assert model.genai_client is None
+    
+    def test_generate_without_client(self, mock_console):
+        """Test generate method when the client is not initialized."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel(None, mock_console)
+            
+            # Execute
+            result = model.generate("test prompt")
+            
+            # Assert
+            assert "Error: Gemini client not initialized." in result
+            mock_console.print.assert_called_once()
+    
+    @patch('cli_code.models.gemini.genai')
+    def test_generate_with_api_error(self, mock_genai, mock_console):
+        """Test generate method when the API call fails."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to raise an exception
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            mock_model.generate_content.side_effect = Exception("API Error")
+            
+            # Execute
+            result = model.generate("test prompt")
+            
+            # Assert
+            assert "Error communicating with Gemini API" in result
+            assert "API Error" in result
+    
+    @patch('cli_code.models.gemini.genai')
+    def test_generate_with_safety_block(self, mock_genai, mock_console):
+        """Test generate method when content is blocked by safety filters."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to return a blocked response
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            
+            mock_response = MagicMock()
+            mock_response.prompt_feedback.block_reason = "SAFETY"
+            mock_response.parts = []
+            mock_model.generate_content.return_value = mock_response
+            
+            # Execute
+            result = model.generate("test prompt")
+            
+            # Assert
+            assert "Content blocked by safety filters" in result
+    
+    @patch('cli_code.models.gemini.genai')
+    @patch('cli_code.models.gemini.get_tool')
+    def test_generate_with_invalid_tool_call(self, mock_get_tool, mock_genai, mock_console):
+        """Test generate method with invalid JSON in tool arguments."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to return a response with tool calls
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            
+            mock_response = MagicMock()
+            mock_response.prompt_feedback = None
+            mock_response.candidates = [MagicMock()]
+            mock_part = MagicMock()
+            mock_part.function_call = MagicMock()
+            mock_part.function_call.name = "test_tool"
+            mock_part.function_call.args = "invalid_json"
+            mock_response.candidates[0].content.parts = [mock_part]
+            mock_model.generate_content.return_value = mock_response
+            
+            # Execute
+            with patch('cli_code.models.gemini.json.loads', side_effect=json.JSONDecodeError("Expecting value", "", 0)):
+                result = model.generate("test prompt")
+            
+            # Assert
+            assert "Error formatting Gemini response" in result
+    
+    @patch('cli_code.models.gemini.genai')
+    @patch('cli_code.models.gemini.get_tool')
+    def test_generate_with_missing_required_tool_args(self, mock_get_tool, mock_genai, mock_console):
+        """Test generate method when required tool arguments are missing."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to return a response with tool calls
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            
+            mock_response = MagicMock()
+            mock_response.prompt_feedback = None
+            mock_response.candidates = [MagicMock()]
+            mock_part = MagicMock()
+            mock_part.function_call = MagicMock()
+            mock_part.function_call.name = "test_tool"
+            mock_part.function_call.args = '{"optional_param": "value"}'
+            mock_response.candidates[0].content.parts = [mock_part]
+            mock_model.generate_content.return_value = mock_response
+            
+            # Mock the tool to have required params
+            tool_mock = MagicMock()
+            mock_get_tool.return_value = tool_mock
+            tool_declaration = MagicMock()
+            tool_declaration.parameters = {"required": ["required_param"]}
+            tool_mock.get_function_declaration.return_value = tool_declaration
+            
+            # Execute
+            result = model.generate("test prompt")
+            
+            # Assert
+            assert "Missing required tool parameters" in result
+    
+    @patch('cli_code.models.gemini.genai')
+    def test_generate_with_tool_not_found(self, mock_genai, mock_console):
+        """Test generate method when a requested tool is not found."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to return a response with tool calls
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            
+            mock_response = MagicMock()
+            mock_response.prompt_feedback = None
+            mock_response.candidates = [MagicMock()]
+            mock_part = MagicMock()
+            mock_part.function_call = MagicMock()
+            mock_part.function_call.name = "nonexistent_tool"
+            mock_part.function_call.args = '{}'
+            mock_response.candidates[0].content.parts = [mock_part]
+            mock_model.generate_content.return_value = mock_response
+            
+            # Mock get_tool to return None for nonexistent tool
+            with patch('cli_code.models.gemini.get_tool', return_value=None):
+                # Execute
+                result = model.generate("test prompt")
+            
+            # Assert
+            assert "Requested tool not found" in result
+    
+    @patch('cli_code.models.gemini.genai')
+    @patch('cli_code.models.gemini.get_tool')
+    def test_generate_with_tool_execution_error(self, mock_get_tool, mock_genai, mock_console):
+        """Test generate method when a tool execution raises an error."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to return a response with tool calls
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            
+            mock_response = MagicMock()
+            mock_response.prompt_feedback = None
+            mock_response.candidates = [MagicMock()]
+            mock_part = MagicMock()
+            mock_part.function_call = MagicMock()
+            mock_part.function_call.name = "test_tool"
+            mock_part.function_call.args = '{"param": "value"}'
+            mock_response.candidates[0].content.parts = [mock_part]
+            mock_model.generate_content.return_value = mock_response
+            
+            # Mock the tool to raise an exception
+            tool_mock = MagicMock()
+            tool_mock.execute.side_effect = Exception("Tool execution error")
+            mock_get_tool.return_value = tool_mock
+            
+            # Execute
+            result = model.generate("test prompt")
+            
+            # Assert
+            assert "Error executing tool" in result
+    
+    @patch('cli_code.models.gemini.genai')
+    def test_list_models_error(self, mock_genai, mock_console):
+        """Test list_models method when an error occurs."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to raise an exception
+            mock_genai.list_models.side_effect = Exception("List models error")
+            
+            # Execute
+            result = model.list_models()
+            
+            # Assert
+            assert result == []
+            mock_console.print.assert_called()
+            assert any("Error listing Gemini models" in str(call_args) for call_args in mock_console.print.call_args_list)
+    
+    @patch('cli_code.models.gemini.genai')
+    def test_generate_with_empty_response(self, mock_genai, mock_console):
+        """Test generate method when the API returns an empty response."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to return an empty response
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            
+            mock_response = MagicMock()
+            mock_response.prompt_feedback = None
+            mock_response.candidates = []  # Empty candidates
+            mock_model.generate_content.return_value = mock_response
+            
+            # Execute
+            result = model.generate("test prompt")
+            
+            # Assert
+            assert "No valid response received" in result
+    
+    @patch('cli_code.models.gemini.genai')
+    def test_generate_with_malformed_response(self, mock_genai, mock_console):
+        """Test generate method when the API returns a malformed response."""
+        # Setup
+        with patch('cli_code.models.gemini.log'):
+            model = GeminiModel("valid_key", mock_console)
+            model.genai_client = mock_genai
+            
+            # Configure the mock to return a malformed response
+            mock_model = MagicMock()
+            mock_genai.GenerativeModel.return_value = mock_model
+            
+            mock_response = MagicMock()
+            mock_response.prompt_feedback = None
+            mock_response.candidates = [MagicMock()]
+            mock_response.candidates[0].content = None  # Missing content
+            mock_model.generate_content.return_value = mock_response
+            
+            # Execute
+            result = model.generate("test prompt")
+            
+            # Assert
+            assert "Error parsing Gemini response" in result 
