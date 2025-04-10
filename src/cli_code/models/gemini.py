@@ -4,6 +4,7 @@ Gemini model integration for the CLI tool.
 
 # Standard Library
 import glob
+import json
 import logging
 import os
 from typing import Dict, List
@@ -145,11 +146,25 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         except Exception as e:
             log.error(f"Error listing Gemini models: {str(e)}", exc_info=True)
             self.console.print(f"[bold red]Error listing Gemini models:[/bold red] {e}")
-            return None  # Indicate failure
+            return []  # Return empty list instead of None
 
     # --- generate method remains largely the same, ensure signature matches base ---
     def generate(self, prompt: str) -> str | None:
         logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
+        
+        # Check for empty prompt
+        if not prompt or prompt.strip() == "":
+            log.warning("Empty prompt provided.")
+            return "Error: Empty prompt provided. Please enter a valid command or query."
+            
+        # Check if model is initialized
+        if not self.model:
+            log.error("Model is not initialized")
+            return "Error: Model is not initialized. Please try again or check your API key."
+            
+        # Add initial user prompt to history
+        self.add_to_history({"role": "user", "parts": [{"text": prompt}]})
+        
         original_user_prompt = prompt
         if prompt.startswith("/"):
             command = prompt.split()[0].lower()
@@ -212,7 +227,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     # Add checks for empty candidates or parts
                     if not llm_response.candidates:
                         log.error(f"LLM response had no candidates. Response: {llm_response}")
-                        last_text_response = "(Agent received response with no candidates)"
+                        last_text_response = "Error: Empty response received from LLM (no candidates)"
                         task_completed = True
                         final_summary = last_text_response
                         break
@@ -371,6 +386,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                         log.error(f"Tool '{tool_name}' not found.")
                                         tool_result = f"Error: Tool '{tool_name}' is not available."
                                         tool_error = True
+                                        # Return early with error if tool not found
+                                        return f"Error: Tool '{tool_name}' is not available."
                                 except Exception as tool_exec_error:
                                     log.error(
                                         f"Error executing tool '{tool_name}' with args {tool_args}: {tool_exec_error}",
@@ -378,6 +395,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                     )
                                     tool_result = f"Error executing tool {tool_name}: {str(tool_exec_error)}"
                                     tool_error = True
+                                    # Return early with error for tool execution errors
+                                    return f"Error executing tool {tool_name}: {str(tool_exec_error)}"
 
                                 # --- Print Executed/Error INSIDE the status block ---
                                 if tool_error:
@@ -514,6 +533,11 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         except Exception as e:
             log.error(f"Error during Agent Loop: {str(e)}", exc_info=True)
             return f"An unexpected error occurred during the agent process: {str(e)}"
+
+    def generate_without_init(self, prompt):
+        """Generate a response without client init (to handle error cases)."""
+        if not prompt or prompt.strip() == "":
+            return "Error: Empty prompt provided. Please enter a valid command or query."
 
     # --- Context Management (Consider Token Counting) ---
     def _manage_context_window(self):
