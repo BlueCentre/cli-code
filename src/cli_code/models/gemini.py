@@ -151,12 +151,13 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
     # --- generate method remains largely the same, ensure signature matches base ---
     def generate(self, prompt: str) -> str | None:
         logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
-        
-        # Check for empty prompt
+
+        # Early checks and validations
+        # Check for empty prompts
         if not prompt or prompt.strip() == "":
-            log.warning("Empty prompt provided.")
-            return "Error: Empty prompt provided. Please enter a valid command or query."
-            
+            log.warning("Empty prompt provided to generate()")
+            return "Error: Cannot process empty prompt. Please provide a valid input."
+
         # Check if model is initialized
         if not self.model:
             log.error("Model is not initialized")
@@ -396,7 +397,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                     tool_result = f"Error executing tool {tool_name}: {str(tool_exec_error)}"
                                     tool_error = True
                                     # Return early with error for tool execution errors
-                                    return f"Error executing tool {tool_name}: {str(tool_exec_error)}"
+                                    return f"Error: Tool execution error with {tool_name}: {str(tool_exec_error)}"
 
                                 # --- Print Executed/Error INSIDE the status block ---
                                 if tool_error:
