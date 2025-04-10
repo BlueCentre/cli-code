@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from rich.console import Console
 
 from cli_code.models.gemini import GeminiModel
-from cli_code.models.base import Tool
+from cli_code.tools.base import BaseTool
 from cli_code.tools import AVAILABLE_TOOLS
 
 

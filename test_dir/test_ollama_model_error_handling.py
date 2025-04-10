@@ -9,8 +9,7 @@ src_path = str(Path(__file__).parent.parent / "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from cli_code.models.ollama import OllamaModel
-from cli_code.models.base import MAX_OLLAMA_ITERATIONS
+from cli_code.models.ollama import OllamaModel, MAX_OLLAMA_ITERATIONS
 
 
 class TestOllamaModelErrorHandling:
