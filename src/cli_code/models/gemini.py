@@ -408,6 +408,15 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                     self.console.print(f"[dim] -> Executed {tool_name}[/dim]")
                             # --- End Status Block ---
 
+                        # <<< START CHANGE: Handle User Rejection >>>
+                        # If the user rejected the action, stop the loop and return the rejection message.
+                        if user_rejected:
+                            log.info(f"User rejected tool {tool_name}. Ending loop.")
+                            task_completed = True
+                            final_summary = tool_result # This holds the rejection message
+                            break # Exit the loop immediately
+                        # <<< END CHANGE >>>
+
                         # === Check for Task Completion Signal via Tool Call ===
                         if tool_name == "task_complete":
                             log.info("Task completion signaled by 'task_complete' function call.")
@@ -475,7 +484,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                         )
                         self.current_model_name = FALLBACK_MODEL
                         try:
-                            self._initialize_model_instance()  # Recreate model instance with fallback name
+                            self._initialize_model_instance()
                             log.info(
                                 f"Successfully switched to and initialized fallback model: {self.current_model_name}"
                             )
