@@ -64,7 +64,7 @@ class TestGeminiModelErrorHandling:
         
         # Verify error message is returned
         assert result is not None
-        assert "empty prompt" in result.lower()
+        assert result == "Error: Cannot process empty prompt. Please provide a valid input."
         
         # Verify that no API call was made
         mock_generative_model.generate_content.assert_not_called()
@@ -150,8 +150,7 @@ class TestGeminiModelErrorHandling:
         
         # Verify tool error is handled and included in the response
         assert result is not None
-        assert "error" in result.lower()
-        assert "tool execution error" in result.lower()
+        assert result == "Error: Tool execution error with test_tool: Tool execution error"
 
     def test_invalid_function_call_format(self, gemini_model, mock_generative_model):
         """Test handling of invalid function call format."""
