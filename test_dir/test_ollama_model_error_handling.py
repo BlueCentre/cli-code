@@ -291,3 +291,71 @@ class TestOllamaModelErrorHandling:
         
         # Assert
         assert result is None or len(result) == 0  # Should be empty list or None 
+    
+    @patch('cli_code.models.ollama.log') # Patch log
+    def test_generate_with_connection_error(self, mock_log, mock_console, mock_client):
+        """Test generate method when a connection error occurs during API call."""
+        # Setup
+        model = OllamaModel("http://localhost:11434", mock_console, "llama3")
+        model.client = mock_client
+        
+        # Simulate a connection error (e.g., RequestError from httpx)
+        # Assuming the ollama client might raise something like requests.exceptions.ConnectionError or httpx.RequestError
+        # We'll use a generic Exception and check the message for now.
+        # If a specific exception class is known, use it instead.
+        connection_err = Exception("Failed to connect") 
+        mock_client.chat.completions.create.side_effect = connection_err
+        
+        # Execute
+        result = model.generate("test prompt")
+        
+        # Assert
+        assert "Error connecting to Ollama" in result or "Failed to connect" in result
+        mock_log.error.assert_called() # Check that an error was logged
+        # Check specific log message if needed
+        log_call_args, _ = mock_log.error.call_args
+        assert "Error during Ollama agent iteration" in log_call_args[0]
+        
+    @patch('cli_code.models.ollama.log') # Patch log
+    def test_generate_with_timeout_error(self, mock_log, mock_console, mock_client):
+        """Test generate method when a timeout error occurs during API call."""
+        # Setup
+        model = OllamaModel("http://localhost:11434", mock_console, "llama3")
+        model.client = mock_client
+        
+        # Simulate a timeout error 
+        # Use a generic Exception, check message. Replace if specific exception is known (e.g., httpx.TimeoutException)
+        timeout_err = Exception("Request timed out") 
+        mock_client.chat.completions.create.side_effect = timeout_err
+        
+        # Execute
+        result = model.generate("test prompt")
+        
+        # Assert
+        assert "Error connecting to Ollama" in result or "timed out" in result
+        mock_log.error.assert_called()
+        log_call_args, _ = mock_log.error.call_args
+        assert "Error during Ollama agent iteration" in log_call_args[0] 
+    
+    @patch('cli_code.models.ollama.log') # Patch log
+    def test_generate_with_server_error(self, mock_log, mock_console, mock_client):
+        """Test generate method when a server error occurs during API call."""
+        # Setup
+        model = OllamaModel("http://localhost:11434", mock_console, "llama3")
+        model.client = mock_client
+        
+        # Simulate a server error (e.g., HTTP 500)
+        # Use a generic Exception, check message. Replace if specific exception is known (e.g., ollama.APIError?)
+        server_err = Exception("Internal Server Error") 
+        mock_client.chat.completions.create.side_effect = server_err
+        
+        # Execute
+        result = model.generate("test prompt")
+        
+        # Assert
+        # Check for a generic error message indicating an unexpected issue
+        assert "Error interacting with Ollama" in result # Check for the actual prefix
+        assert "Internal Server Error" in result # Check the specific error message is included
+        mock_log.error.assert_called()
+        log_call_args, _ = mock_log.error.call_args
+        assert "Error during Ollama agent iteration" in log_call_args[0] 
