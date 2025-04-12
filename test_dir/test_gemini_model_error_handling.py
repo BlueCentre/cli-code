@@ -9,13 +9,14 @@ from pathlib import Path
 import logging
 
 # Import the actual exception class
-from google.api_core.exceptions import ResourceExhausted 
+from google.api_core.exceptions import ResourceExhausted, InvalidArgument
 
 # Add the src directory to the path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
 
+# Ensure FALLBACK_MODEL is imported
 from cli_code.models.gemini import GeminiModel, FALLBACK_MODEL
 from cli_code.tools.base import BaseTool
 from cli_code.tools import AVAILABLE_TOOLS
@@ -605,38 +606,79 @@ class TestGeminiModelErrorHandling:
             assert "cancelled confirmation" in result.lower()
             assert "edit on test.py" in result.lower()
 
-    @patch('cli_code.models.gemini.genai') 
-    def test_generate_with_quota_error_and_fallback_returns_success(self, mock_genai, mock_console):
-        """Test generate returns successful fallback response after quota error."""
-        with patch('cli_code.models.gemini.log'), \
-             patch('cli_code.models.gemini.google.api_core.exceptions') as mock_exceptions:
-            
-            # 1. Mock the successful response expected from the fallback model
-            mock_fallback_response = MagicMock()
-            mock_fallback_part = MagicMock()
-            mock_fallback_part.text = "Response from fallback model"
-            mock_fallback_candidate = MagicMock()
-            mock_fallback_candidate.content = MagicMock()
-            mock_fallback_candidate.content.parts = [mock_fallback_part]
-            mock_fallback_candidate.finish_reason = "STOP"
-            mock_fallback_response.candidates = [mock_fallback_candidate]
+# --- Standalone Test for Quota Fallback ---
+def test_generate_with_quota_error_and_fallback_returns_success():
+    """Test that GeminiModel falls back to the fallback model on quota error and returns success."""
+    with patch('src.cli_code.models.gemini.Console') as mock_console_cls, \
+         patch('src.cli_code.models.gemini.GeminiModel._initialize_model_instance') as mock_init_model, \
+         patch('src.cli_code.models.gemini.AVAILABLE_TOOLS', {}) as mock_available_tools, \
+         patch('src.cli_code.models.gemini.log') as mock_log:
 
-            # 2. Mock the GenerativeModel instance 
-            mock_model_instance = MagicMock()
-            quota_error = mock_exceptions.ResourceExhausted("Quota limit reached")
-            # Set the side effect for generate_content: error first, then success
-            mock_model_instance.generate_content.side_effect = [quota_error, mock_fallback_response]
-            
-            # 3. Configure the mock GenerativeModel constructor to return this instance
-            mock_genai.GenerativeModel.return_value = mock_model_instance
-            
-            # 4. Create the model instance
-            model = GeminiModel("valid_key", mock_console, "gemini-pro")
-            
-            # 5. Execute the generate method
-            result = model.generate("Test prompt")
-            
-            # 6. Assert ONLY the final result
-            assert result == "Response from fallback model"
-            
-            # NOTE: Asserting call_count for generate_content proved unreliable here due to mocking complexities. 
+        # Arrange
+        mock_console = MagicMock()
+        mock_console_cls.return_value = mock_console
+
+        # Mocks for the primary and fallback model behaviors
+        mock_primary_model_instance = MagicMock(name="PrimaryModelInstance")
+        mock_fallback_model_instance = MagicMock(name="FallbackModelInstance")
+
+        # Configure the generate_content behavior for the primary mock
+        mock_primary_model_instance.generate_content.side_effect = ResourceExhausted("Quota exhausted")
+
+        # Configure the generate_content behavior for the fallback mock
+        mock_fallback_response = MagicMock()
+        mock_fallback_candidate = MagicMock()
+        mock_fallback_part = MagicMock()
+        mock_fallback_part.text = "Fallback successful"
+        mock_fallback_candidate.content = MagicMock()
+        mock_fallback_candidate.content.parts = [mock_fallback_part]
+        mock_fallback_response.candidates = [mock_fallback_candidate]
+        mock_fallback_model_instance.generate_content.return_value = mock_fallback_response
+
+        # Mock _initialize_model_instance initially - it does nothing during __init__ call
+        # as we will manually set self.model right after.
+        mock_init_model.return_value = None 
+
+        # Setup the GeminiModel instance - the real __init__ calls the mocked _initialize_model_instance
+        gemini_model = GeminiModel(api_key="fake_key", model_name="gemini-1.5-pro-latest", console=mock_console)
+
+        # Manually assign the first mock model instance to the gemini_model
+        gemini_model.model = mock_primary_model_instance
+
+        # Define the side effect for subsequent calls to _initialize_model_instance (in except block)
+        def init_side_effect(*args, **kwargs):
+            # Only switch the model on the *second* call to _initialize_model_instance
+            if mock_init_model.call_count > 1:
+                print(f"DEBUG: init_side_effect changing gemini_model.model to fallback: {mock_fallback_model_instance}")
+                gemini_model.model = mock_fallback_model_instance
+                # ALSO update the current_model_name attribute
+                gemini_model.current_model_name = FALLBACK_MODEL
+                print(f"DEBUG: init_side_effect updated current_model_name to: {gemini_model.current_model_name}")
+            else:
+                # First call (during __init__) was already handled by initial mock setup/manual assignment
+                print(f"DEBUG: init_side_effect called {mock_init_model.call_count} times (no change)")
+                pass 
+
+        mock_init_model.side_effect = init_side_effect
+
+        # Act
+        response = gemini_model.generate("test prompt")
+
+        # Assert
+        # Check log message for switching
+        mock_log.info.assert_any_call("Switching to fallback model: gemini-1.0-pro")
+
+        # Check that _initialize_model_instance was called twice (once in init, once in except)
+        assert mock_init_model.call_count == 2, \
+            f"Expected _initialize_model_instance twice, called {mock_init_model.call_count}"
+
+        # Check that generate_content was called once on each mock instance
+        assert mock_primary_model_instance.generate_content.call_count == 1, \
+            f"Expected primary generate_content once, called {mock_primary_model_instance.generate_content.call_count}"
+        assert mock_fallback_model_instance.generate_content.call_count == 1, \
+            f"Expected fallback generate_content once, called {mock_fallback_model_instance.generate_content.call_count}"
+
+        # Check final response
+        assert response == "Fallback successful"
+
+# ... (End of file or other tests) ... 
