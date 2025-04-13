@@ -15,10 +15,10 @@ class BashTool(BaseTool):
 
     # List of banned commands for security
     BANNED_COMMANDS = [
-        "curl",
-        "wget",
-        "nc",
-        "netcat",
+        # "curl",
+        # "wget",
+        # "nc",
+        # "netcat",
         "telnet",
         "lynx",
         "w3m",

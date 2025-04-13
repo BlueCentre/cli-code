@@ -51,27 +51,12 @@ class TestGeminiModel:
         # Mock console
         self.mock_console = MagicMock(spec=Console)
         
-        # Mock os.path.isdir and os.path.isfile
-        self.isdir_patch = patch('os.path.isdir')
-        self.isfile_patch = patch('os.path.isfile')
-        self.mock_isdir = self.isdir_patch.start()
-        self.mock_isfile = self.isfile_patch.start()
-        
-        # Mock glob
-        self.glob_patch = patch('glob.glob')
-        self.mock_glob = self.glob_patch.start()
-        
-        # Mock open
-        self.open_patch = patch('builtins.open', mock_open(read_data="# Test content"))
-        self.mock_open = self.open_patch.start()
-        
-        # Mock get_tool
+        # Keep get_tool patch here if needed by other tests, or move into tests
         self.get_tool_patch = patch('cli_code.models.gemini.get_tool')
         self.mock_get_tool = self.get_tool_patch.start()
-        
-        # Default tool mock
+        # Configure default mock tool behavior if needed by other tests
         self.mock_tool = MagicMock()
-        self.mock_tool.execute.return_value = "ls output"
+        self.mock_tool.execute.return_value = "Default tool output"
         self.mock_get_tool.return_value = self.mock_tool
         
     def teardown_method(self):
@@ -79,10 +64,7 @@ class TestGeminiModel:
         self.genai_configure_patch.stop()
         self.genai_model_patch.stop()
         self.genai_list_models_patch.stop()
-        self.isdir_patch.stop()
-        self.isfile_patch.stop()
-        self.glob_patch.stop()
-        self.open_patch.stop()
+        # REMOVED stops for os/glob/open mocks
         self.get_tool_patch.stop()
     
     def test_initialization(self):
@@ -144,62 +126,79 @@ class TestGeminiModel:
         assert result[0]["name"] == "Gemini Pro"
         assert result[1]["id"] == "models/gemini-2.5-pro-exp-03-25"
     
-    def test_get_initial_context_with_rules_dir(self):
-        """Test getting initial context from .rules directory."""
-        # Set up mocks
-        self.mock_isdir.return_value = True
-        self.mock_glob.return_value = [".rules/context.md", ".rules/tools.md"]
-        
-        model = GeminiModel("fake-api-key", self.mock_console, "gemini-2.5-pro-exp-03-25")
+    def test_get_initial_context_with_rules_dir(self, tmp_path):
+        """Test getting initial context from .rules directory using tmp_path."""
+        # Arrange: Create .rules dir and files
+        rules_dir = tmp_path / ".rules"
+        rules_dir.mkdir()
+        (rules_dir / "context.md").write_text("# Rule context")
+        (rules_dir / "tools.md").write_text("# Rule tools")
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+
+        # Act
+        # Create model instance within the test CWD context
+        model = GeminiModel("fake-api-key", self.mock_console, "gemini-pro")
         context = model._get_initial_context()
-        
-        # Verify directory check
-        self.mock_isdir.assert_called_with(".rules")
-        
-        # Verify glob search
-        self.mock_glob.assert_called_with(".rules/*.md")
-        
-        # Verify files were read
-        assert self.mock_open.call_count == 2
-        
-        # Check result content
+
+        # Teardown
+        os.chdir(original_cwd)
+
+        # Assert
         assert "Project rules and guidelines:" in context
-        assert "# Content from" in context
-    
-    def test_get_initial_context_with_readme(self):
-        """Test getting initial context from README.md when no .rules directory."""
-        # Set up mocks
-        self.mock_isdir.return_value = False
-        self.mock_isfile.return_value = True
-        
-        model = GeminiModel("fake-api-key", self.mock_console, "gemini-2.5-pro-exp-03-25")
+        assert "# Content from context.md" in context
+        assert "# Rule context" in context
+        assert "# Content from tools.md" in context
+        assert "# Rule tools" in context
+
+    def test_get_initial_context_with_readme(self, tmp_path):
+        """Test getting initial context from README.md using tmp_path."""
+        # Arrange: Create README.md
+        readme_content = "# Project Readme Content"
+        (tmp_path / "README.md").write_text(readme_content)
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+
+        # Act
+        model = GeminiModel("fake-api-key", self.mock_console, "gemini-pro")
         context = model._get_initial_context()
-        
-        # Verify README check
-        self.mock_isfile.assert_called_with("README.md")
-        
-        # Verify file reading
-        self.mock_open.assert_called_once_with("README.md", "r", encoding="utf-8", errors="ignore")
-        
-        # Check result content
+
+        # Teardown
+        os.chdir(original_cwd)
+
+        # Assert
         assert "Project README:" in context
-    
-    def test_get_initial_context_with_ls_fallback(self):
-        """Test getting initial context via ls when no .rules or README."""
-        # Set up mocks
-        self.mock_isdir.return_value = False
-        self.mock_isfile.return_value = False
+        assert readme_content in context
+
+    def test_get_initial_context_with_ls_fallback(self, tmp_path):
+        """Test getting initial context via ls fallback using tmp_path."""
+        # Arrange: tmp_path is empty
+        (tmp_path / "dummy_for_ls.txt").touch() # Add a file for ls to find
         
-        model = GeminiModel("fake-api-key", self.mock_console, "gemini-2.5-pro-exp-03-25")
-        context = model._get_initial_context()
-        
-        # Verify tool was used
-        self.mock_get_tool.assert_called_with("ls")
-        self.mock_tool.execute.assert_called_once()
-        
-        # Check result content
+        mock_ls_tool = MagicMock()
+        ls_output = "dummy_for_ls.txt\n"
+        mock_ls_tool.execute.return_value = ls_output
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+
+        # Act: Patch get_tool locally
+        # Note: GeminiModel imports get_tool directly
+        with patch('cli_code.models.gemini.get_tool') as mock_get_tool:
+            mock_get_tool.return_value = mock_ls_tool
+            model = GeminiModel("fake-api-key", self.mock_console, "gemini-pro")
+            context = model._get_initial_context()
+
+        # Teardown
+        os.chdir(original_cwd)
+
+        # Assert
+        mock_get_tool.assert_called_once_with("ls")
+        mock_ls_tool.execute.assert_called_once()
         assert "Current directory contents" in context
-        assert "ls output" in context
+        assert ls_output in context
     
     def test_create_tool_definitions(self):
         """Test creation of tool definitions for Gemini."""

@@ -44,7 +44,9 @@ class Config:
         This will load environment variables, ensure the configuration file
         exists, and load the configuration from the file.
         """
-        self.config_dir = Path(os.path.expanduser("~/.config/cli-code"))
+        # Construct path correctly
+        home_dir = Path(os.path.expanduser("~"))
+        self.config_dir = home_dir / ".config" / "cli-code" 
         self.config_file = self.config_dir / "config.yaml"
         
         # Load environment variables
@@ -60,15 +62,28 @@ class Config:
         self._apply_env_vars()
 
     def _load_dotenv(self):
-        """Load environment variables from .env file if it exists."""
+        """Load environment variables from .env file if it exists, fallback to .env.example."""
         env_file = Path(".env")
         env_example_file = Path(".env.example")
+        file_to_load = None
+        loaded_source = None
 
         if env_file.exists():
+            file_to_load = env_file
+            loaded_source = ".env"
+        elif env_example_file.exists():
+            file_to_load = env_example_file
+            loaded_source = ".env.example"
+            log.info(".env not found, loading from .env.example.")
+        else:
+            log.debug("No .env or .env.example file found.")
+            return
+
+        if file_to_load:
             try:
-                log.info(f"Loading environment variables from {env_file.resolve()}")
-                loaded_vars = []
-                with open(env_file, "r") as f:
+                log.info(f"Loading environment variables from {file_to_load.resolve()}")
+                loaded_vars_log = []
+                with open(file_to_load, "r") as f:
                     for line in f:
                         line = line.strip()
                         if not line or line.startswith("#"):
@@ -80,28 +95,27 @@ class Config:
                             value = value.strip()
 
                             # Remove quotes if present
-                            if (value.startswith('"') and value.endswith('"')) or (
-                                value.startswith("'") and value.endswith("'")
-                            ):
+                            if (value.startswith('"') and value.endswith('"')) or \
+                               (value.startswith("'") and value.endswith("'")):
                                 value = value[1:-1]
 
-                            if key and value:
+                            # Fix: Set env var even if value is empty, but only if key exists
+                            if key:
                                 os.environ[key] = value
-                                # Only add to list if it's a CLI_CODE variable to avoid logging sensitive data
+                                # Only add to log list if it's a CLI_CODE variable
                                 if key.startswith("CLI_CODE_"):
                                     log_value = "****" if "KEY" in key or "TOKEN" in key else value
-                                    loaded_vars.append(f"{key}={log_value}")
+                                    loaded_vars_log.append(f"{key}={log_value}")
+                        else:
+                            # Handle lines without '=' if necessary, or log warning
+                            log.debug(f"Skipping line without '=' in {loaded_source}: {line}")
 
-                if loaded_vars:
-                    log.info(f"Loaded {len(loaded_vars)} CLI_CODE environment variables: {', '.join(loaded_vars)}")
+                if loaded_vars_log:
+                    log.info(f"Loaded {len(loaded_vars_log)} CLI_CODE vars from {loaded_source}: {', '.join(loaded_vars_log)}")
                 else:
-                    log.debug("No CLI_CODE environment variables found in .env file")
+                    log.debug(f"No CLI_CODE environment variables found in {loaded_source}")
             except Exception as e:
-                log.warning(f"Error loading .env file: {e}", exc_info=True)
-        elif env_example_file.exists():
-            log.info(f".env file not found, but .env.example exists. Consider creating a .env file from the example.")
-        else:
-            log.debug("No .env or .env.example file found in current directory")
+                log.warning(f"Error loading {loaded_source} file: {e}", exc_info=True)
 
     def _apply_env_vars(self):
         """
@@ -151,14 +165,20 @@ class Config:
 
     def _ensure_config_exists(self):
         """Create config directory and file with defaults if they don't exist."""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            log.error(f"Failed to create config directory {self.config_dir}: {e}", exc_info=True)
+            # Decide if we should raise here or just log and potentially fail later
+            # For now, log and continue, config loading will likely fail
+            return # Exit early if dir creation fails
 
         if not self.config_file.exists():
             default_config = {
                 "google_api_key": None,
                 "default_provider": "gemini",
                 "default_model": "models/gemini-2.5-pro-exp-03-25",
-                "ollama_api_url": None,
+                "ollama_api_url": None, # http://localhost:11434/v1
                 "ollama_default_model": "llama3.2",
                 "settings": {
                     "max_tokens": 1000000,
@@ -222,6 +242,8 @@ class Config:
 
     def get_default_provider(self) -> str:
         """Get the default provider."""
+        if not self.config:
+            return "gemini" # Default if config is None
         return self.config.get("default_provider", "gemini")
 
     def set_default_provider(self, provider: str):
@@ -234,12 +256,26 @@ class Config:
 
     def get_default_model(self, provider: str | None = None) -> str | None:
         """Get the default model, optionally for a specific provider."""
+        # Handle if config is None early
+        if not self.config:
+            # Return hardcoded defaults if config doesn't exist
+            temp_provider = provider or "gemini" # Determine provider based on input or default
+            if temp_provider == "gemini":
+                return "models/gemini-1.5-pro-latest" # Or your actual default
+            elif temp_provider == "ollama":
+                return "llama2" # Or your actual default
+            else:
+                return None
+            
         target_provider = provider or self.get_default_provider()
         if target_provider == "gemini":
-            return self.config.get("default_model") or "models/gemini-2.5-pro-exp-03-25"
+            # Use actual default from constants or hardcoded
+            return self.config.get("default_model", "models/gemini-1.5-pro-latest") 
         elif target_provider == "ollama":
-            return self.config.get("ollama_default_model")
+            # Use actual default from constants or hardcoded
+            return self.config.get("ollama_default_model", "llama2") 
         else:
+            # Fallback for unknown provider if config exists but provider unknown
             return self.config.get("default_model")
 
     def set_default_model(self, model: str, provider: str | None = None):
@@ -256,11 +292,22 @@ class Config:
 
     def get_setting(self, setting, default=None):
         """Get a specific setting value from the 'settings' section."""
-        return self.config.get("settings", {}).get(setting, default)
+        settings_dict = self.config.get("settings", {}) if self.config else {}
+        # Handle case where 'settings' key exists but value is None, or self.config is None
+        if settings_dict is None: 
+            settings_dict = {}
+        return settings_dict.get(setting, default)
 
     def set_setting(self, setting, value):
         """Set a specific setting value in the 'settings' section."""
-        if "settings" not in self.config:
+        # Handle if config is None
+        if self.config is None:
+            log.warning("Attempted to set setting, but config is not loaded. Ignoring.")
+            # Or initialize self.config = {} here if preferred?
+            # For now, just return to avoid error
+            return
+        
+        if "settings" not in self.config or self.config["settings"] is None:
             self.config["settings"] = {}
         self.config["settings"][setting] = value
         self._save_config()
