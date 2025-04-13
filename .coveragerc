@@ -1,10 +1,11 @@
 [run]
-source = cli_code
+source = src.cli_code
 omit = 
     */.rules/*
     */.venv/*
     */docs/*
-    */test_*
+    */test_dir/*
+    */tests/*
     */__pycache__/*
     */venv/*
     */.pytest_cache/*
