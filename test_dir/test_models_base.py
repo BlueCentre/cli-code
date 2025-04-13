@@ -4,7 +4,9 @@ Tests for the AbstractModelAgent base class.
 import pytest
 from unittest.mock import MagicMock
 
-from cli_code.models.base import AbstractModelAgent
+# Direct import for coverage tracking
+import src.cli_code.models.base
+from src.cli_code.models.base import AbstractModelAgent
 
 
 class TestModelImplementation(AbstractModelAgent):

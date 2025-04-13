@@ -5,9 +5,11 @@ Tests for utility functions in src/cli_code/utils.py.
 import pytest
 from unittest.mock import patch, MagicMock
 
-# Assume cli_code is importable from the test directory's perspective
-# This might require adjusting PYTHONPATH or the project structure later
-from cli_code.utils import count_tokens
+# Update import to use absolute import path including 'src'
+from src.cli_code.utils import count_tokens
+
+# Force module import for coverage
+import src.cli_code.utils
 
 
 def test_count_tokens_simple():

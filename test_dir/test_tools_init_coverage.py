@@ -12,10 +12,13 @@ import logging
 # Check if running in CI
 IN_CI = os.environ.get('CI', 'false').lower() == 'true'
 
+# Direct import for coverage tracking
+import src.cli_code.tools
+
 # Handle imports
 try:
-    from cli_code.tools import get_tool, AVAILABLE_TOOLS
-    from cli_code.tools.base import BaseTool
+    from src.cli_code.tools import get_tool, AVAILABLE_TOOLS
+    from src.cli_code.tools.base import BaseTool
     IMPORTS_AVAILABLE = True
 except ImportError:
     IMPORTS_AVAILABLE = False
@@ -36,7 +39,7 @@ class TestToolsInitModule:
     def setup_method(self):
         """Set up test fixtures."""
         # Mock logging to prevent actual log outputs
-        self.logging_patch = patch('cli_code.tools.logging')
+        self.logging_patch = patch('src.cli_code.tools.logging')
         self.mock_logging = self.logging_patch.start()
         
         # Store original AVAILABLE_TOOLS for restoration later
@@ -121,7 +124,7 @@ class TestToolsInitModule:
             assert tool_instance is not None, f"Tool '{tool_name}' should be instantiable"
             assert isinstance(tool_instance, BaseTool), f"Tool '{tool_name}' should be a BaseTool subclass"
     
-    @patch('cli_code.tools.AVAILABLE_TOOLS', {})
+    @patch('src.cli_code.tools.AVAILABLE_TOOLS', {})
     def test_empty_tools_dict(self):
         """Test behavior when AVAILABLE_TOOLS is empty."""
         # Try to get a tool from an empty dict
