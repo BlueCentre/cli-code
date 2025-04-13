@@ -5,7 +5,9 @@ import subprocess
 import pytest
 from unittest.mock import patch, MagicMock
 
-from cli_code.tools.system_tools import BashTool
+# Direct import for coverage tracking
+import src.cli_code.tools.system_tools
+from src.cli_code.tools.system_tools import BashTool
 
 
 def test_bash_tool_init():
