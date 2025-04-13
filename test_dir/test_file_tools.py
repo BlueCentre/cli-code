@@ -1,13 +1,21 @@
 """
 Tests for file operation tools.
 """
+import pytest
 import os
+import tempfile
 import re
 import glob
-import pytest
-from unittest.mock import patch, mock_open, MagicMock, call
+from unittest.mock import patch, MagicMock, mock_open, call
+import shutil
+import sys
+from pathlib import Path
 
-from cli_code.tools.file_tools import ViewTool, EditTool, GrepTool, GlobTool, MAX_CHARS_FOR_FULL_CONTENT
+# Add the src directory to the path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Import the classes and functions directly for better coverage tracking
+from src.cli_code.tools.file_tools import ViewTool, EditTool, GrepTool, GlobTool, MAX_CHARS_FOR_FULL_CONTENT
 
 
 class TestViewTool:

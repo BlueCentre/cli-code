@@ -8,15 +8,21 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock, mock_open, call
 import pytest
+from pathlib import Path
+
+# Add the src directory to the path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Check if running in CI
 IN_CI = os.environ.get('CI', 'false').lower() == 'true'
 
 # Handle imports
 try:
-    from cli_code.models.gemini import GeminiModel
     from rich.console import Console
     import google.generativeai as genai
+    from src.cli_code.models.gemini import GeminiModel
+    from src.cli_code.tools.base import BaseTool
+    from src.cli_code.tools import AVAILABLE_TOOLS
     IMPORTS_AVAILABLE = True
 except ImportError:
     IMPORTS_AVAILABLE = False
@@ -52,7 +58,7 @@ class TestGeminiModel:
         self.mock_console = MagicMock(spec=Console)
         
         # Keep get_tool patch here if needed by other tests, or move into tests
-        self.get_tool_patch = patch('cli_code.models.gemini.get_tool')
+        self.get_tool_patch = patch('src.cli_code.models.gemini.get_tool')
         self.mock_get_tool = self.get_tool_patch.start()
         # Configure default mock tool behavior if needed by other tests
         self.mock_tool = MagicMock()
@@ -186,7 +192,7 @@ class TestGeminiModel:
 
         # Act: Patch get_tool locally
         # Note: GeminiModel imports get_tool directly
-        with patch('cli_code.models.gemini.get_tool') as mock_get_tool:
+        with patch('src.cli_code.models.gemini.get_tool') as mock_get_tool:
             mock_get_tool.return_value = mock_ls_tool
             model = GeminiModel("fake-api-key", self.mock_console, "gemini-pro")
             context = model._get_initial_context()
@@ -203,7 +209,7 @@ class TestGeminiModel:
     def test_create_tool_definitions(self):
         """Test creation of tool definitions for Gemini."""
         # Create a mock for AVAILABLE_TOOLS
-        with patch('cli_code.models.gemini.AVAILABLE_TOOLS') as mock_available_tools:
+        with patch('src.cli_code.models.gemini.AVAILABLE_TOOLS') as mock_available_tools:
             # Sample tool definition
             mock_available_tools.return_value = {
                 "test_tool": {

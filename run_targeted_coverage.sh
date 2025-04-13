@@ -6,25 +6,37 @@ set -e
 
 echo "Running coverage for key modules..."
 
-# Tools modules
-echo "==== Testing test_runner.py ===="
-python -m pytest tests/tools/test_test_runner_tool.py --cov=src.cli_code.tools.test_runner --cov-report=term
+# Test runner tool - Run test files separately to avoid import conflicts
+echo "==== Testing test_runner.py (test_dir tests) ===="
+python -m pytest test_dir/test_test_runner_tool.py -v --cov=src.cli_code.tools.test_runner --cov-report=term
 
-echo "==== Testing system_tools.py ===="
-python -m pytest test_dir/test_system_tools.py --cov=src.cli_code.tools.system_tools --cov-report=term
+echo "==== Testing test_runner.py (tests/tools tests) ===="
+python -m pytest tests/tools/test_test_runner_tool.py -v --cov=src.cli_code.tools.test_runner --cov-append --cov-report=term
 
+# Gemini model
+echo "==== Testing gemini.py ===="
+python -m pytest test_dir/test_gemini_model*.py -v --cov=src.cli_code.models.gemini --cov-report=term
+
+# Ollama model
+echo "==== Testing ollama.py ===="
+python -m pytest test_dir/test_ollama_model*.py -v --cov=src.cli_code.models.ollama --cov-report=term
+
+# File tools
+echo "==== Testing file_tools.py ===="
+python -m pytest test_dir/test_file_tools.py -v --cov=src.cli_code.tools.file_tools --cov-report=term
+
+# Tree tool
+echo "==== Testing tree_tool.py ===="
+python -m pytest test_dir/test_tree_tool.py -v --cov=src.cli_code.tools.tree_tool --cov-report=term
+python -m pytest test_dir/test_tree_tool_edge_cases.py -v --cov=src.cli_code.tools.tree_tool --cov-append --cov-report=term
+
+# Task complete tool
 echo "==== Testing task_complete_tool.py ===="
-python -m pytest tests/tools/test_task_complete_tool.py --cov=src.cli_code.tools.task_complete_tool --cov-report=term
+python -m pytest test_dir/test_task_complete_tool.py -v --cov=src.cli_code.tools.task_complete_tool --cov-report=term
+python -m pytest tests/tools/test_task_complete_tool.py -v --cov=src.cli_code.tools.task_complete_tool --cov-append --cov-report=term
 
-# Models modules
-echo "==== Testing models/base.py ===="
-python -m pytest test_dir/test_models_base.py --cov=src.cli_code.models.base --cov-report=term
-
-# Gemini model tests (excluding the failing test)
-echo "==== Testing Gemini model error handling (with skipped test_generate_with_quota_error_and_fallback_returns_success) ===="
-python -m pytest test_dir/test_gemini_model_error_handling.py -k "not test_generate_with_quota_error_and_fallback_returns_success" --cov=src.cli_code.models.gemini --cov-report=term
-
-# Add more modules as needed
-# python -m pytest path/to/test --cov=src.cli_code.module --cov-report=term
+# Run tests for all remaining tools to get comprehensive coverage
+echo "==== Testing other tools ===="
+python -m pytest test_dir/test_tools_basic.py test_dir/test_tools_init_coverage.py test_dir/test_directory_tools.py test_dir/test_quality_tools.py test_dir/test_summarizer_tool.py -v --cov=src.cli_code.tools --cov-report=term
 
 echo "Targeted coverage complete!" 

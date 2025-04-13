@@ -17,9 +17,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from rich.console import Console
 
 # Ensure FALLBACK_MODEL is imported
-from cli_code.models.gemini import GeminiModel, FALLBACK_MODEL
-from cli_code.tools.base import BaseTool
-from cli_code.tools import AVAILABLE_TOOLS
+from src.cli_code.models.gemini import GeminiModel, FALLBACK_MODEL
+from src.cli_code.tools.base import BaseTool
+from src.cli_code.tools import AVAILABLE_TOOLS
 
 
 class TestGeminiModelErrorHandling:
@@ -28,7 +28,7 @@ class TestGeminiModelErrorHandling:
     @pytest.fixture
     def mock_generative_model(self):
         """Mock the Gemini generative model."""
-        with patch("cli_code.models.gemini.genai.GenerativeModel") as mock_model:
+        with patch("src.cli_code.models.gemini.genai.GenerativeModel") as mock_model:
             mock_instance = MagicMock()
             mock_model.return_value = mock_instance
             yield mock_instance
@@ -37,7 +37,7 @@ class TestGeminiModelErrorHandling:
     def gemini_model(self, mock_generative_model):
         """Create a GeminiModel instance with mocked dependencies."""
         console = Console()
-        with patch("cli_code.models.gemini.genai") as mock_gm:
+        with patch("src.cli_code.models.gemini.genai") as mock_gm:
             # Configure the mock
             mock_gm.GenerativeModel = MagicMock()
             mock_gm.GenerativeModel.return_value = mock_generative_model
@@ -46,7 +46,7 @@ class TestGeminiModelErrorHandling:
             model = GeminiModel(api_key="fake_api_key", console=console, model_name="gemini-pro")
             yield model
 
-    @patch("cli_code.models.gemini.genai")
+    @patch("src.cli_code.models.gemini.genai")
     def test_initialization_error(self, mock_gm):
         """Test error handling during initialization."""
         # Make the GenerativeModel constructor raise an exception
@@ -119,7 +119,7 @@ class TestGeminiModelErrorHandling:
         console = Console()
         
         # Create the model with an invalid model name
-        with patch("cli_code.models.gemini.genai") as mock_gm:
+        with patch("src.cli_code.models.gemini.genai") as mock_gm:
             mock_gm.GenerativeModel.side_effect = Exception("Model not found: nonexistent-model")
             
             # Attempt to create the model
@@ -129,7 +129,7 @@ class TestGeminiModelErrorHandling:
             # Verify the error message
             assert "model not found" in str(excinfo.value).lower()
 
-    @patch("cli_code.models.gemini.get_tool")
+    @patch("src.cli_code.models.gemini.get_tool")
     def test_tool_execution_error(self, mock_get_tool, gemini_model, mock_generative_model):
         """Test handling of errors during tool execution."""
         # Configure the mock to return a response with a function call
@@ -200,7 +200,7 @@ class TestGeminiModelErrorHandling:
         mock_generative_model.generate_content.return_value = mock_response
         
         # Patch the get_tool function to return our test tool
-        with patch("cli_code.models.gemini.get_tool") as mock_get_tool:
+        with patch("src.cli_code.models.gemini.get_tool") as mock_get_tool:
             mock_get_tool.return_value = test_tool
             
             # Call generate
@@ -246,7 +246,7 @@ class TestGeminiModelErrorHandling:
     def test_init_without_api_key(self, mock_console):
         """Test initialization when API key is not provided."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             # Execute and expect the ValueError
             with pytest.raises(ValueError, match="Gemini API key is required"):
                 model = GeminiModel(None, mock_console)
@@ -254,19 +254,19 @@ class TestGeminiModelErrorHandling:
     def test_init_with_invalid_api_key(self, mock_console):
         """Test initialization with an invalid API key."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
-            with patch('cli_code.models.gemini.genai') as mock_genai:
+        with patch('src.cli_code.models.gemini.log'):
+            with patch('src.cli_code.models.gemini.genai') as mock_genai:
                 mock_genai.configure.side_effect = ImportError("No module named 'google.generativeai'")
                 
                 # Should raise ConnectionError
                 with pytest.raises(ConnectionError):
                     model = GeminiModel("invalid_key", mock_console)
     
-    @patch('cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.genai')
     def test_generate_without_client(self, mock_genai, mock_console):
         """Test generate method when the client is not initialized."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             # Create model that will have model=None
             model = GeminiModel("valid_key", mock_console)
             # Manually set model to None to simulate uninitialized client
@@ -278,11 +278,11 @@ class TestGeminiModelErrorHandling:
             # Assert
             assert "Error" in result and "not initialized" in result
     
-    @patch('cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.genai')
     def test_generate_with_api_error(self, mock_genai, mock_console):
         """Test generate method when the API call fails."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             # Create a model with a mock
             model = GeminiModel("valid_key", mock_console)
             
@@ -297,11 +297,11 @@ class TestGeminiModelErrorHandling:
             # Assert error during agent processing appears
             assert "Error during agent processing" in result
     
-    @patch('cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.genai')
     def test_generate_with_safety_block(self, mock_genai, mock_console):
         """Test generate method when content is blocked by safety filters."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Mock the model
@@ -321,13 +321,13 @@ class TestGeminiModelErrorHandling:
             # Assert
             assert "Empty response" in result or "no candidates" in result.lower()
     
-    @patch('cli_code.models.gemini.genai')
-    @patch('cli_code.models.gemini.get_tool')
-    @patch('cli_code.models.gemini.json.loads')
+    @patch('src.cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.get_tool')
+    @patch('src.cli_code.models.gemini.json.loads')
     def test_generate_with_invalid_tool_call(self, mock_json_loads, mock_get_tool, mock_genai, mock_console):
         """Test generate method with invalid JSON in tool arguments."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Configure the mock model
@@ -354,12 +354,12 @@ class TestGeminiModelErrorHandling:
             # Assert
             assert "Error" in result
     
-    @patch('cli_code.models.gemini.genai')
-    @patch('cli_code.models.gemini.get_tool')
+    @patch('src.cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.get_tool')
     def test_generate_with_missing_required_tool_args(self, mock_get_tool, mock_genai, mock_console):
         """Test generate method when required tool arguments are missing."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Configure the mock model
@@ -390,11 +390,11 @@ class TestGeminiModelErrorHandling:
             # We should get to the max iterations with the tool response
             assert "max iterations" in result.lower()
     
-    @patch('cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.genai')
     def test_generate_with_tool_not_found(self, mock_genai, mock_console):
         """Test generate method when a requested tool is not found."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Configure the mock model
@@ -413,19 +413,19 @@ class TestGeminiModelErrorHandling:
             mock_model.generate_content.return_value = mock_response
             
             # Mock get_tool to return None for nonexistent tool
-            with patch('cli_code.models.gemini.get_tool', return_value=None):
+            with patch('src.cli_code.models.gemini.get_tool', return_value=None):
                 # Execute
                 result = model.generate("test prompt")
             
             # We should mention the tool not found
             assert "not found" in result.lower() or "not available" in result.lower()
     
-    @patch('cli_code.models.gemini.genai')
-    @patch('cli_code.models.gemini.get_tool')
+    @patch('src.cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.get_tool')
     def test_generate_with_tool_execution_error(self, mock_get_tool, mock_genai, mock_console):
         """Test generate method when a tool execution raises an error."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Configure the mock model
@@ -454,11 +454,11 @@ class TestGeminiModelErrorHandling:
             # Assert
             assert "error" in result.lower() and "tool" in result.lower()
     
-    @patch('cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.genai')
     def test_list_models_error(self, mock_genai, mock_console):
         """Test list_models method when an error occurs."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Configure the mock to raise an exception
@@ -471,11 +471,11 @@ class TestGeminiModelErrorHandling:
             assert result == []
             mock_console.print.assert_called()
     
-    @patch('cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.genai')
     def test_generate_with_empty_response(self, mock_genai, mock_console):
         """Test generate method when the API returns an empty response."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Configure the mock model
@@ -494,11 +494,11 @@ class TestGeminiModelErrorHandling:
             # Assert
             assert "no candidates" in result.lower()
     
-    @patch('cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.genai')
     def test_generate_with_malformed_response(self, mock_genai, mock_console):
         """Test generate method when the API returns a malformed response."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console)
             
             # Configure the mock model
@@ -518,13 +518,13 @@ class TestGeminiModelErrorHandling:
             # Assert
             assert "no content" in result.lower() or "no parts" in result.lower()
 
-    @patch('cli_code.models.gemini.genai')
-    @patch('cli_code.models.gemini.get_tool')
-    @patch('cli_code.models.gemini.questionary') 
+    @patch('src.cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.get_tool')
+    @patch('src.cli_code.models.gemini.questionary') 
     def test_generate_with_tool_confirmation_rejected(self, mock_questionary, mock_get_tool, mock_genai, mock_console):
         """Test generate method when user rejects sensitive tool confirmation."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console, "gemini-pro") # Use the fixture?
             
             # Configure the mock model
@@ -563,13 +563,13 @@ class TestGeminiModelErrorHandling:
             # Depending on loop continuation logic, it might hit max iterations or return the rejection text
             assert "rejected" in result.lower() or "maximum iterations" in result.lower()
 
-    @patch('cli_code.models.gemini.genai')
-    @patch('cli_code.models.gemini.get_tool')
-    @patch('cli_code.models.gemini.questionary')
+    @patch('src.cli_code.models.gemini.genai')
+    @patch('src.cli_code.models.gemini.get_tool')
+    @patch('src.cli_code.models.gemini.questionary')
     def test_generate_with_tool_confirmation_cancelled(self, mock_questionary, mock_get_tool, mock_genai, mock_console):
         """Test generate method when user cancels sensitive tool confirmation."""
         # Setup
-        with patch('cli_code.models.gemini.log'):
+        with patch('src.cli_code.models.gemini.log'):
             model = GeminiModel("valid_key", mock_console, "gemini-pro")
 
             # Configure the mock model
