@@ -258,6 +258,130 @@ def test_execute_no_tests_collected(test_runner_tool):
         assert "Pytest exit code 5 often means no tests were found or collected" in result
 
 
+def test_execute_with_different_exit_codes(test_runner_tool):
+    """Test execute method with various non-zero exit codes."""
+    # Test various exit codes that aren't explicitly handled
+    for exit_code in [2, 3, 4, 6, 10]:
+        mock_completed_process = mock.Mock()
+        mock_completed_process.returncode = exit_code
+        mock_completed_process.stdout = f"Tests failed with exit code {exit_code}."
+        mock_completed_process.stderr = f"Error for exit code {exit_code}."
+        
+        with mock.patch("subprocess.run", return_value=mock_completed_process) as mock_run:
+            result = test_runner_tool.execute()
+            
+            # All non-zero exit codes should be reported as FAILED
+            assert f"Exit Code: {exit_code}" in result
+            assert "Status: FAILED" in result
+            assert f"Tests failed with exit code {exit_code}." in result
+            assert f"Error for exit code {exit_code}." in result
+
+
+def test_execute_with_very_long_output(test_runner_tool):
+    """Test execute method with very long output that should be truncated."""
+    # Create a long output string that exceeds truncation threshold
+    long_stdout = "X" * 2000  # Generate a string longer than 1000 chars
+    
+    mock_completed_process = mock.Mock()
+    mock_completed_process.returncode = 0
+    mock_completed_process.stdout = long_stdout
+    mock_completed_process.stderr = ""
+    
+    with mock.patch("subprocess.run", return_value=mock_completed_process) as mock_run:
+        result = test_runner_tool.execute()
+        
+        # Check for success status but truncated output
+        assert "Status: SUCCESS" in result
+        # The output should contain the last 1000 chars of the long stdout
+        assert long_stdout[-1000:] in result
+        # The full stdout should not be included (too long to check exactly, but we can check the length)
+        assert len(result) < len(long_stdout) + 200  # Add a margin for the added status text
+
+
+def test_execute_with_empty_stderr_stdout(test_runner_tool):
+    """Test execute method with empty stdout and stderr."""
+    mock_completed_process = mock.Mock()
+    mock_completed_process.returncode = 0
+    mock_completed_process.stdout = ""
+    mock_completed_process.stderr = ""
+    
+    with mock.patch("subprocess.run", return_value=mock_completed_process) as mock_run:
+        result = test_runner_tool.execute()
+        
+        # Should still report success
+        assert "Status: SUCCESS" in result
+        # Should indicate empty output
+        assert "Output:" in result
+        assert "---" in result  # Output delimiters should still be there
+
+
+def test_execute_with_stderr_only(test_runner_tool):
+    """Test execute method with empty stdout but content in stderr."""
+    mock_completed_process = mock.Mock()
+    mock_completed_process.returncode = 1
+    mock_completed_process.stdout = ""
+    mock_completed_process.stderr = "Error occurred but no stdout."
+    
+    with mock.patch("subprocess.run", return_value=mock_completed_process) as mock_run:
+        result = test_runner_tool.execute()
+        
+        # Should report failure
+        assert "Status: FAILED" in result
+        # Should have empty stdout section
+        assert "Standard Output:" in result
+        # Should have stderr content
+        assert "Standard Error:" in result
+        assert "Error occurred but no stdout." in result
+
+
+def test_execute_with_none_params(test_runner_tool):
+    """Test execute method with explicit None parameters."""
+    mock_completed_process = mock.Mock()
+    mock_completed_process.returncode = 0
+    mock_completed_process.stdout = "Tests passed with None parameters."
+    mock_completed_process.stderr = ""
+    
+    with mock.patch("subprocess.run", return_value=mock_completed_process) as mock_run:
+        # Explicitly passing None should be the same as default
+        result = test_runner_tool.execute(test_path=None, options=None, runner_command="pytest")
+        
+        # Should call subprocess with just pytest command
+        mock_run.assert_called_once_with(
+            ["pytest"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300
+        )
+        
+        assert "SUCCESS" in result
+
+
+def test_execute_with_empty_strings(test_runner_tool):
+    """Test execute method with empty string parameters."""
+    mock_completed_process = mock.Mock()
+    mock_completed_process.returncode = 0
+    mock_completed_process.stdout = "Tests passed with empty strings."
+    mock_completed_process.stderr = ""
+    
+    with mock.patch("subprocess.run", return_value=mock_completed_process) as mock_run:
+        # Empty strings should be treated similarly to None for test_path
+        # Empty options might be handled differently
+        result = test_runner_tool.execute(test_path="", options="")
+        
+        # It appears the implementation doesn't add the empty test_path 
+        # to the command (which makes sense)
+        mock_run.assert_called_once_with(
+            ["pytest"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300
+        )
+        
+        assert "SUCCESS" in result
+
+
 def test_actual_execution_for_coverage(test_runner_tool):
     """Test to trigger actual code execution for coverage purposes."""
     # This test actually executes code paths, not just mocks
