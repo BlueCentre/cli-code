@@ -31,6 +31,42 @@ def test_direct_initialization():
         assert "not found" in result
 
 
+def test_get_function_declaration():
+    """Test get_function_declaration method inherited from BaseTool."""
+    tool = TestRunnerTool()
+    function_decl = tool.get_function_declaration()
+    
+    # Verify basic properties
+    assert function_decl is not None
+    assert function_decl.name == "test_runner"
+    assert "test" in function_decl.description.lower()
+    
+    # Verify parameters structure exists
+    assert function_decl.parameters is not None
+    
+    # The correct attributes are directly on the parameters object
+    # Check if the parameters has the expected attributes
+    assert hasattr(function_decl.parameters, 'type_')
+    # Type is an enum, just check it exists
+    assert function_decl.parameters.type_ is not None
+    
+    # Check for properties
+    assert hasattr(function_decl.parameters, 'properties')
+    
+    # Check for expected parameters from the execute method signature
+    properties = function_decl.parameters.properties
+    assert 'test_path' in properties
+    assert 'options' in properties
+    assert 'runner_command' in properties
+    
+    # Check parameter types - using isinstance or type presence
+    for param_name in ['test_path', 'options', 'runner_command']:
+        assert hasattr(properties[param_name], 'type_')
+        assert properties[param_name].type_ is not None
+        assert hasattr(properties[param_name], 'description')
+        assert 'Parameter' in properties[param_name].description
+
+
 def test_execute_successful_run(test_runner_tool):
     """Test execute method with a successful test run."""
     mock_completed_process = mock.Mock()
