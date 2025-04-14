@@ -10,15 +10,12 @@ echo "Starting local test coverage generation..."
 mkdir -p coverage_html
 
 # Determine test directory
-TEST_DIR=${TEST_DIR_ENV:-"test_dir"}
+TEST_DIR=${TEST_DIR_ENV:-"tests"}
 echo "Using test directory: $TEST_DIR"
 
-# Verify test directory exists
+# Check if the test directory exists
 if [ ! -d "$TEST_DIR" ]; then
     echo "Error: Test directory $TEST_DIR does not exist!"
-    echo "Current directory: $(pwd)"
-    echo "Available directories:"
-    ls -la
     exit 1
 fi
 
@@ -65,12 +62,12 @@ echo "Running test suite with coverage enabled..."
 
 # Define the basic tools tests paths
 TOOLS_TESTS=(
-  "$TEST_DIR/test_file_tools.py"
-  "$TEST_DIR/test_system_tools.py"
-  "$TEST_DIR/test_directory_tools.py"
-  "$TEST_DIR/improved/test_quality_tools.py"
-  "$TEST_DIR/improved/test_summarizer_tool.py"
-  "$TEST_DIR/improved/test_tree_tool.py"
+  "tests/tools/test_file_tools.py"
+  "tests/tools/test_system_tools.py"
+  "tests/tools/test_directory_tools.py"
+  "tests/tools/test_quality_tools.py"
+  "tests/tools/test_summarizer_tool.py"
+  "tests/tools/test_tree_tool.py"
   "tests/tools/test_base_tool.py"
 )
 
@@ -100,9 +97,9 @@ fi
 
 # Define model tests paths
 MODEL_TESTS=(
-  "$TEST_DIR/test_models_base.py"
-  "$TEST_DIR/test_model_basic.py"
-  "$TEST_DIR/test_model_integration.py"
+  "tests/models/test_base.py"
+  "tests/models/test_model_basic.py"
+  "tests/models/test_model_integration.py"
 )
 
 # Check if model test files exist
@@ -175,44 +172,44 @@ run_test_group() {
 
 # Run gemini model tests individually
 run_test_group "gemini model" \
-  "$TEST_DIR/test_gemini_model.py" \
-  "$TEST_DIR/test_gemini_model_advanced.py" \
-  "$TEST_DIR/test_gemini_model_coverage.py" \
-  "$TEST_DIR/test_gemini_model_error_handling.py"
+  "tests/models/test_gemini.py" \
+  "tests/models/test_gemini_model_advanced.py" \
+  "tests/models/test_gemini_model_coverage.py" \
+  "tests/models/test_gemini_model_error_handling.py"
 
 # Run ollama model tests individually
 run_test_group "ollama model" \
-  "$TEST_DIR/test_ollama_model.py" \
-  "$TEST_DIR/test_ollama_model_advanced.py" \
-  "$TEST_DIR/test_ollama_model_coverage.py" \
-  "$TEST_DIR/test_ollama_model_context.py" \
-  "$TEST_DIR/test_ollama_model_error_handling.py"
+  "tests/models/test_ollama.py" \
+  "tests/models/test_ollama_model_advanced.py" \
+  "tests/models/test_ollama_model_coverage.py" \
+  "tests/models/test_ollama_model_context.py" \
+  "tests/models/test_ollama_model_error_handling.py"
 
 # Run config tests individually
 run_test_group "config" \
-  "$TEST_DIR/test_config.py" \
-  "$TEST_DIR/test_config_comprehensive.py" \
-  "$TEST_DIR/test_config_edge_cases.py" \
-  "$TEST_DIR/test_config_missing_methods.py"
+  "tests/test_config.py" \
+  "tests/test_config_comprehensive.py" \
+  "tests/test_config_edge_cases.py" \
+  "tests/test_config_missing_methods.py"
 
 # Run main tests individually
 run_test_group "main" \
-  "$TEST_DIR/test_main.py" \
-  "$TEST_DIR/test_main_comprehensive.py" \
-  "$TEST_DIR/test_main_edge_cases.py" \
-  "$TEST_DIR/test_main_improved.py"
+  "tests/test_main.py" \
+  "tests/test_main_comprehensive.py" \
+  "tests/test_main_edge_cases.py" \
+  "tests/test_main_improved.py"
 
 # Run remaining tests individually
 run_test_group "remaining" \
-  "$TEST_DIR/test_task_complete_tool.py" \
-  "$TEST_DIR/test_tools_base.py" \
-  "$TEST_DIR/test_tools_init_coverage.py" \
-  "$TEST_DIR/test_utils.py" \
-  "$TEST_DIR/test_utils_comprehensive.py" \
-  "$TEST_DIR/test_test_runner_tool.py" \
-  "$TEST_DIR/test_basic_functions.py" \
-  "$TEST_DIR/test_tools_basic.py" \
-  "$TEST_DIR/test_tree_tool_edge_cases.py"
+  "tests/tools/test_task_complete_tool.py" \
+  "tests/tools/test_base_tool.py" \
+  "tests/test_tools_init_coverage.py"
+  "tests/test_utils.py" \
+  "tests/test_utils_comprehensive.py" \
+  "tests/tools/test_test_runner_tool.py" \
+  "tests/test_basic_functions.py"
+  "tests/tools/test_tools_basic.py"
+  "tests/tools/test_tree_tool_edge_cases.py"
 
 # Generate a final coverage report
 echo "Generating final coverage report..." | tee -a "$SUMMARY_LOG"

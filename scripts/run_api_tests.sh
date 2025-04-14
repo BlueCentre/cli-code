@@ -8,9 +8,9 @@ echo "Running API-dependent tests with a 10-second timeout per test..."
 
 # Run API-dependent tests
 python -m pytest \
-  test_dir/test_ollama_model.py \
-  test_dir/test_gemini_model.py \
-  test_dir/test_model_integration.py \
+  tests/models/test_ollama.py \
+  tests/models/test_gemini.py \
+  tests/models/test_model_integration.py \
   -v \
   --timeout=10
 

@@ -9,7 +9,7 @@ Thank you for your interest in contributing to CLI-Code! This document outlines 
 - **Run local SonarCloud scan**: Get a baseline of current code quality and coverage
   ```bash
   # Generate coverage report
-  pytest --cov=src test_dir --cov-report=xml
+  pytest --cov=src tests --cov-report=xml
   
   # Run local SonarCloud scan
   sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
@@ -32,7 +32,7 @@ Thank you for your interest in contributing to CLI-Code! This document outlines 
 - Ensure overall code coverage does not decrease
 - Run the test suite frequently during development:
   ```bash
-  pytest --cov=src test_dir
+  pytest --cov=src tests
   ```
 
 ### 5. Verification
@@ -41,7 +41,7 @@ Thank you for your interest in contributing to CLI-Code! This document outlines 
 - Run a final local SonarCloud scan to verify quality improvements:
   ```bash
   # Generate final coverage report
-  pytest --cov=src test_dir --cov-report=xml
+  pytest --cov=src tests --cov-report=xml
   
   # Run local SonarCloud scan
   sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
@@ -94,7 +94,7 @@ For the fastest feedback loop, run SonarCloud analysis locally before pushing ch
 
 2. Generate coverage report:
    ```bash
-   pytest --cov=src test_dir --cov-report=xml
+   pytest --cov=src tests --cov-report=xml
    ```
 
 3. Run local scan (requires your SonarCloud token):

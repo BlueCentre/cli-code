@@ -248,11 +248,11 @@ When running tests, use these approaches for better control and reliability:
 
 ```bash
 # Run specific test files
-python -m pytest test_dir/test_ollama_model_context.py
+python -m pytest tests/models/test_ollama_model_context.py
 
 # Run specific test classes or methods
-python -m pytest test_dir/test_ollama_model_context.py::TestOllamaModelContext
-python -m pytest test_dir/test_ollama_model_context.py::TestOllamaModelContext::test_clear_history
+python -m pytest tests/models/test_ollama_model_context.py::TestOllamaModelContext
+python -m pytest tests/models/test_ollama_model_context.py::TestOllamaModelContext::test_clear_history
 
 # Use pattern matching with -k to select specific tests
 python -m pytest -k "tree_tool or ollama_context"

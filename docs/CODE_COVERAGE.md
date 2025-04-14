@@ -28,10 +28,10 @@ If you prefer to run coverage manually, use the following commands:
 
 ```bash
 # Run pytest with coverage
-python -m pytest --cov=src/cli_code --cov-report=term --cov-report=xml --cov-report=html test_dir/
+python -m pytest --cov=src/cli_code --cov-report=term --cov-report=xml --cov-report=html tests/
 
 # To run specific test files
-python -m pytest --cov=src/cli_code --cov-report=term test_dir/test_file.py
+python -m pytest --cov=src/cli_code --cov-report=term tests/tools/test_file_tools.py
 ```
 
 ## Analyzing Coverage Results
