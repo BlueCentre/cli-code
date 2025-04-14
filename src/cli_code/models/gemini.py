@@ -565,20 +565,26 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
     # --- Tool Definition Helper ---
     def _create_tool_definitions(self) -> list | None:
         """Dynamically create Tool definitions from AVAILABLE_TOOLS."""
-        # NOTE: This assumes get_function_declaration() returns objects compatible with or convertible to genai Tools
+        # Fix: AVAILABLE_TOOLS is a dictionary, not a function
         declarations = []
-        for tool_name, tool_instance in AVAILABLE_TOOLS.items():
-            if hasattr(tool_instance, "get_function_declaration"):
-                declaration_obj = tool_instance.get_function_declaration()
-                if declaration_obj:
-                    # Assuming declaration_obj is structured correctly or needs conversion
-                    # For now, append directly. May need adjustment based on actual object structure.
-                    declarations.append(declaration_obj)
-                    log.debug(f"Generated tool definition for tool: {tool_name}")
+        for tool_name, tool_class in AVAILABLE_TOOLS.items():
+            try:
+                # Instantiate the tool
+                tool_instance = tool_class()
+                if hasattr(tool_instance, "get_function_declaration"):
+                    declaration_obj = tool_instance.get_function_declaration()
+                    if declaration_obj:
+                        # Assuming declaration_obj is structured correctly or needs conversion
+                        # For now, append directly. May need adjustment based on actual object structure.
+                        declarations.append(declaration_obj)
+                        log.debug(f"Generated tool definition for tool: {tool_name}")
+                    else:
+                        log.warning(f"Tool {tool_name} has 'get_function_declaration' but it returned None.")
                 else:
-                    log.warning(f"Tool {tool_name} has 'get_function_declaration' but it returned None.")
-            else:
-                log.warning(f"Tool {tool_name} does not have a 'get_function_declaration' method. Skipping.")
+                    log.warning(f"Tool {tool_name} does not have a 'get_function_declaration' method. Skipping.")
+            except Exception as e:
+                log.error(f"Error instantiating tool '{tool_name}': {e}")
+                continue
 
         log.info(f"Created {len(declarations)} tool definitions for native tool use.")
         # The return type of this function might need to be adjusted based on how

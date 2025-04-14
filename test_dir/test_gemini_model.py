@@ -209,28 +209,36 @@ class TestGeminiModel:
     def test_create_tool_definitions(self):
         """Test creation of tool definitions for Gemini."""
         # Create a mock for AVAILABLE_TOOLS
-        with patch('src.cli_code.models.gemini.AVAILABLE_TOOLS') as mock_available_tools:
-            # Sample tool definition
-            mock_available_tools.return_value = {
-                "test_tool": {
-                    "name": "test_tool",
-                    "description": "A test tool",
-                    "parameters": {
-                        "param1": {"type": "string", "description": "A string parameter"},
-                        "param2": {"type": "integer", "description": "An integer parameter"}
-                    },
-                    "required": ["param1"]
-                }
+        with patch('src.cli_code.models.gemini.AVAILABLE_TOOLS', new={
+            "test_tool": MagicMock()
+        }):
+            # Mock the tool instance that will be created
+            mock_tool_instance = MagicMock()
+            mock_tool_instance.get_function_declaration.return_value = {
+                "name": "test_tool",
+                "description": "A test tool",
+                "parameters": {
+                    "param1": {"type": "string", "description": "A string parameter"},
+                    "param2": {"type": "integer", "description": "An integer parameter"}
+                },
+                "required": ["param1"]
             }
             
-            model = GeminiModel("fake-api-key", self.mock_console, "gemini-2.5-pro-exp-03-25")
-            tools = model._create_tool_definitions()
+            # Mock the tool class to return our mock instance
+            mock_tool_class = MagicMock(return_value=mock_tool_instance)
             
-            # Verify tools format
-            assert len(tools) == 1
-            assert tools[0]["name"] == "test_tool"
-            assert "description" in tools[0]
-            assert "parameters" in tools[0]
+            # Update the mocked AVAILABLE_TOOLS
+            with patch('src.cli_code.models.gemini.AVAILABLE_TOOLS', new={
+                "test_tool": mock_tool_class
+            }):
+                model = GeminiModel("fake-api-key", self.mock_console, "gemini-2.5-pro-exp-03-25")
+                tools = model._create_tool_definitions()
+                
+                # Verify tools format
+                assert len(tools) == 1
+                assert tools[0]["name"] == "test_tool"
+                assert "description" in tools[0]
+                assert "parameters" in tools[0]
     
     def test_create_system_prompt(self):
         """Test creation of system prompt."""

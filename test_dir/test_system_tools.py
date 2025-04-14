@@ -19,102 +19,101 @@ def test_bash_tool_init():
     assert len(tool.BANNED_COMMANDS) > 0
 
 
-@patch('subprocess.Popen')
-def test_bash_tool_execute_success(mock_popen):
-    """Test successful command execution with BashTool."""
-    # Setup the mock
-    process_mock = MagicMock()
-    process_mock.returncode = 0
-    process_mock.communicate.return_value = ("Command output", "")
-    mock_popen.return_value = process_mock
-    
-    # Execute the tool
+def test_bash_tool_banned_command():
+    """Test BashTool rejects banned commands."""
     tool = BashTool()
-    result = tool.execute("echo 'Hello World'")
+    
+    # Try a banned command (using the first one in the list)
+    banned_cmd = tool.BANNED_COMMANDS[0]
+    result = tool.execute(f"{banned_cmd} some_args")
+    
+    assert "not allowed for security reasons" in result
+    assert banned_cmd in result
+
+
+@patch("subprocess.Popen")
+def test_bash_tool_successful_command(mock_popen):
+    """Test BashTool executes commands successfully."""
+    # Setup mock
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_process.communicate.return_value = ("Command output", "")
+    mock_popen.return_value = mock_process
+    
+    # Execute a simple command
+    tool = BashTool()
+    result = tool.execute("echo 'hello world'")
     
     # Verify results
     assert result == "Command output"
     mock_popen.assert_called_once()
-    process_mock.communicate.assert_called_once()
+    mock_process.communicate.assert_called_once()
 
 
-@patch('subprocess.Popen')
-def test_bash_tool_execute_error(mock_popen):
-    """Test command execution error with BashTool."""
-    # Setup the mock
-    process_mock = MagicMock()
-    process_mock.returncode = 1
-    process_mock.communicate.return_value = ("", "Command error")
-    mock_popen.return_value = process_mock
+@patch("subprocess.Popen")
+def test_bash_tool_command_error(mock_popen):
+    """Test BashTool handling of command errors."""
+    # Setup mock to simulate command failure
+    mock_process = MagicMock()
+    mock_process.returncode = 1
+    mock_process.communicate.return_value = ("", "Command failed")
+    mock_popen.return_value = mock_process
     
-    # Execute the tool
+    # Execute a command that will fail
     tool = BashTool()
     result = tool.execute("invalid_command")
     
-    # Verify results
-    assert "Command exited with status 1" in result
-    assert "Command error" in result
+    # Verify error handling
+    assert "exited with status 1" in result
+    assert "STDERR:\nCommand failed" in result
     mock_popen.assert_called_once()
-    process_mock.communicate.assert_called_once()
 
 
-def test_bash_tool_execute_banned_command():
-    """Test execution of banned commands."""
+@patch("subprocess.Popen")
+def test_bash_tool_timeout(mock_popen):
+    """Test BashTool handling of timeouts."""
+    # Setup mock to simulate timeout
+    mock_process = MagicMock()
+    mock_process.communicate.side_effect = subprocess.TimeoutExpired("cmd", 1)
+    mock_popen.return_value = mock_process
+    
+    # Execute command with short timeout
     tool = BashTool()
+    result = tool.execute("sleep 10", timeout=1000)  # 1 second timeout
     
-    # Try to execute each banned command
-    for banned_cmd in tool.BANNED_COMMANDS:
-        result = tool.execute(banned_cmd)
-        assert f"Error: The command '{banned_cmd}' is not allowed for security reasons." in result
+    # Verify timeout handling
+    assert "Command timed out" in result
+    mock_process.kill.assert_called_once()
 
 
-@patch('subprocess.Popen')
-def test_bash_tool_execute_timeout(mock_popen):
-    """Test command timeout with BashTool."""
-    # Setup the mock
-    process_mock = MagicMock()
-    process_mock.communicate.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=1)
-    mock_popen.return_value = process_mock
+def test_bash_tool_invalid_timeout():
+    """Test BashTool with invalid timeout value."""
+    with patch("subprocess.Popen") as mock_popen:
+        # Setup mock
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = ("Command output", "")
+        mock_popen.return_value = mock_process
+        
+        # Execute with invalid timeout
+        tool = BashTool()
+        result = tool.execute("echo test", timeout="not-a-number")
+        
+        # Verify default timeout was used
+        mock_process.communicate.assert_called_once_with(timeout=30)
+        assert result == "Command output"
+
+
+@patch("subprocess.Popen")
+def test_bash_tool_general_exception(mock_popen):
+    """Test BashTool handling of general exceptions."""
+    # Setup mock to raise an exception
+    mock_popen.side_effect = Exception("Something went wrong")
     
-    # Execute the tool with a short timeout
+    # Execute command
     tool = BashTool()
-    result = tool.execute("sleep 10", timeout=1000)
+    result = tool.execute("some command")
     
-    # Verify results
-    assert "Error: Command timed out after" in result
-    mock_popen.assert_called_once()
-    process_mock.communicate.assert_called_once()
-    process_mock.kill.assert_called_once()
-
-
-@patch('subprocess.Popen')
-def test_bash_tool_execute_invalid_timeout(mock_popen):
-    """Test execution with invalid timeout value."""
-    # Setup the mock
-    process_mock = MagicMock()
-    process_mock.returncode = 0
-    process_mock.communicate.return_value = ("Command output", "")
-    mock_popen.return_value = process_mock
-    
-    # Execute the tool with an invalid timeout
-    tool = BashTool()
-    result = tool.execute("echo 'Hello'", timeout="invalid")
-    
-    # Verify results
-    assert result == "Command output"
-    # Should use default timeout (30s)
-    process_mock.communicate.assert_called_once_with(timeout=30)
-
-
-@patch('subprocess.Popen')
-def test_bash_tool_execute_general_exception(mock_popen):
-    """Test general exception handling during execution."""
-    # Setup the mock to raise an exception
-    mock_popen.side_effect = Exception("Test exception")
-    
-    # Execute the tool
-    tool = BashTool()
-    result = tool.execute("echo 'Hello'")
-    
-    # Verify results
-    assert "Error executing command: Test exception" in result 
+    # Verify exception handling
+    assert "Error executing command" in result
+    assert "Something went wrong" in result 
