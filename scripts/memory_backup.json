@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "type": "entity",
+      "name": "James",
+      "entityType": "Person",
+      "observations": [
+        "Is the current user I am interacting with",
+        "Has workspace path /Users/james/Workspace/gh/lab/monorepo",
+        "Is working on the BlueCentre/monorepo repository",
+        "GitHub username is ipv1337"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "SlackConnection",
+      "entityType": "Connection",
+      "observations": [
+        "Connection ID: a7ea21c2-02f8-4ac1-bca0-ed02014496de",
+        "Status: ACTIVE",
+        "Created at: 2025-04-03T08:33:29.676Z",
+        "Updated at: 2025-04-03T08:33:52.375Z"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Slack Integration",
+      "entityType": "Tool Connection",
+      "observations": [
+        "Has active connection with ID: a7ea21c2-02f8-4ac1-bca0-ed02014496de",
+        "Can fetch conversation history",
+        "Can post messages",
+        "Can add reactions",
+        "Can create reminders",
+        "Can list custom emojis"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Google Tasks Integration",
+      "entityType": "Tool Connection",
+      "observations": [
+        "No active connection found",
+        "Connection attempt failed with error: Could not find a connection",
+        "Requires authentication setup",
+        "Connection successfully established with ID: 63629ab1-e9f9-4c8c-b8c3-e34ceec4e028",
+        "Access to 6 task lists including: My Tasks, DCX Tasks, OOMS Tasks, HR Tasks, Documentation Tasks, and My Long Term Tasks",
+        "Can list, create, update, and delete tasks and task lists",
+        "Connection established via OAuth",
+        "Last connection update: 2025-04-03T08:42:11.549Z"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "GCP Integration",
+      "entityType": "Tool Connection",
+      "observations": [
+        "Has active connection",
+        "Access to multiple projects (500+ projects listed)",
+        "Can perform GCP operations",
+        "Can run GCP code",
+        "Can manage billing information",
+        "Can manage GKE clusters"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Development Best Practices",
+      "entityType": "Workflow",
+      "observations": [
+        "Always test and validate changes locally before committing and pushing to the repository",
+        "For configuration changes, verify that all supported configurations work as expected",
+        "When adding new features like environment variable support, test with real settings"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "GitHub CLI Auth Workaround",
+      "entityType": "TechnicalSolution",
+      "observations": [
+        "When GitHub CLI operations fail with 'Resource not accessible by personal access token' errors, temporarily unset GITHUB_TOKEN",
+        "Command pattern to use: GITHUB_TOKEN=\"\" gh <command>",
+        "This bypasses the environment variable token and uses the properly scoped token stored in keyring",
+        "For this user, the keyring token has 'admin:public_key', 'codespace', 'gist', 'read:org', 'repo' scopes"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "CLI-Code Development Workflow",
+      "entityType": "Workflow",
+      "observations": [
+        "Add coverage_report.xml to .gitignore to avoid committing generated test artifacts",
+        "Use GitHub CLI with proper authentication by using the ghauth wrapper script",
+        "Run tests locally before pushing changes",
+        "Create PRs against the main branch",
+        "When encountering GitHub authentication issues, use GITHUB_TOKEN=\"\" gh command pattern"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "type": "relation",
+      "from": "James",
+      "to": "SlackConnection",
+      "relationType": "has authenticated"
+    },
+    {
+      "type": "relation",
+      "from": "Slack Integration",
+      "to": "Tool Connection",
+      "relationType": "is connected"
+    },
+    {
+      "type": "relation",
+      "from": "GCP Integration",
+      "to": "Tool Connection",
+      "relationType": "is connected"
+    },
+    {
+      "type": "relation",
+      "from": "Google Tasks Integration",
+      "to": "Tool Connection",
+      "relationType": "is connected"
+    }
+  ]
+} 

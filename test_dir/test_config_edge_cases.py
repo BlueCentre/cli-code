@@ -286,7 +286,7 @@ class TestConfigEdgeCases(TestCase):
         with patch.object(Config, 'get_default_provider', return_value='gemini'):
             # Test with empty config
             config.config = {}
-            self.assertEqual(config.get_default_model('gemini'), "models/gemini-2.5-pro-exp-03-25")
+            self.assertEqual(config.get_default_model('gemini'), "models/gemini-1.5-pro-latest")
             
             # Test with unknown provider directly (not using get_default_provider)
             self.assertIsNone(config.get_default_model('unknown'))
