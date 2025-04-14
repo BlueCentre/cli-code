@@ -22,7 +22,7 @@ EOL
 # Apply branch protection rules
 echo "Applying branch protection rules to main branch..."
 gh api --method PUT "repos/BlueCentre/cli-code/branches/main/protection" \
-  --input branch_protection.json
+  --input branch_protection.json || { echo "Failed to apply branch protection rules"; rm branch_protection.json; exit 1; }
 
 # Clean up
 rm branch_protection.json

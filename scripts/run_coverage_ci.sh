@@ -5,7 +5,7 @@ set -e  # Exit on error
 set -x  # Print commands before execution
 
 # First, run just the basic tests to verify pytest works
-python -m pytest -xvs test_dir/test_basic_functions.py || true
+python -m pytest -xvs test_dir/test_basic_functions.py
 
 # Set up coverage directory
 mkdir -p coverage_html
