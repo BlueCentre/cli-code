@@ -31,7 +31,7 @@ mkdir -p coverage_html
 echo "Running test suite with coverage enabled..."
 # Allow test failures but still generate coverage report
 if python -m pytest \
-  --cov=cli_code \
+  --cov=src.cli_code \
   --cov-report=xml:coverage.xml \
   --cov-report=html:coverage_html \
   test_dir/ || true; then
