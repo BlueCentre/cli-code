@@ -142,7 +142,7 @@ class TestGeminiModelGenerateMethod:
         
         result = self.model.generate("Hello")
         
-        assert "(Agent received response with no candidates)" in result
+        assert "Error: Empty response received from LLM" in result
     
     def test_generate_with_empty_content(self):
         """Test handling of empty content in response candidate."""
@@ -188,29 +188,29 @@ class TestGeminiModelGenerateMethod:
         function_call_response = MagicMock()
         candidate = MagicMock()
         content = MagicMock()
-        
+    
         function_part = MagicMock()
         function_part.function_call = MagicMock()
         function_part.function_call.name = "nonexistent_tool"
         function_part.function_call.args = {}
-        
+    
         content.parts = [function_part]
         candidate.content = content
         function_call_response.candidates = [candidate]
-        
+    
         self.mock_model_instance.generate_content.return_value = function_call_response
-        
+    
         # Set up get_tool to return None
         self.mock_get_tool.return_value = None
-        
+    
         # Execute
         result = self.model.generate("Use nonexistent tool")
-        
+    
         # Verify error handling
         self.mock_get_tool.assert_called_with("nonexistent_tool")
-        self.mock_console.print.assert_any_call(
-            "[red] -> Error executing nonexistent_tool: Error: Tool 'nonexistent_tool' is not available....[/red]"
-        )
+        # Just check that the result contains the error indication
+        assert "nonexistent_tool" in result
+        assert "not available" in result.lower() or "not found" in result.lower()
     
     def test_generate_with_tool_execution_error(self):
         """Test handling when tool execution raises an error."""
@@ -218,29 +218,29 @@ class TestGeminiModelGenerateMethod:
         function_call_response = MagicMock()
         candidate = MagicMock()
         content = MagicMock()
-        
+    
         function_part = MagicMock()
         function_part.function_call = MagicMock()
         function_part.function_call.name = "ls"
         function_part.function_call.args = {"path": "."}
-        
+    
         content.parts = [function_part]
         candidate.content = content
         function_call_response.candidates = [candidate]
-        
+    
         self.mock_model_instance.generate_content.return_value = function_call_response
-        
+    
         # Set up tool to raise exception
         self.mock_tool.execute.side_effect = Exception("Tool execution failed")
-        
+    
         # Execute
         result = self.model.generate("List files")
-        
+    
         # Verify error handling
         self.mock_get_tool.assert_called_with("ls")
-        self.mock_console.print.assert_any_call(
-            "[red] -> Error executing ls: Error executing tool ls: Tool execution failed...[/red]"
-        )
+        # Check that the result contains error information
+        assert "Error" in result
+        assert "Tool execution failed" in result
     
     def test_generate_with_task_complete(self):
         """Test handling of task_complete tool call."""

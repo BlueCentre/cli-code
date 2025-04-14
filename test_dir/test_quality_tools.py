@@ -6,7 +6,9 @@ import subprocess
 import pytest
 from unittest.mock import patch, MagicMock
 
-from cli_code.tools.quality_tools import _run_quality_command, LinterCheckerTool, FormatterTool
+# Direct import for coverage tracking
+import src.cli_code.tools.quality_tools
+from src.cli_code.tools.quality_tools import _run_quality_command, LinterCheckerTool, FormatterTool
 
 
 class TestRunQualityCommand:
