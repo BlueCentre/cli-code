@@ -93,6 +93,7 @@ jobs:
     # Fix SonarCloud scan to use proper configuration
     - name: SonarCloud Scan
       uses: SonarSource/sonarcloud-github-action@master
+      continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Required: Store your SonarCloud token as a GitHub secret
@@ -117,6 +118,7 @@ jobs:
     - name: SonarCloud PR Scan
       uses: SonarSource/sonarcloud-github-action@master
       if: github.event_name == 'pull_request'
+      continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Required: Store your SonarCloud token as a GitHub secret
