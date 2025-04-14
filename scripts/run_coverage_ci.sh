@@ -26,3 +26,4 @@ else
     mkdir -p coverage_html
     echo '<html><body><h1>Coverage Report</h1><p>Coverage report generation failed. Minimal placeholder created for CI.</p></body></html>' > coverage_html/index.html
     echo "Minimal coverage placeholder created."
+    echo "WARNING: Minimal coverage report was generated. Check test suite for potential issues." >&2 # Send to stderr
