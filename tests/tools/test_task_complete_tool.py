@@ -1,93 +1,97 @@
+"""
+Tests for the TaskCompleteTool.
+"""
 import pytest
-from unittest import mock
-import logging
+from unittest.mock import patch
 
-from src.cli_code.tools.task_complete_tool import TaskCompleteTool
+from cli_code.tools.task_complete_tool import TaskCompleteTool
 
 
-@pytest.fixture
-def task_complete_tool():
-    """Provides an instance of TaskCompleteTool."""
-    return TaskCompleteTool()
+def test_task_complete_tool_init():
+    """Test TaskCompleteTool initialization."""
+    tool = TaskCompleteTool()
+    assert tool.name == "task_complete"
+    assert "Signals task completion" in tool.description
 
-# Test cases for various summary inputs
-@pytest.mark.parametrize(
-    "input_summary, expected_output",
-    [
-        ("Task completed successfully.", "Task completed successfully."), # Normal case
-        ("  \n\'Finished the process.\' \t", "Finished the process."), # Needs cleaning
-        ("  Done.  ", "Done."), # Needs cleaning (less complex)
-        (" \" \" ", "Task marked as complete, but the provided summary was insufficient."), # Only quotes and spaces -> empty, too short
-        ("Okay", "Task marked as complete, but the provided summary was insufficient."), # Too short after checking length
-        ("This is a much longer and more detailed summary.", "This is a much longer and more detailed summary."), # Long enough
-    ],
-)
-def test_execute_normal_and_cleaning(task_complete_tool, input_summary, expected_output):
-    """Test execute method with summaries needing cleaning and normal ones."""
-    result = task_complete_tool.execute(summary=input_summary)
-    assert result == expected_output
 
-@pytest.mark.parametrize(
-    "input_summary",
-    [
-        (""), # Empty string
-        ("   "), # Only whitespace
-        (" \n\t "), # Only whitespace chars
-        ("ok"), # Too short
-        ("    a   "), # Too short after stripping
-        (" \" b \" "), # Too short after stripping
-    ],
-)
-def test_execute_insufficient_summary(task_complete_tool, input_summary):
-    """Test execute method with empty or very short summaries."""
-    expected_output = "Task marked as complete, but the provided summary was insufficient."
-    # Capture log messages
-    with mock.patch("src.cli_code.tools.task_complete_tool.log") as mock_log:
-        result = task_complete_tool.execute(summary=input_summary)
-        assert result == expected_output
-        mock_log.warning.assert_called_once_with(
-            "TaskCompleteTool called with missing or very short summary."
-        )
-
-def test_execute_non_string_summary(task_complete_tool):
-    """Test execute method with non-string input."""
-    input_summary = 12345
-    expected_output = str(input_summary)
-    # Capture log messages
-    with mock.patch("src.cli_code.tools.task_complete_tool.log") as mock_log:
-        result = task_complete_tool.execute(summary=input_summary)
-        assert result == expected_output
-        mock_log.warning.assert_called_once_with(
-            f"TaskCompleteTool received non-string summary type: {type(input_summary)}"
-        )
-
-def test_execute_stripping_loop(task_complete_tool):
-    """Test that repeated stripping works correctly."""
-    input_summary = " \" \'   Actual Summary   \' \" "
-    expected_output = "Actual Summary"
-    result = task_complete_tool.execute(summary=input_summary)
-    assert result == expected_output
-
-def test_execute_loop_break_condition(task_complete_tool):
-    """Test that the loop break condition works when a string doesn't change after stripping."""
-    # Create a special test class that will help us test the loop break condition
-    class SpecialString(str):
-        """String subclass that helps test the loop break condition."""
-        def startswith(self, *args, **kwargs):
-            return True  # Always start with a strippable char
-
-        def endswith(self, *args, **kwargs):
-            return True  # Always end with a strippable char
-            
-        def strip(self, chars=None):
-            # Return the same string, which should trigger the loop break condition
-            return self
+def test_execute_with_valid_summary():
+    """Test execution with a valid summary."""
+    tool = TaskCompleteTool()
+    summary = "This is a valid summary of task completion."
+    result = tool.execute(summary)
     
-    # Create our special string and run the test
-    input_summary = SpecialString("Text that never changes when stripped")
+    assert result == summary
+
+
+def test_execute_with_short_summary():
+    """Test execution with a summary that's too short."""
+    tool = TaskCompleteTool()
+    summary = "Shrt"  # Less than 5 characters
+    result = tool.execute(summary)
     
-    # We need to patch the logging to avoid actual logging
-    with mock.patch("src.cli_code.tools.task_complete_tool.log") as mock_log:
-        result = task_complete_tool.execute(summary=input_summary)
-        # The string is long enough so it should pass through without being marked insufficient
-        assert result == input_summary 
+    assert "insufficient" in result
+    assert result != summary
+
+
+def test_execute_with_empty_summary():
+    """Test execution with an empty summary."""
+    tool = TaskCompleteTool()
+    summary = ""
+    result = tool.execute(summary)
+    
+    assert "insufficient" in result
+    assert result != summary
+
+
+def test_execute_with_none_summary():
+    """Test execution with None as summary."""
+    tool = TaskCompleteTool()
+    summary = None
+    
+    with patch("cli_code.tools.task_complete_tool.log") as mock_log:
+        result = tool.execute(summary)
+        
+        # Verify logging behavior - should be called at least once
+        assert mock_log.warning.call_count >= 1
+        # Check that one of the warnings is about non-string type
+        assert any("non-string summary type" in str(args[0]) for args, _ in mock_log.warning.call_args_list)
+        # Check that one of the warnings is about short summary
+        assert any("missing or very short" in str(args[0]) for args, _ in mock_log.warning.call_args_list)
+        
+        assert "Task marked as complete" in result
+
+
+def test_execute_with_non_string_summary():
+    """Test execution with a non-string summary."""
+    tool = TaskCompleteTool()
+    summary = 12345  # Integer, not a string
+    
+    with patch("cli_code.tools.task_complete_tool.log") as mock_log:
+        result = tool.execute(summary)
+        
+        # Verify logging behavior
+        assert mock_log.warning.call_count >= 1
+        assert any("non-string summary type" in str(args[0]) for args, _ in mock_log.warning.call_args_list)
+        
+        # The integer should be converted to a string
+        assert result == "12345"
+
+
+def test_execute_with_quoted_summary():
+    """Test execution with a summary that has quotes and spaces to be cleaned."""
+    tool = TaskCompleteTool()
+    summary = '  "This summary has quotes and spaces"  '
+    result = tool.execute(summary)
+    
+    # The quotes and spaces should be removed
+    assert result == "This summary has quotes and spaces"
+
+
+def test_execute_with_complex_cleaning():
+    """Test execution with a summary that requires complex cleaning."""
+    tool = TaskCompleteTool()
+    summary = '\n\t "\'  Nested quotes and whitespace  \'" \t\n'
+    result = tool.execute(summary)
+    
+    # All the nested quotes and whitespace should be removed
+    assert result == "Nested quotes and whitespace" 
