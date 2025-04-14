@@ -372,11 +372,11 @@ def test_grep_read_oserror(mock_open_method, grep_tool, grep_fs):
             raise OSError("Permission denied")
         # Allow reading file2.log
         elif args[0] == abs_file2_path:
-             # If mocking open completely, need to provide mock file object
+            # If mocking open completely, need to provide mock file object
             return mock_open(read_data="Log entry 1\nAnother search hit")(*args, **kwargs)
         else:
             # Fallback for other potential opens, or raise error
-             raise FileNotFoundError(f"Unexpected open call in test: {args[0]}")
+            raise FileNotFoundError(f"Unexpected open call in test: {args[0]}")
     mock_open_method.side_effect = patched_open
 
     # Patch glob to ensure file1.txt is considered
