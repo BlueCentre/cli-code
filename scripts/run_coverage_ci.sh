@@ -257,6 +257,7 @@ run_test_group "remaining" \
 echo "Generating final coverage report..." | tee -a "$SUMMARY_LOG"
 python -m pytest \
   --cov=src.cli_code \
+  --cov-append \
   --cov-report=xml:coverage.xml \
   --cov-report=html:coverage_html \
   --cov-report=term
@@ -295,9 +296,8 @@ fi
 
 echo "Coverage generation for CI completed." | tee -a "$SUMMARY_LOG"
 
-# Determine exit code based on errors and CI environment
-# In CI we might want to exit gracefully for some failures
-CI_EXIT_ON_TEST_FAILURE=${CI_EXIT_ON_TEST_FAILURE:-1}
+# Use the CI_EXIT_ON_TEST_FAILURE value set at the beginning of the script (=1)
+# to determine whether to exit with an error code on test failures
 
 if [ $FAILED_TESTS -gt 0 -o $TIMED_OUT_TESTS -gt 0 ]; then
   echo "Test run had $FAILED_TESTS failing tests and $TIMED_OUT_TESTS timed out tests" | tee -a "$SUMMARY_LOG"
