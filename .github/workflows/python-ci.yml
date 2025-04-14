@@ -112,13 +112,18 @@ jobs:
         COVERAGE_PERCENTAGE: ${{ steps.coverage.outputs.percentage }}
 
     - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@master
+      uses: SonarSource/sonarqube-scan-action@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Required: Store your SonarCloud token as a GitHub secret
+        SONAR_HOST_URL: https://sonarcloud.io
       with:
         args: >
+          -Dsonar.projectKey=BlueCentre_cli-code
+          -Dsonar.organization=vitruviansoftware
           -Dsonar.python.coverage.reportPaths=coverage.xml
+          -Dsonar.sources=src/cli_code
+          -Dsonar.tests=test_dir
           -Dsonar.scm.revision=${{ github.event.pull_request.head.sha }}
           -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
           -Dsonar.pullrequest.branch=${{ github.head_ref || github.ref_name }}
