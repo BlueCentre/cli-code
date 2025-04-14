@@ -126,6 +126,10 @@ jobs:
           -Dsonar.tests=test_dir
           -Dsonar.sourceEncoding=UTF-8
           -Dsonar.verbose=true
+          -Dsonar.scm.provider=git
+          -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+          -Dsonar.pullrequest.branch=${{ github.head_ref }}
+          -Dsonar.pullrequest.base=${{ github.base_ref }}
 
     - name: Report SonarCloud Results
       run: |
