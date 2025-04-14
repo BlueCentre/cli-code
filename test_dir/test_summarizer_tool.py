@@ -1,13 +1,14 @@
 """
-Tests for code summarizer tool.
+Tests for the summarizer tool module.
 """
 import os
 import sys
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
 
-# Import the class to test
-from cli_code.tools.summarizer_tool import SummarizeCodeTool, MAX_LINES_FOR_FULL_CONTENT, MAX_CHARS_FOR_FULL_CONTENT
+# Direct import for coverage tracking
+import src.cli_code.tools.summarizer_tool
+from src.cli_code.tools.summarizer_tool import SummarizeCodeTool, MAX_LINES_FOR_FULL_CONTENT, MAX_CHARS_FOR_FULL_CONTENT
 
 # Mock classes for google.generativeai
 class MockCandidate:

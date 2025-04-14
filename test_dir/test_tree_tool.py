@@ -1,13 +1,16 @@
 """
-Tests for tree tool.
+Tests for the tree tool module.
 """
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 import pytest
 from unittest.mock import patch, MagicMock, mock_open
 
-from cli_code.tools.tree_tool import TreeTool, DEFAULT_TREE_DEPTH, MAX_TREE_DEPTH
+# Direct import for coverage tracking
+import src.cli_code.tools.tree_tool
+from src.cli_code.tools.tree_tool import TreeTool, DEFAULT_TREE_DEPTH, MAX_TREE_DEPTH
 
 
 class TestTreeTool:

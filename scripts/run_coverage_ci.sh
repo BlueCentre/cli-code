@@ -104,6 +104,7 @@ TOOLS_TESTS=(
   "$TEST_DIR/improved/test_quality_tools.py"
   "$TEST_DIR/improved/test_summarizer_tool.py"
   "$TEST_DIR/improved/test_tree_tool.py"
+  "tests/tools/test_base_tool.py"
 )
 
 # Check if tools test files exist
