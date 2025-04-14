@@ -1,8 +1,5 @@
 [run]
 source = src.cli_code
-include = 
-    */src/cli_code/tools/test_runner.py
-    */src/cli_code/models/gemini.py
 omit = 
     */.rules/*
     */.venv/*
