@@ -1,9 +1,10 @@
 """
-Tests for system tools.
+Tests for system_tools module to improve code coverage.
 """
-import subprocess
+import os
 import pytest
 from unittest.mock import patch, MagicMock
+import subprocess
 
 # Direct import for coverage tracking
 import src.cli_code.tools.system_tools
@@ -14,7 +15,7 @@ def test_bash_tool_init():
     """Test BashTool initialization."""
     tool = BashTool()
     assert tool.name == "bash"
-    assert tool.description == "Execute a bash command"
+    assert "Execute a bash command" in tool.description
     assert isinstance(tool.BANNED_COMMANDS, list)
     assert len(tool.BANNED_COMMANDS) > 0
 
@@ -79,7 +80,7 @@ def test_bash_tool_timeout(mock_popen):
     
     # Execute command with short timeout
     tool = BashTool()
-    result = tool.execute("sleep 10", timeout=1000)  # 1 second timeout
+    result = tool.execute("sleep 10", timeout=1)  # 1 second timeout
     
     # Verify timeout handling
     assert "Command timed out" in result

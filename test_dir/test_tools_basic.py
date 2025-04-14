@@ -11,13 +11,13 @@ from pathlib import Path
 
 # Import necessary modules safely
 try:
-    from cli_code.tools.base import BaseTool
-    from cli_code.tools.file_tools import ViewTool, EditTool, GrepTool, GlobTool
-    from cli_code.tools.quality_tools import _run_quality_command, LinterCheckerTool, FormatterTool
-    from cli_code.tools.summarizer_tool import SummarizeCodeTool
-    from cli_code.tools.system_tools import BashTool
-    from cli_code.tools.task_complete_tool import TaskCompleteTool
-    from cli_code.tools.tree_tool import TreeTool
+    from src.cli_code.tools.base import BaseTool
+    from src.cli_code.tools.file_tools import ViewTool, EditTool, GrepTool, GlobTool
+    from src.cli_code.tools.quality_tools import _run_quality_command, LinterCheckerTool, FormatterTool
+    from src.cli_code.tools.summarizer_tool import SummarizeCodeTool
+    from src.cli_code.tools.system_tools import BashTool
+    from src.cli_code.tools.task_complete_tool import TaskCompleteTool
+    from src.cli_code.tools.tree_tool import TreeTool
     IMPORTS_AVAILABLE = True
 except ImportError:
     IMPORTS_AVAILABLE = False

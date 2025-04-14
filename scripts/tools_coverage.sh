@@ -38,7 +38,7 @@ python -m pytest test_dir/improved/test_tree_tool.py test_dir/test_tree_tool_edg
 
 # System tools
 echo "=== Running system_tools.py tests ==="
-python -m pytest test_dir/test_tools_basic.py -v --cov=src.cli_code.tools.system_tools --cov-append
+python -m pytest test_dir/test_system_tools.py test_dir/test_tools_basic.py::TestSystemTools -v --cov=src.cli_code.tools.system_tools --cov-append
 
 # Base tool class
 echo "=== Running base.py tests ==="
