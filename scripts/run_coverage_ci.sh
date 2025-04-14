@@ -1,59 +1,38 @@
 #!/bin/bash
-# Ultra-simplified coverage script that definitely won't fail
+# Script to generate coverage for CI pipeline
 
-# Print commands for debugging
-set -x
+set -e  # Exit on error
 
-echo "Generating minimal coverage report for SonarCloud..."
+echo "Starting coverage generation for CI..."
 
-# Create a coverage directory for HTML report
+# Set up coverage directory
 mkdir -p coverage_html
 
-# Create a simple HTML coverage report
-cat > coverage_html/index.html << EOF
-<!DOCTYPE html>
-<html>
-<head><title>Coverage Report</title></head>
-<body>
-<h1>Coverage Report</h1>
-<p>This is a simplified coverage report created for CI pipeline.</p>
-</body>
-</html>
-EOF
+# Run pytest with coverage enabled and generate reports
+echo "Running test suite with coverage enabled..."
+python -m pytest \
+  --cov=src.cli_code \
+  --cov-report=xml:coverage.xml \
+  --cov-report=html:coverage_html \
+  --cov-report=term \
+  test_dir/test_file_tools.py test_dir/test_directory_tools.py test_dir/test_system_tools.py \
+  test_dir/improved/test_quality_tools.py test_dir/improved/test_summarizer_tool.py test_dir/improved/test_tree_tool.py
 
-# Create a SonarCloud-compatible coverage XML file
-cat > coverage.xml << EOF
-<?xml version="1.0" ?>
-<coverage version="1">
-  <file path="src/cli_code/tools/file_tools.py">
-    <lineToCover lineNumber="1" covered="true"/>
-    <lineToCover lineNumber="2" covered="true"/>
-    <lineToCover lineNumber="3" covered="true"/>
-    <lineToCover lineNumber="4" covered="true"/>
-    <lineToCover lineNumber="5" covered="true"/>
-  </file>
-  <file path="src/cli_code/tools/directory_tools.py">
-    <lineToCover lineNumber="1" covered="true"/>
-    <lineToCover lineNumber="2" covered="true"/>
-    <lineToCover lineNumber="3" covered="true"/>
-    <lineToCover lineNumber="4" covered="true"/>
-    <lineToCover lineNumber="5" covered="true"/>
-  </file>
-  <file path="src/cli_code/tools/system_tools.py">
-    <lineToCover lineNumber="1" covered="true"/>
-    <lineToCover lineNumber="2" covered="true"/>
-    <lineToCover lineNumber="3" covered="true"/>
-    <lineToCover lineNumber="4" covered="true"/>
-    <lineToCover lineNumber="5" covered="true"/>
-  </file>
-</coverage>
-EOF
+echo "Coverage report generated in coverage.xml and coverage_html/"
 
-# Print generated coverage report for verification
-echo "Coverage XML file content:"
-cat coverage.xml
+# Extract overall coverage percentage for GitHub output
+if [ -f "coverage.xml" ]; then
+  echo "✅ coverage.xml file exists"
+  
+  # Extract overall coverage percentage
+  COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); line_rate = float(root.attrib['line-rate'])*100; print('{:.2f}%'.format(line_rate))")
+  echo "Overall coverage percentage: $COVERAGE"
+  
+  # Set output for GitHub Actions
+  echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+else
+  echo "❌ coverage.xml file not generated!"
+  echo "percentage=0.00%" >> $GITHUB_OUTPUT
+fi
 
-echo "✅ Successfully generated coverage report for SonarCloud."
-
-# Always exit with success
-exit 0
+echo "Coverage generation for CI completed."
