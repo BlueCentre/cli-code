@@ -9,6 +9,19 @@ echo "Starting local test coverage generation..."
 # Set up coverage directory
 mkdir -p coverage_html
 
+# Determine test directory
+TEST_DIR=${TEST_DIR_ENV:-"test_dir"}
+echo "Using test directory: $TEST_DIR"
+
+# Verify test directory exists
+if [ ! -d "$TEST_DIR" ]; then
+    echo "Error: Test directory $TEST_DIR does not exist!"
+    echo "Current directory: $(pwd)"
+    echo "Available directories:"
+    ls -la
+    exit 1
+fi
+
 # Set timeout duration (in seconds) from environment variable or use default
 LOCAL_TIMEOUT=${LOCAL_TEST_TIMEOUT:-30}
 echo "Using test timeout of $LOCAL_TIMEOUT seconds (set LOCAL_TEST_TIMEOUT env var to change)"
@@ -20,6 +33,7 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 SUMMARY_LOG="$LOG_DIR/local_test_summary_${TIMESTAMP}.log"
 echo "Local test run started at $(date)" > "$SUMMARY_LOG"
 echo "Timeout value: $LOCAL_TIMEOUT seconds" >> "$SUMMARY_LOG"
+echo "Test directory: $TEST_DIR" >> "$SUMMARY_LOG"
 
 # Function to handle test errors with better reporting
 handle_test_error() {
@@ -49,201 +63,169 @@ find . -name "*.pyc" -delete
 # Run tests in smaller batches with timeouts
 echo "Running test suite with coverage enabled..."
 
+# Define the basic tools tests paths
+TOOLS_TESTS=(
+  "$TEST_DIR/test_file_tools.py"
+  "$TEST_DIR/test_system_tools.py"
+  "$TEST_DIR/test_directory_tools.py"
+  "$TEST_DIR/improved/test_quality_tools.py"
+  "$TEST_DIR/improved/test_summarizer_tool.py"
+  "$TEST_DIR/improved/test_tree_tool.py"
+)
+
+# Check if tools test files exist
+TOOLS_TESTS_EXISTING=()
+for TEST_FILE in "${TOOLS_TESTS[@]}"; do
+  if [ -f "$TEST_FILE" ]; then
+    TOOLS_TESTS_EXISTING+=("$TEST_FILE")
+  else
+    echo "Warning: Test file $TEST_FILE not found" | tee -a "$SUMMARY_LOG"
+  fi
+done
+
 # First, run the basic tools tests which are known to work
-echo "Running tools tests (known to work well)..."
-python -m pytest \
-  --cov=src.cli_code \
-  --cov-report=xml:coverage.xml \
-  --cov-report=html:coverage_html \
-  --cov-report=term \
-  --timeout=$LOCAL_TIMEOUT \
-  test_dir/test_file_tools.py \
-  test_dir/test_system_tools.py \
-  test_dir/test_directory_tools.py \
-  test_dir/improved/test_quality_tools.py \
-  test_dir/improved/test_summarizer_tool.py \
-  test_dir/improved/test_tree_tool.py
+if [ ${#TOOLS_TESTS_EXISTING[@]} -gt 0 ]; then
+  echo "Running tools tests (known to work well)..." | tee -a "$SUMMARY_LOG"
+  python -m pytest \
+    --cov=src.cli_code \
+    --cov-report=xml:coverage.xml \
+    --cov-report=html:coverage_html \
+    --cov-report=term \
+    --timeout=$LOCAL_TIMEOUT \
+    "${TOOLS_TESTS_EXISTING[@]}"
+else
+  echo "No tools tests found to run" | tee -a "$SUMMARY_LOG"
+fi
+
+# Define model tests paths
+MODEL_TESTS=(
+  "$TEST_DIR/test_models_base.py"
+  "$TEST_DIR/test_model_basic.py"
+  "$TEST_DIR/test_model_integration.py"
+)
+
+# Check if model test files exist
+MODEL_TESTS_EXISTING=()
+for TEST_FILE in "${MODEL_TESTS[@]}"; do
+  if [ -f "$TEST_FILE" ]; then
+    MODEL_TESTS_EXISTING+=("$TEST_FILE")
+  else
+    echo "Warning: Test file $TEST_FILE not found" | tee -a "$SUMMARY_LOG"
+  fi
+done
 
 # Now run the model tests separately
-echo "Running model tests..."
-python -m pytest \
-  --cov=src.cli_code \
-  --cov-append \
-  --cov-report=xml:coverage.xml \
-  --cov-report=html:coverage_html \
-  --cov-report=term \
-  --timeout=$LOCAL_TIMEOUT \
-  test_dir/test_models_base.py \
-  test_dir/test_model_basic.py \
-  test_dir/test_model_integration.py
+if [ ${#MODEL_TESTS_EXISTING[@]} -gt 0 ]; then
+  echo "Running model tests..." | tee -a "$SUMMARY_LOG"
+  python -m pytest \
+    --cov=src.cli_code \
+    --cov-append \
+    --cov-report=xml:coverage.xml \
+    --cov-report=html:coverage_html \
+    --cov-report=term \
+    --timeout=$LOCAL_TIMEOUT \
+    "${MODEL_TESTS_EXISTING[@]}"
+else
+  echo "No model tests found to run" | tee -a "$SUMMARY_LOG"
+fi
 
 # Track failures
 FAILED_TESTS=0
 TIMED_OUT_TESTS=0
 
-# Run gemini model tests individually
-for test_file in \
-  test_dir/test_gemini_model.py \
-  test_dir/test_gemini_model_advanced.py \
-  test_dir/test_gemini_model_coverage.py \
-  test_dir/test_gemini_model_error_handling.py; do
-  echo "Running $test_file with timeout $LOCAL_TIMEOUT seconds..."
-  LOG_FILE="$LOG_DIR/local_$(basename $test_file).log"
+# Function to run tests with a common pattern
+run_test_group() {
+  GROUP_NAME=$1
+  shift
+  TEST_FILES=("$@")
   
-  # Run test with timeout and capture output
-  python -m pytest \
-    --cov=src.cli_code \
-    --cov-append \
-    --timeout=$LOCAL_TIMEOUT \
-    "$test_file" > "$LOG_FILE" 2>&1
+  echo "Running $GROUP_NAME tests..." | tee -a "$SUMMARY_LOG"
   
-  EXIT_CODE=$?
-  if [ $EXIT_CODE -ne 0 ]; then
-    if [ $EXIT_CODE -eq 124 ]; then
-      TIMED_OUT_TESTS=$((TIMED_OUT_TESTS + 1))
-    else
-      FAILED_TESTS=$((FAILED_TESTS + 1))
+  for test_file in "${TEST_FILES[@]}"; do
+    # Check if file exists
+    if [ ! -f "$test_file" ]; then
+      echo "Warning: Test file $test_file not found, skipping" | tee -a "$SUMMARY_LOG"
+      continue
     fi
-    handle_test_error "$test_file" "$EXIT_CODE" "$LOG_FILE"
-  else
-    echo "✅ $test_file completed successfully" | tee -a "$SUMMARY_LOG"
-  fi
-done
+    
+    echo "Running $test_file with timeout $LOCAL_TIMEOUT seconds..." | tee -a "$SUMMARY_LOG"
+    LOG_FILE="$LOG_DIR/local_$(basename $test_file).log"
+    
+    # Run test with timeout and capture output
+    python -m pytest \
+      --cov=src.cli_code \
+      --cov-append \
+      --timeout=$LOCAL_TIMEOUT \
+      "$test_file" > "$LOG_FILE" 2>&1
+    
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -ne 0 ]; then
+      if [ $EXIT_CODE -eq 124 ]; then
+        TIMED_OUT_TESTS=$((TIMED_OUT_TESTS + 1))
+      else
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+      fi
+      handle_test_error "$test_file" "$EXIT_CODE" "$LOG_FILE"
+    else
+      echo "✅ $test_file completed successfully" | tee -a "$SUMMARY_LOG"
+    fi
+  done
+}
+
+# Run gemini model tests individually
+run_test_group "gemini model" \
+  "$TEST_DIR/test_gemini_model.py" \
+  "$TEST_DIR/test_gemini_model_advanced.py" \
+  "$TEST_DIR/test_gemini_model_coverage.py" \
+  "$TEST_DIR/test_gemini_model_error_handling.py"
 
 # Run ollama model tests individually
-for test_file in \
-  test_dir/test_ollama_model.py \
-  test_dir/test_ollama_model_advanced.py \
-  test_dir/test_ollama_model_coverage.py \
-  test_dir/test_ollama_model_context.py \
-  test_dir/test_ollama_model_error_handling.py; do
-  echo "Running $test_file with timeout $LOCAL_TIMEOUT seconds..."
-  LOG_FILE="$LOG_DIR/local_$(basename $test_file).log"
-  
-  # Run test with timeout and capture output
-  python -m pytest \
-    --cov=src.cli_code \
-    --cov-append \
-    --timeout=$LOCAL_TIMEOUT \
-    "$test_file" > "$LOG_FILE" 2>&1
-  
-  EXIT_CODE=$?
-  if [ $EXIT_CODE -ne 0 ]; then
-    if [ $EXIT_CODE -eq 124 ]; then
-      TIMED_OUT_TESTS=$((TIMED_OUT_TESTS + 1))
-    else
-      FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    handle_test_error "$test_file" "$EXIT_CODE" "$LOG_FILE"
-  else
-    echo "✅ $test_file completed successfully" | tee -a "$SUMMARY_LOG"
-  fi
-done
+run_test_group "ollama model" \
+  "$TEST_DIR/test_ollama_model.py" \
+  "$TEST_DIR/test_ollama_model_advanced.py" \
+  "$TEST_DIR/test_ollama_model_coverage.py" \
+  "$TEST_DIR/test_ollama_model_context.py" \
+  "$TEST_DIR/test_ollama_model_error_handling.py"
 
 # Run config tests individually
-for test_file in \
-  test_dir/test_config.py \
-  test_dir/test_config_comprehensive.py \
-  test_dir/test_config_edge_cases.py \
-  test_dir/test_config_missing_methods.py; do
-  echo "Running $test_file with timeout $LOCAL_TIMEOUT seconds..."
-  LOG_FILE="$LOG_DIR/local_$(basename $test_file).log"
-  
-  # Run test with timeout and capture output
-  python -m pytest \
-    --cov=src.cli_code \
-    --cov-append \
-    --timeout=$LOCAL_TIMEOUT \
-    "$test_file" > "$LOG_FILE" 2>&1
-  
-  EXIT_CODE=$?
-  if [ $EXIT_CODE -ne 0 ]; then
-    if [ $EXIT_CODE -eq 124 ]; then
-      TIMED_OUT_TESTS=$((TIMED_OUT_TESTS + 1))
-    else
-      FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    handle_test_error "$test_file" "$EXIT_CODE" "$LOG_FILE"
-  else
-    echo "✅ $test_file completed successfully" | tee -a "$SUMMARY_LOG"
-  fi
-done
+run_test_group "config" \
+  "$TEST_DIR/test_config.py" \
+  "$TEST_DIR/test_config_comprehensive.py" \
+  "$TEST_DIR/test_config_edge_cases.py" \
+  "$TEST_DIR/test_config_missing_methods.py"
 
 # Run main tests individually
-for test_file in \
-  test_dir/test_main.py \
-  test_dir/test_main_comprehensive.py \
-  test_dir/test_main_edge_cases.py \
-  test_dir/test_main_improved.py; do
-  echo "Running $test_file with timeout $LOCAL_TIMEOUT seconds..."
-  LOG_FILE="$LOG_DIR/local_$(basename $test_file).log"
-  
-  # Run test with timeout and capture output
-  python -m pytest \
-    --cov=src.cli_code \
-    --cov-append \
-    --timeout=$LOCAL_TIMEOUT \
-    "$test_file" > "$LOG_FILE" 2>&1
-  
-  EXIT_CODE=$?
-  if [ $EXIT_CODE -ne 0 ]; then
-    if [ $EXIT_CODE -eq 124 ]; then
-      TIMED_OUT_TESTS=$((TIMED_OUT_TESTS + 1))
-    else
-      FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    handle_test_error "$test_file" "$EXIT_CODE" "$LOG_FILE"
-  else
-    echo "✅ $test_file completed successfully" | tee -a "$SUMMARY_LOG"
-  fi
-done
+run_test_group "main" \
+  "$TEST_DIR/test_main.py" \
+  "$TEST_DIR/test_main_comprehensive.py" \
+  "$TEST_DIR/test_main_edge_cases.py" \
+  "$TEST_DIR/test_main_improved.py"
 
 # Run remaining tests individually
-for test_file in \
-  test_dir/test_task_complete_tool.py \
-  test_dir/test_tools_base.py \
-  test_dir/test_tools_init_coverage.py \
-  test_dir/test_utils.py \
-  test_dir/test_utils_comprehensive.py \
-  test_dir/test_test_runner_tool.py \
-  test_dir/test_basic_functions.py \
-  test_dir/test_tools_basic.py \
-  test_dir/test_tree_tool_edge_cases.py; do
-  echo "Running $test_file with timeout $LOCAL_TIMEOUT seconds..."
-  LOG_FILE="$LOG_DIR/local_$(basename $test_file).log"
-  
-  # Run test with timeout and capture output
-  python -m pytest \
-    --cov=src.cli_code \
-    --cov-append \
-    --timeout=$LOCAL_TIMEOUT \
-    "$test_file" > "$LOG_FILE" 2>&1
-  
-  EXIT_CODE=$?
-  if [ $EXIT_CODE -ne 0 ]; then
-    if [ $EXIT_CODE -eq 124 ]; then
-      TIMED_OUT_TESTS=$((TIMED_OUT_TESTS + 1))
-    else
-      FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    handle_test_error "$test_file" "$EXIT_CODE" "$LOG_FILE"
-  else
-    echo "✅ $test_file completed successfully" | tee -a "$SUMMARY_LOG"
-  fi
-done
+run_test_group "remaining" \
+  "$TEST_DIR/test_task_complete_tool.py" \
+  "$TEST_DIR/test_tools_base.py" \
+  "$TEST_DIR/test_tools_init_coverage.py" \
+  "$TEST_DIR/test_utils.py" \
+  "$TEST_DIR/test_utils_comprehensive.py" \
+  "$TEST_DIR/test_test_runner_tool.py" \
+  "$TEST_DIR/test_basic_functions.py" \
+  "$TEST_DIR/test_tools_basic.py" \
+  "$TEST_DIR/test_tree_tool_edge_cases.py"
 
 # Generate a final coverage report
+echo "Generating final coverage report..." | tee -a "$SUMMARY_LOG"
 python -m pytest \
   --cov=src.cli_code \
   --cov-report=xml:coverage.xml \
   --cov-report=html:coverage_html \
   --cov-report=term
 
-echo "Coverage report generated in coverage.xml and coverage_html/"
-echo "This is the format SonarCloud expects."
+echo "Coverage report generated in coverage.xml and coverage_html/" | tee -a "$SUMMARY_LOG"
+echo "This is the format SonarCloud expects." | tee -a "$SUMMARY_LOG"
 
 # Print summary of test results
-echo ""
+echo "" | tee -a "$SUMMARY_LOG"
 echo "Test Summary:" | tee -a "$SUMMARY_LOG"
 echo "-------------" | tee -a "$SUMMARY_LOG"
 echo "Failed tests: $FAILED_TESTS" | tee -a "$SUMMARY_LOG"
@@ -252,7 +234,7 @@ echo "Log files available in: $LOG_DIR" | tee -a "$SUMMARY_LOG"
 echo "Summary log: $SUMMARY_LOG" | tee -a "$SUMMARY_LOG"
 
 # Optional: Verify XML structure
-echo "Checking XML coverage report structure..."
+echo "Checking XML coverage report structure..." | tee -a "$SUMMARY_LOG"
 if [ -f "coverage.xml" ]; then
   echo "✅ coverage.xml file exists" | tee -a "$SUMMARY_LOG"
   # Extract source paths to verify they're correct
@@ -265,10 +247,10 @@ else
   echo "❌ coverage.xml file not generated!" | tee -a "$SUMMARY_LOG"
 fi
 
-echo "Local coverage testing completed."
+echo "Local coverage testing completed." | tee -a "$SUMMARY_LOG"
 
 # Print a warning if there were any failing or hanging tests
 if [ $FAILED_TESTS -gt 0 -o $TIMED_OUT_TESTS -gt 0 ]; then
   echo "⚠️ Warning: Test run completed with $FAILED_TESTS failing tests and $TIMED_OUT_TESTS timed out tests" | tee -a "$SUMMARY_LOG"
-  echo "Check the logs in $LOG_DIR for details"
+  echo "Check the logs in $LOG_DIR for details" | tee -a "$SUMMARY_LOG"
 fi 
