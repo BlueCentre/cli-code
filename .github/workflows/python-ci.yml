@@ -87,19 +87,19 @@ jobs:
       run: |
         # Set CI variables
         export CI_TEST_TIMEOUT=120
-        export CI_EXIT_ON_TEST_FAILURE=0
+        export CI_EXIT_ON_TEST_FAILURE=1
         
         # Run directly without using bash to make error handling clearer
         bash -ex ./scripts/run_coverage_ci.sh || echo "Coverage generation had errors but we'll continue"
         
-        # Generate dummy coverage if needed 
-        if [ ! -f "coverage.xml" ]; then
-          echo "Creating placeholder coverage.xml file"
-          echo '<?xml version="1.0" ?><coverage version="7.3.2" timestamp="1713166921" lines-valid="100" lines-covered="85" line-rate="0.85" branches-valid="0" branches-covered="0" branch-rate="0" complexity="0"><sources><source>/Users/runner/work/cli-code/cli-code/src</source></sources><packages><package name="cli_code" line-rate="0.85" branch-rate="0" complexity="0"><classes><class name="__init__.py" filename="cli_code/__init__.py" complexity="0" line-rate="0.85" branch-rate="0"></class></classes></package></packages></coverage>' > coverage.xml
+        # Extract actual coverage percentage from XML file
+        if [ -f "coverage.xml" ]; then
+          COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); line_rate = float(root.attrib['line-rate'])*100; print('{:.2f}%'.format(line_rate))")
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+        else
+          echo "Warning: No coverage.xml file was generated"
+          echo "percentage=0.00%" >> $GITHUB_OUTPUT
         fi
-        
-        # Set a fixed coverage percentage for PR comment
-        echo "percentage=85.00%" >> $GITHUB_OUTPUT
 
     - name: Comment PR with code coverage
       if: github.event_name == 'pull_request'

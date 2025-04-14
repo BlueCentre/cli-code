@@ -10,7 +10,7 @@ echo "Starting coverage generation for CI..."
 mkdir -p coverage_html
 
 # Set environment variables for CI 
-export CI_EXIT_ON_TEST_FAILURE=0  # Don't exit on test failures in CI
+export CI_EXIT_ON_TEST_FAILURE=1  # Exit on test failures to ensure code quality
 export CI_TEST_TIMEOUT=60  # Default timeout
 
 # Special handling for GitHub Actions environment
