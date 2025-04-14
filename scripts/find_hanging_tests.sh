@@ -28,43 +28,8 @@ run_test_with_timeout() {
 }
 
 # Test files to check - base list from most critical files
-TEST_FILES=(
-    "test_dir/test_file_tools.py"
-    "test_dir/test_system_tools.py"
-    "test_dir/test_directory_tools.py"
-    "test_dir/improved/test_quality_tools.py"
-    "test_dir/improved/test_summarizer_tool.py"
-    "test_dir/improved/test_tree_tool.py"
-    "test_dir/test_models_base.py"
-    "test_dir/test_model_basic.py"
-    "test_dir/test_model_integration.py"
-    "test_dir/test_gemini_model.py"
-    "test_dir/test_gemini_model_advanced.py"
-    "test_dir/test_gemini_model_coverage.py"
-    "test_dir/test_gemini_model_error_handling.py"
-    "test_dir/test_ollama_model.py"
-    "test_dir/test_ollama_model_advanced.py"
-    "test_dir/test_ollama_model_coverage.py"
-    "test_dir/test_ollama_model_context.py"
-    "test_dir/test_ollama_model_error_handling.py"
-    "test_dir/test_config.py"
-    "test_dir/test_config_comprehensive.py"
-    "test_dir/test_config_edge_cases.py"
-    "test_dir/test_config_missing_methods.py"
-    "test_dir/test_main.py"
-    "test_dir/test_main_comprehensive.py"
-    "test_dir/test_main_edge_cases.py"
-    "test_dir/test_main_improved.py"
-    "test_dir/test_task_complete_tool.py"
-    "test_dir/test_tools_base.py"
-    "test_dir/test_tools_init_coverage.py"
-    "test_dir/test_utils.py"
-    "test_dir/test_utils_comprehensive.py"
-    "test_dir/test_test_runner_tool.py"
-    "test_dir/test_basic_functions.py"
-    "test_dir/test_tools_basic.py"
-    "test_dir/test_tree_tool_edge_cases.py"
-)
+# Find all test files in the test_dir directory
+TEST_FILES=$(find test_dir -name "test_*.py" -print)
 
 # Run each test file individually
 for TEST_FILE in "${TEST_FILES[@]}"; do
