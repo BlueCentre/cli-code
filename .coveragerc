@@ -16,7 +16,7 @@ omit =
     */site-packages/*
     # Excluded as it primarily contains integration code with external dependencies
     # that is difficult to test without mocking the entire Ollama API
-    */src/cli_code/models/ollama.py
+    # */src/cli_code/models/ollama.py
 
 [report]
 exclude_lines =
