@@ -3,7 +3,7 @@
     "memory": {
       "command": "npx -y @modelcontextprotocol/server-memory",
       "env": {
-        "MEMORY_PATH": ".cursor/memory.json"
+        "MEMORY_PATH": "scripts/memorystore.json"
       }
     },
     "Atlassian MCP": {

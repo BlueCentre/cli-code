@@ -221,7 +221,7 @@ class Config:
 
     def get_credential(self, provider: str) -> str | None:
         """Get the credential (API key or URL) for a specific provider."""
-        if provider == "gemini":
+        if provider == "gemini" or provider == "google":  # Added "google" as an alias for "gemini"
             return self.config.get("google_api_key")
         elif provider == "ollama":
             return self.config.get("ollama_api_url")
@@ -231,10 +231,12 @@ class Config:
 
     def set_credential(self, provider: str, credential: str):
         """Set the credential (API key or URL) for a specific provider."""
-        if provider == "gemini":
+        if provider == "gemini" or provider == "google":  # Added "google" as an alias for "gemini"
             self.config["google_api_key"] = credential
         elif provider == "ollama":
             self.config["ollama_api_url"] = credential
+        elif provider == "openai":  # Added support for openai provider
+            self.config["openai_api_key"] = credential
         else:
             log.error(f"Attempted to set credential for unknown provider: {provider}")
             return
@@ -244,11 +246,15 @@ class Config:
         """Get the default provider."""
         if not self.config:
             return "gemini" # Default if config is None
-        return self.config.get("default_provider", "gemini")
+        # Return "gemini" as fallback if default_provider is None or not set
+        return self.config.get("default_provider") or "gemini"
 
     def set_default_provider(self, provider: str):
         """Set the default provider."""
-        if provider in ["gemini", "ollama"]:
+        if provider is None:  # Handle None by setting default to gemini
+            self.config["default_provider"] = "gemini"
+            self._save_config()
+        elif provider in ["gemini", "ollama", "openai", "anthropic"]:  # Added "openai" and "anthropic"
             self.config["default_provider"] = provider
             self._save_config()
         else:
@@ -274,20 +280,26 @@ class Config:
         elif target_provider == "ollama":
             # Use actual default from constants or hardcoded
             return self.config.get("ollama_default_model", "llama2") 
+        elif target_provider in ["openai", "anthropic"]:
+            # Handle known providers that might have specific config keys
+            return self.config.get(f"{target_provider}_default_model")
         else:
-            # Fallback for unknown provider if config exists but provider unknown
-            return self.config.get("default_model")
+            # Return None for unknown providers
+            log.warning(f"Attempted to get default model for unknown provider: {target_provider}")
+            return None
 
     def set_default_model(self, model: str, provider: str | None = None):
-        """Set the default model for a specific provider (or the default provider if None)."""
+        """Set the default model, optionally for a specific provider."""
         target_provider = provider or self.get_default_provider()
         if target_provider == "gemini":
             self.config["default_model"] = model
         elif target_provider == "ollama":
             self.config["ollama_default_model"] = model
+        elif target_provider == "anthropic":  # Added support for anthropic provider
+            self.config["anthropic_default_model"] = model
         else:
             log.error(f"Cannot set default model for unknown provider: {target_provider}")
-            return
+            return None
         self._save_config()
 
     def get_setting(self, setting, default=None):
