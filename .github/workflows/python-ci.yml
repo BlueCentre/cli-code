@@ -2,13 +2,19 @@ name: Python CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: 
+      - "main"
+      - "feature/**"
+      - "fix/**"
+      - "release/**"
     tags: [ "v*" ]  # Trigger on tags starting with v
   pull_request:
     branches: [ "main" ]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read # Allow checkout
+  pull-requests: write # Allow commenting on PRs with results
 
 jobs:
   build-and-test:
@@ -22,6 +28,8 @@ jobs:
       with:
         # SonarCloud needs the full history to assign issues properly
         fetch-depth: 0 
+        # For PRs, fetch the base branch for comparison
+        ref: ${{ github.event.pull_request.head.sha }}
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
@@ -49,7 +57,8 @@ jobs:
       run: |
         ruff format . # Remove --check to auto-format files
 
-    - name: Test with pytest and Generate Coverage
+    - name: Generate coverage data for analysis
+      id: coverage
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         PYTHONPATH: ${{ github.workspace }}/src
@@ -67,29 +76,62 @@ jobs:
         echo "Available Python modules:"
         ls -la src/cli_code || echo "Directory not found"
         
-        # Run tests with the shell script wrapper for resilience
-        bash ./run_coverage_ci.sh
+        # Generate coverage reports
+        bash ./scripts/run_coverage_ci.sh
         
-        # Display the overall coverage percentage if available
-        if [ -f coverage.xml ]; then
-          echo "Overall coverage percentage:"
-          python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(f\"Coverage: {float(root.attrib['line-rate'])*100:.2f}%\")"
+        # Extract coverage percentage for PR comment
+        if [ -f "coverage.xml" ]; then
+          COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); line_rate = float(root.attrib['line-rate'])*100; print('{:.2f}%'.format(line_rate))")
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
         else
-          echo "Coverage report not generated. Tests may have failed."
+          echo "percentage=0.00%" >> $GITHUB_OUTPUT
         fi
 
-    - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@master # Or use a specific version like @v2.1
+    - name: Comment PR with code coverage
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const coverage = process.env.COVERAGE_PERCENTAGE;
+          const pullRequestNumber = context.issue.number;
+          
+          github.rest.issues.createComment({
+            issue_number: pullRequestNumber,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## Code Coverage Report
+            
+            📊 **Current Coverage:** ${coverage}
+            
+            Detailed coverage analysis is available in [SonarCloud](https://sonarcloud.io/project/overview?id=BlueCentre_cli-code)
+            
+            ### Coverage Change Details
+            This shows code coverage for changes in this PR. To improve coverage, consider adding tests for new or modified code.`
+          });
       env:
-        # GITHUB_TOKEN: {{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
+        COVERAGE_PERCENTAGE: ${{ steps.coverage.outputs.percentage }}
+
+    # Fix SonarCloud scan to use proper configuration
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Required: Store your SonarCloud token as a GitHub secret
       with:
         args: >
-          # Tell scanner where the coverage report is
+          -Dsonar.projectKey=BlueCentre_cli-code
+          -Dsonar.organization=vitruviansoftware
           -Dsonar.python.coverage.reportPaths=coverage.xml
-          # Add organization and project key if not using sonar-project.properties
-          # -Dsonar.organization=your-org-key 
-          # -Dsonar.projectKey=your-project-key
+          -Dsonar.sources=src
+          -Dsonar.tests=test_dir
+          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.verbose=true
+
+    - name: Report SonarCloud Results
+      run: |
+        echo "Coverage and code quality results are available in SonarCloud dashboard:"
+        echo "https://sonarcloud.io/project/overview?id=BlueCentre_cli-code"
+        echo "SonarCloud is the primary source for coverage reporting for this project."
 
     - name: Build package
       run: python -m build
@@ -109,6 +151,7 @@ jobs:
           coverage.xml
           coverage_html/
         retention-days: 7
+        if-no-files-found: warn
         
   publish:
     name: Publish to PyPI

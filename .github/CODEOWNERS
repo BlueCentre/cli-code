@@ -1,0 +1,15 @@
+# CODEOWNERS file for the BlueCentre/cli-code repository
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# These owners will be the default owners for everything in the repo
+# and will be requested for review when someone opens a pull request.
+* @ipv1337
+
+# Scripts directory
+/scripts/ @ipv1337
+
+# Documentation directory
+/docs/ @ipv1337
+
+# GitHub workflow files
+/.github/workflows/ @ipv1337 

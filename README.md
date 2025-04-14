@@ -168,7 +168,7 @@ For more detailed information, please refer to the following documentation:
 
 - [Installation Guide](docs/install.md) - Detailed instructions for installing and configuring CLI-Code
 - [Contributing Guide](docs/contributing.md) - Guidelines for contributing to the project
-- [Code Coverage Guide](CODE_COVERAGE.md) - Information on code coverage tools and practices
+- [Code Coverage Guide](docs/CODE_COVERAGE.md) - Information on code coverage tools and practices
 - [Changelog](docs/changelog.md) - History of changes and releases
 - [Architecture](docs/architecture.md) - Technical overview of the system architecture
 - [Context Guidelines](docs/context.md) - Guidelines for the CLI Code Assistant
