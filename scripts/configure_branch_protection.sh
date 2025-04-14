@@ -21,6 +21,12 @@ EOL
 
 # Apply branch protection rules
 echo "Applying branch protection rules to main branch..."
+if ! command -v gh &> /dev/null
+then
+  echo "GitHub CLI is not installed. Please install it and configure it properly."
+  exit 1
+fi
+
 gh api --method PUT "repos/BlueCentre/cli-code/branches/main/protection" \
   --input branch_protection.json || { echo "Failed to apply branch protection rules"; rm branch_protection.json; exit 1; }
 
