@@ -112,10 +112,11 @@ jobs:
         COVERAGE_PERCENTAGE: ${{ steps.coverage.outputs.percentage }}
 
     - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@v5.0.0
+      uses: SonarSource/sonarqube-scan-action@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Required: Store your SonarCloud token as a GitHub secret
+        SONAR_HOST_URL: https://sonarcloud.io
       with:
         args: >
           -Dsonar.projectKey=BlueCentre_cli-code
