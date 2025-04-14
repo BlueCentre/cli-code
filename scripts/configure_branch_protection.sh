@@ -28,7 +28,7 @@ then
 fi
 
 gh api --method PUT "repos/BlueCentre/cli-code/branches/main/protection" \
-  --input branch_protection.json || { echo "Failed to apply branch protection rules"; rm branch_protection.json; exit 1; }
+  --input branch_protection.json || { echo "Failed to apply branch protection rules: $?"; rm branch_protection.json; exit 1; }
 
 # Clean up
 rm branch_protection.json
