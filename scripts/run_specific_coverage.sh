@@ -19,7 +19,7 @@ echo "Running comprehensive coverage for $MODULE..."
 coverage erase
 
 # Find all test files that might test this module
-TEST_FILES=$(find tests test_dir -name "test_*.py" -type f -exec grep -l "$MODULE" {} \;)
+TEST_FILES=$(find tests -name "test_*.py" -type f -exec grep -l "$MODULE" {} \;)
 
 if [ -z "$TEST_FILES" ]; then
     echo "No test files found for $MODULE"

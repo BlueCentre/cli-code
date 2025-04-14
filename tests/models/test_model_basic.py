@@ -31,15 +31,14 @@ try:
     
     # Now try to import the model classes
     from cli_code.models.base import AbstractModelAgent
-    from cli_code.models.gemini import GeminiModelAgent
-    from cli_code.models.ollama import OllamaModelAgent
+    from cli_code.models.gemini import GeminiModel
+    from cli_code.models.ollama import OllamaModel
     IMPORTS_AVAILABLE = True
 except ImportError as e:
     IMPORT_ERROR = str(e)
     # Create dummy classes for type checking
-    class AbstractModelAgent: pass
-    class GeminiModelAgent: pass
-    class OllamaModelAgent: pass
+    class GeminiModel: pass
+    class OllamaModel: pass
 
 # Check if we should skip all tests - only skip if imports truly failed
 # But in CI, we can still run tests with mocked modules
@@ -48,7 +47,7 @@ SKIP_REASON = f"Required model imports not available: {IMPORT_ERROR}" if IMPORT_
 
 @skipIf(SHOULD_SKIP_TESTS, SKIP_REASON)
 class TestGeminiModelBasics(TestCase):
-    """Test basic GeminiModelAgent functionality that doesn't require API calls."""
+    """Test basic GeminiModel functionality that doesn't require API calls."""
     
     def setUp(self):
         """Set up test environment."""
@@ -71,8 +70,8 @@ class TestGeminiModelBasics(TestCase):
         self.patch_get_model.stop()
     
     def test_gemini_init(self):
-        """Test initialization of GeminiModelAgent."""
-        agent = GeminiModelAgent("fake-api-key", "gemini-pro")
+        """Test initialization of GeminiModel."""
+        agent = GeminiModel("fake-api-key", "gemini-pro")
             
         # Verify API key was passed to configure
         self.mock_configure.assert_called_once_with(api_key="fake-api-key")
@@ -84,7 +83,7 @@ class TestGeminiModelBasics(TestCase):
     
     def test_gemini_clear_history(self):
         """Test history clearing functionality."""
-        agent = GeminiModelAgent("fake-api-key", "gemini-pro")
+        agent = GeminiModel("fake-api-key", "gemini-pro")
         
         # Add some fake history
         agent.history = [{"role": "user", "parts": ["test message"]}]
@@ -97,7 +96,7 @@ class TestGeminiModelBasics(TestCase):
 
     def test_gemini_add_system_prompt(self):
         """Test adding system prompt to history."""
-        agent = GeminiModelAgent("fake-api-key", "gemini-pro")
+        agent = GeminiModel("fake-api-key", "gemini-pro")
         
         # Add system prompt
         agent.add_system_prompt("I am a helpful AI assistant")
@@ -109,7 +108,7 @@ class TestGeminiModelBasics(TestCase):
     
     def test_gemini_append_history(self):
         """Test appending to history."""
-        agent = GeminiModelAgent("fake-api-key", "gemini-pro")
+        agent = GeminiModel("fake-api-key", "gemini-pro")
         
         # Append to history
         agent.append_to_history(role="user", content="Hello")
@@ -124,7 +123,7 @@ class TestGeminiModelBasics(TestCase):
     
     def test_gemini_chat_generation_parameters(self):
         """Test chat generation parameters are properly set."""
-        agent = GeminiModelAgent("fake-api-key", "gemini-pro")
+        agent = GeminiModel("fake-api-key", "gemini-pro")
         
         # Setup the mock model's generate_content to return a valid response
         mock_response = MagicMock()
@@ -156,7 +155,7 @@ class TestGeminiModelBasics(TestCase):
     
     def test_gemini_parse_response(self):
         """Test parsing different response formats from the Gemini API."""
-        agent = GeminiModelAgent("fake-api-key", "gemini-pro")
+        agent = GeminiModel("fake-api-key", "gemini-pro")
         
         # Mock normal response
         normal_response = MagicMock()
@@ -191,7 +190,7 @@ class TestGeminiModelBasics(TestCase):
     
     def test_gemini_content_handling(self):
         """Test content handling for different input types."""
-        agent = GeminiModelAgent("fake-api-key", "gemini-pro")
+        agent = GeminiModel("fake-api-key", "gemini-pro")
         
         # Test string content
         parts = agent._prepare_content("Hello world")
@@ -217,7 +216,7 @@ class TestGeminiModelBasics(TestCase):
 
 @skipIf(SHOULD_SKIP_TESTS, SKIP_REASON)
 class TestOllamaModelBasics(TestCase):
-    """Test basic OllamaModelAgent functionality that doesn't require API calls."""
+    """Test basic OllamaModel functionality that doesn't require API calls."""
     
     def setUp(self):
         """Set up test environment."""
@@ -238,8 +237,8 @@ class TestOllamaModelBasics(TestCase):
         self.patch_requests_post.stop()
     
     def test_ollama_init(self):
-        """Test initialization of OllamaModelAgent."""
-        agent = OllamaModelAgent("http://localhost:11434", "llama2")
+        """Test initialization of OllamaModel."""
+        agent = OllamaModel("http://localhost:11434", "llama2")
         
         # Check agent properties
         self.assertEqual(agent.model_name, "llama2")
@@ -248,7 +247,7 @@ class TestOllamaModelBasics(TestCase):
     
     def test_ollama_clear_history(self):
         """Test history clearing functionality."""
-        agent = OllamaModelAgent("http://localhost:11434", "llama2")
+        agent = OllamaModel("http://localhost:11434", "llama2")
         
         # Add some fake history
         agent.history = [{"role": "user", "content": "test message"}]
@@ -261,7 +260,7 @@ class TestOllamaModelBasics(TestCase):
     
     def test_ollama_add_system_prompt(self):
         """Test adding system prompt to history."""
-        agent = OllamaModelAgent("http://localhost:11434", "llama2")
+        agent = OllamaModel("http://localhost:11434", "llama2")
         
         # Add system prompt
         agent.add_system_prompt("I am a helpful AI assistant")
@@ -273,7 +272,7 @@ class TestOllamaModelBasics(TestCase):
     
     def test_ollama_append_history(self):
         """Test appending to history."""
-        agent = OllamaModelAgent("http://localhost:11434", "llama2")
+        agent = OllamaModel("http://localhost:11434", "llama2")
         
         # Append to history
         agent.append_to_history(role="user", content="Hello")
@@ -288,7 +287,7 @@ class TestOllamaModelBasics(TestCase):
     
     def test_ollama_prepare_chat_params(self):
         """Test preparing parameters for chat request."""
-        agent = OllamaModelAgent("http://localhost:11434", "llama2")
+        agent = OllamaModel("http://localhost:11434", "llama2")
         
         # Add history entries
         agent.add_system_prompt("System instructions")
@@ -306,7 +305,7 @@ class TestOllamaModelBasics(TestCase):
     
     def test_ollama_chat_with_parameters(self):
         """Test chat method with various parameters."""
-        agent = OllamaModelAgent("http://localhost:11434", "llama2")
+        agent = OllamaModel("http://localhost:11434", "llama2")
         
         # Add a system prompt
         agent.add_system_prompt("Be helpful")
@@ -333,7 +332,7 @@ class TestOllamaModelBasics(TestCase):
     
     def test_ollama_error_handling(self):
         """Test handling of various error cases."""
-        agent = OllamaModelAgent("http://localhost:11434", "llama2")
+        agent = OllamaModel("http://localhost:11434", "llama2")
         
         # Test connection error
         self.mock_post.side_effect = Exception("Connection failed")
@@ -356,13 +355,13 @@ class TestOllamaModelBasics(TestCase):
     def test_ollama_url_handling(self):
         """Test handling of different URL formats."""
         # Test with trailing slash
-        agent = OllamaModelAgent("http://localhost:11434/", "llama2")
+        agent = OllamaModel("http://localhost:11434/", "llama2")
         self.assertEqual(agent.api_url, "http://localhost:11434")
         
         # Test without protocol
-        agent = OllamaModelAgent("localhost:11434", "llama2")
+        agent = OllamaModel("localhost:11434", "llama2")
         self.assertEqual(agent.api_url, "http://localhost:11434")
         
         # Test with https
-        agent = OllamaModelAgent("https://ollama.example.com", "llama2")
+        agent = OllamaModel("https://ollama.example.com", "llama2")
         self.assertEqual(agent.api_url, "https://ollama.example.com") 
