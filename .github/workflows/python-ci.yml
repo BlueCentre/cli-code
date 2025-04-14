@@ -142,6 +142,8 @@ jobs:
           -Dsonar.sourceEncoding=UTF-8
           -Dsonar.verbose=true
           -Dsonar.scm.provider=git
+          -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
+          -Dsonar.newCode.referenceBranch=origin/main
 
     # Add specific PR properties based on GitHub context
     - name: SonarCloud PR Analysis
@@ -158,6 +160,8 @@ jobs:
           -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
           -Dsonar.pullrequest.branch=${{ github.head_ref }}
           -Dsonar.pullrequest.base=${{ github.base_ref }}
+          -Dsonar.python.coverage.reportPaths=coverage.xml
+          -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
 
     - name: Report SonarCloud Results
       run: |

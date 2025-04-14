@@ -257,6 +257,7 @@ run_test_group "remaining" \
 echo "Generating final coverage report..." | tee -a "$SUMMARY_LOG"
 python -m pytest \
   --cov=src.cli_code \
+  --cov-append \
   --cov-report=xml:coverage.xml \
   --cov-report=html:coverage_html \
   --cov-report=term
