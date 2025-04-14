@@ -140,7 +140,6 @@ jobs:
           -Dsonar.sources=src/cli_code
           -Dsonar.tests=test_dir
           -Dsonar.sourceEncoding=UTF-8
-          -Dsonar.verbose=true
           -Dsonar.scm.provider=git
           -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
           -Dsonar.newCode.referenceBranch=origin/main
