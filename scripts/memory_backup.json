@@ -104,7 +104,7 @@
       "name": "SonarCloud Analysis Process",
       "entityType": "TechnicalProcess",
       "observations": [
-        "Generate coverage report with: pytest --cov=src test_dir --cov-report=xml",
+        "Generate coverage report with: pytest --cov=src tests --cov-report=xml",
         "Run local SonarCloud scan with: sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN or use environment variable",
         "Local analysis allows for faster feedback loop before pushing changes",
         "GitHub Actions workflow automatically runs scans on push",

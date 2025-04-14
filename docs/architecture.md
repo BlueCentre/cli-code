@@ -166,7 +166,7 @@ flowchart TD
 *   **Sophisticated Planning**: Consider if needed beyond system prompts.
 *   **Asynchronous Operations**: Evaluate for long-running tools.
 *   **State Management**: Assess if needed for more complex multi-turn tasks.
-*   **Testing**: Expand test suite (`test_dir`) to cover both providers, mock API interactions, and test the agent selection logic.
+*   **Testing**: Expand test suite (`tests/`) to cover both providers, mock API interactions, and test the agent selection logic.
 *   **Tool Schema Validation/Translation**: Ensure robust handling of schema differences between Gemini and OpenAI formats.
 *   **Summarizer Tool Integration**: Clarify registration/usage.
 
