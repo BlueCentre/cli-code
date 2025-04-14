@@ -138,7 +138,7 @@ jobs:
           -Dsonar.organization=vitruviansoftware
           -Dsonar.python.coverage.reportPaths=coverage.xml
           -Dsonar.sources=src/cli_code
-          -Dsonar.tests=test_dir
+          -Dsonar.tests=tests
           -Dsonar.sourceEncoding=UTF-8
           -Dsonar.scm.provider=git
           -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml

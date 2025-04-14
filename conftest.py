@@ -12,22 +12,10 @@ try:
 except ImportError:
     PYTEST_AVAILABLE = False
 
-def pytest_ignore_collect(path):
-    """
-    Determine which test files to ignore during collection.
-    
-    Args:
-        path: Path object representing a test file or directory
-    
-    Returns:
-        bool: True if the file should be ignored, False otherwise
-    """
-    # Check if we're running in CI
-    in_ci = os.environ.get('CI', 'false').lower() == 'true'
-    
-    if in_ci:
-        # Skip comprehensive test files in CI environments
-        if '_comprehensive' in str(path):
-            return True
-    
-    return False 
+def pytest_ignore_collect(path, config):
+    """Ignore tests containing '_comprehensive' in their path when CI=true."""
+    # if os.environ.get("CI") == "true" and "_comprehensive" in str(path):
+    #     print(f"Ignoring comprehensive test in CI: {path}")
+    #     return True
+    # return False
+    pass # Keep the function valid syntax, but effectively do nothing.
