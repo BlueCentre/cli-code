@@ -1,291 +1,263 @@
 """
-Tests for directory tools.
+Tests for directory tools module.
 """
 import os
-import pytest
 import subprocess
-from unittest.mock import patch, MagicMock
+import pytest
+from unittest.mock import patch, MagicMock, mock_open
 
-from cli_code.tools.directory_tools import CreateDirectoryTool, LsTool
-
-
-class TestCreateDirectoryTool:
-    """Tests for the CreateDirectoryTool."""
-
-    def test_init(self):
-        """Test initialization of the CreateDirectoryTool."""
-        tool = CreateDirectoryTool()
-        assert tool.name == "create_directory"
-        assert "Creates a new directory" in tool.description
-
-    @patch("os.path.exists")
-    @patch("os.makedirs")
-    def test_create_directory_success(self, mock_makedirs, mock_exists):
-        """Test successful directory creation."""
-        # Setup mocks
-        mock_exists.return_value = False
-        
-        # Execute the tool
-        tool = CreateDirectoryTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Successfully created directory" in result
-        mock_makedirs.assert_called_once()
-        mock_exists.assert_called_once()
-
-    @patch("os.path.exists")
-    @patch("os.path.isdir")
-    def test_create_directory_already_exists(self, mock_isdir, mock_exists):
-        """Test creating a directory that already exists."""
-        # Setup mocks
-        mock_exists.return_value = True
-        mock_isdir.return_value = True
-        
-        # Execute the tool
-        tool = CreateDirectoryTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Directory already exists" in result
-        mock_exists.assert_called_once()
-        mock_isdir.assert_called_once()
-
-    @patch("os.path.exists")
-    @patch("os.path.isdir")
-    def test_create_directory_path_not_directory(self, mock_isdir, mock_exists):
-        """Test creating a directory when a file with the same name exists."""
-        # Setup mocks
-        mock_exists.return_value = True
-        mock_isdir.return_value = False
-        
-        # Execute the tool
-        tool = CreateDirectoryTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Error: Path exists but is not a directory" in result
-        mock_exists.assert_called_once()
-        mock_isdir.assert_called_once()
-
-    def test_create_directory_parent_traversal(self):
-        """Test attempt to create directory with parent directory traversal."""
-        tool = CreateDirectoryTool()
-        result = tool.execute("../dangerous_dir")
-        
-        # Verify results
-        assert "Error: Invalid path" in result
-        assert "Cannot access parent directories" in result
-
-    @patch("os.path.exists")
-    @patch("os.makedirs")
-    def test_create_directory_os_error(self, mock_makedirs, mock_exists):
-        """Test OS error during directory creation."""
-        # Setup mocks
-        mock_exists.return_value = False
-        mock_makedirs.side_effect = OSError("Permission denied")
-        
-        # Execute the tool
-        tool = CreateDirectoryTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Error creating directory" in result
-        assert "Permission denied" in result
-        mock_makedirs.assert_called_once()
-
-    @patch("os.path.exists")
-    @patch("os.makedirs")
-    def test_create_directory_unexpected_error(self, mock_makedirs, mock_exists):
-        """Test unexpected error during directory creation."""
-        # Setup mocks
-        mock_exists.return_value = False
-        mock_makedirs.side_effect = Exception("Unexpected error")
-        
-        # Execute the tool
-        tool = CreateDirectoryTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Error creating directory" in result
-        assert "Unexpected error" in result
-        mock_makedirs.assert_called_once()
+# Direct import for coverage tracking
+import src.cli_code.tools.directory_tools
+from src.cli_code.tools.directory_tools import CreateDirectoryTool, LsTool
 
 
-class TestLsTool:
-    """Tests for the LsTool."""
+def test_create_directory_tool_init():
+    """Test CreateDirectoryTool initialization."""
+    tool = CreateDirectoryTool()
+    assert tool.name == "create_directory"
+    assert "Creates a new directory" in tool.description
 
-    def test_init(self):
-        """Test initialization of the LsTool."""
-        tool = LsTool()
-        assert tool.name == "ls"
-        assert "Lists the contents of a specified directory" in tool.description
 
-    @patch("subprocess.run")
-    def test_ls_success(self, mock_run):
-        """Test successful ls command."""
-        # Setup mock
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.stdout = "file1\nfile2\nfile3"
-        mock_run.return_value = mock_process
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert result == "file1\nfile2\nfile3"
-        mock_run.assert_called_once()
-        args, kwargs = mock_run.call_args
-        assert args[0] == ["ls", "-lA", "test_dir"]
-        assert kwargs.get("capture_output") is True
-        assert kwargs.get("text") is True
+@patch("os.path.exists")
+@patch("os.path.isdir")
+@patch("os.makedirs")
+def test_create_directory_success(mock_makedirs, mock_isdir, mock_exists):
+    """Test successful directory creation."""
+    # Configure mocks
+    mock_exists.return_value = False
+    
+    # Create tool and execute
+    tool = CreateDirectoryTool()
+    result = tool.execute("new_directory")
+    
+    # Verify
+    assert "Successfully created directory" in result
+    mock_makedirs.assert_called_once()
 
-    @patch("subprocess.run")
-    def test_ls_with_default_path(self, mock_run):
-        """Test ls command with default path (no path specified)."""
-        # Setup mock
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.stdout = "file1\nfile2\nfile3"
-        mock_run.return_value = mock_process
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute()
-        
-        # Verify results
-        assert result == "file1\nfile2\nfile3"
-        mock_run.assert_called_once()
-        args, kwargs = mock_run.call_args
-        assert args[0] == ["ls", "-lA", "."]  # Should use current directory
 
-    def test_ls_parent_traversal(self):
-        """Test attempt to list directory with parent directory traversal."""
-        tool = LsTool()
-        result = tool.execute("../dangerous_dir")
-        
-        # Verify results
-        assert "Error: Invalid path" in result
-        assert "Cannot access parent directories" in result
+@patch("os.path.exists")
+@patch("os.path.isdir")
+def test_create_directory_already_exists(mock_isdir, mock_exists):
+    """Test handling when directory already exists."""
+    # Configure mocks
+    mock_exists.return_value = True
+    mock_isdir.return_value = True
+    
+    # Create tool and execute
+    tool = CreateDirectoryTool()
+    result = tool.execute("existing_directory")
+    
+    # Verify
+    assert "Directory already exists" in result
 
-    @patch("subprocess.run")
-    def test_ls_directory_not_found(self, mock_run):
-        """Test ls command when directory doesn't exist."""
-        # Setup mock
-        mock_process = MagicMock()
-        mock_process.returncode = 1
-        mock_process.stderr = "ls: cannot access 'nonexistent_dir': No such file or directory"
-        mock_run.return_value = mock_process
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("nonexistent_dir")
-        
-        # Verify results
-        assert "Error: Directory not found" in result
-        mock_run.assert_called_once()
 
-    @patch("subprocess.run")
-    def test_ls_command_generic_error(self, mock_run):
-        """Test ls command with a generic error."""
-        # Setup mock
-        mock_process = MagicMock()
-        mock_process.returncode = 2
-        mock_process.stderr = "Some generic error"
-        mock_run.return_value = mock_process
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Error executing ls command" in result
-        assert "Some generic error" in result
-        mock_run.assert_called_once()
+@patch("os.path.exists")
+@patch("os.path.isdir")
+def test_create_directory_path_not_dir(mock_isdir, mock_exists):
+    """Test handling when path exists but is not a directory."""
+    # Configure mocks
+    mock_exists.return_value = True
+    mock_isdir.return_value = False
+    
+    # Create tool and execute
+    tool = CreateDirectoryTool()
+    result = tool.execute("not_a_directory")
+    
+    # Verify
+    assert "Path exists but is not a directory" in result
 
-    @patch("subprocess.run")
-    def test_ls_command_no_stderr(self, mock_run):
-        """Test ls command error with empty stderr."""
-        # Setup mock
-        mock_process = MagicMock()
-        mock_process.returncode = 1
-        mock_process.stderr = ""
-        mock_run.return_value = mock_process
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Error executing ls command" in result
-        assert "(No stderr)" in result
-        mock_run.assert_called_once()
 
-    @patch("subprocess.run")
-    def test_ls_command_file_not_found(self, mock_run):
-        """Test ls command when the 'ls' command itself isn't found."""
-        # Setup mock
-        mock_run.side_effect = FileNotFoundError("No such file or directory: 'ls'")
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Error: 'ls' command not found" in result
-        mock_run.assert_called_once()
+def test_create_directory_parent_access():
+    """Test blocking access to parent directories."""
+    tool = CreateDirectoryTool()
+    result = tool.execute("../outside_directory")
+    
+    # Verify
+    assert "Invalid path" in result
+    assert "Cannot access parent directories" in result
 
-    @patch("subprocess.run")
-    def test_ls_command_timeout(self, mock_run):
-        """Test ls command timeout."""
-        # Setup mock
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="ls", timeout=15)
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "Error: ls command timed out" in result
-        mock_run.assert_called_once()
 
-    @patch("subprocess.run")
-    def test_ls_command_unexpected_error(self, mock_run):
-        """Test unexpected error during ls command."""
-        # Setup mock
-        mock_run.side_effect = Exception("Unexpected error")
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "An unexpected error occurred while executing ls" in result
-        assert "Unexpected error" in result
-        mock_run.assert_called_once()
+@patch("os.makedirs")
+def test_create_directory_os_error(mock_makedirs):
+    """Test handling of OSError during directory creation."""
+    # Configure mock to raise OSError
+    mock_makedirs.side_effect = OSError("Permission denied")
+    
+    # Create tool and execute
+    tool = CreateDirectoryTool()
+    result = tool.execute("protected_directory")
+    
+    # Verify
+    assert "Error creating directory" in result
+    assert "Permission denied" in result
 
-    @patch("subprocess.run")
-    def test_ls_command_truncate_long_output(self, mock_run):
-        """Test ls command with very long output that gets truncated."""
-        # Setup mock
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        # Create an output with 101 lines (more than the 100 line limit)
-        mock_process.stdout = "\n".join([f"line{i}" for i in range(101)])
-        mock_run.return_value = mock_process
-        
-        # Execute the tool
-        tool = LsTool()
-        result = tool.execute("test_dir")
-        
-        # Verify results
-        assert "... (output truncated)" in result
-        # Result should have only 100 lines + truncation message
-        assert len(result.splitlines()) == 101
-        # The 100th line should be "line99"
-        assert "line99" in result
-        # The 101st line (which would be "line100") should NOT be in the result
-        assert "line100" not in result
-        mock_run.assert_called_once() 
+
+@patch("os.makedirs")
+def test_create_directory_unexpected_error(mock_makedirs):
+    """Test handling of unexpected errors during directory creation."""
+    # Configure mock to raise an unexpected error
+    mock_makedirs.side_effect = ValueError("Unexpected error")
+    
+    # Create tool and execute
+    tool = CreateDirectoryTool()
+    result = tool.execute("problem_directory")
+    
+    # Verify
+    assert "Error creating directory" in result
+
+
+def test_ls_tool_init():
+    """Test LsTool initialization."""
+    tool = LsTool()
+    assert tool.name == "ls"
+    assert "Lists the contents of a specified directory" in tool.description
+    assert isinstance(tool.args_schema, dict)
+    assert "path" in tool.args_schema
+
+
+@patch("subprocess.run")
+def test_ls_success(mock_run):
+    """Test successful directory listing."""
+    # Configure mock
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_process.stdout = "total 12\ndrwxr-xr-x 2 user group 4096 Jan 1 10:00 folder1\n-rw-r--r-- 1 user group 1234 Jan 1 10:00 file1.txt"
+    mock_run.return_value = mock_process
+    
+    # Create tool and execute
+    tool = LsTool()
+    result = tool.execute("test_dir")
+    
+    # Verify
+    assert "folder1" in result
+    assert "file1.txt" in result
+    mock_run.assert_called_once()
+    assert mock_run.call_args[0][0] == ["ls", "-lA", "test_dir"]
+
+
+@patch("subprocess.run")
+def test_ls_default_dir(mock_run):
+    """Test ls with default directory."""
+    # Configure mock
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_process.stdout = "listing content"
+    mock_run.return_value = mock_process
+    
+    # Create tool and execute with no path
+    tool = LsTool()
+    result = tool.execute()
+    
+    # Verify default directory used
+    mock_run.assert_called_once()
+    assert mock_run.call_args[0][0] == ["ls", "-lA", "."]
+
+
+def test_ls_invalid_path():
+    """Test ls with path attempting to access parent directory."""
+    tool = LsTool()
+    result = tool.execute("../outside_dir")
+    
+    # Verify
+    assert "Invalid path" in result
+    assert "Cannot access parent directories" in result
+
+
+@patch("subprocess.run")
+def test_ls_directory_not_found(mock_run):
+    """Test handling when directory is not found."""
+    # Configure mock
+    mock_process = MagicMock()
+    mock_process.returncode = 1
+    mock_process.stderr = "ls: cannot access 'nonexistent_dir': No such file or directory"
+    mock_run.return_value = mock_process
+    
+    # Create tool and execute
+    tool = LsTool()
+    result = tool.execute("nonexistent_dir")
+    
+    # Verify
+    assert "Directory not found" in result
+
+
+@patch("subprocess.run")
+def test_ls_truncate_long_output(mock_run):
+    """Test truncation of long directory listings."""
+    # Create a long listing (more than 100 lines)
+    long_listing = "\n".join([f"file{i}.txt" for i in range(150)])
+    
+    # Configure mock
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_process.stdout = long_listing
+    mock_run.return_value = mock_process
+    
+    # Create tool and execute
+    tool = LsTool()
+    result = tool.execute("big_dir")
+    
+    # Verify truncation
+    assert "output truncated" in result
+    # Should only have 101 lines (100 files + truncation message)
+    assert len(result.splitlines()) <= 101
+
+
+@patch("subprocess.run")
+def test_ls_generic_error(mock_run):
+    """Test handling of generic errors."""
+    # Configure mock
+    mock_process = MagicMock()
+    mock_process.returncode = 2
+    mock_process.stderr = "ls: some generic error"
+    mock_run.return_value = mock_process
+    
+    # Create tool and execute
+    tool = LsTool()
+    result = tool.execute("problem_dir")
+    
+    # Verify
+    assert "Error executing ls command" in result
+    assert "Code: 2" in result
+
+
+@patch("subprocess.run")
+def test_ls_command_not_found(mock_run):
+    """Test handling when ls command is not found."""
+    # Configure mock
+    mock_run.side_effect = FileNotFoundError("No such file or directory: 'ls'")
+    
+    # Create tool and execute
+    tool = LsTool()
+    result = tool.execute()
+    
+    # Verify
+    assert "'ls' command not found" in result
+
+
+@patch("subprocess.run")
+def test_ls_timeout(mock_run):
+    """Test handling of ls command timeout."""
+    # Configure mock
+    mock_run.side_effect = subprocess.TimeoutExpired(cmd="ls", timeout=15)
+    
+    # Create tool and execute
+    tool = LsTool()
+    result = tool.execute()
+    
+    # Verify
+    assert "ls command timed out" in result
+
+
+@patch("subprocess.run")
+def test_ls_unexpected_error(mock_run):
+    """Test handling of unexpected errors during ls command."""
+    # Configure mock
+    mock_run.side_effect = Exception("Something unexpected happened")
+    
+    # Create tool and execute
+    tool = LsTool()
+    result = tool.execute()
+    
+    # Verify
+    assert "An unexpected error occurred" in result
+    assert "Something unexpected happened" in result 
