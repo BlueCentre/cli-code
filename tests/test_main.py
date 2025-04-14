@@ -63,10 +63,10 @@ def test_setup_error(cli_runner, mock_config):
     """Test setup command with an error."""
     mock_config.set_credential.side_effect = Exception("Test error")
     
-    with pytest.raises(Exception, match="Test error"):
-        result = cli_runner.invoke(cli, ["setup", "--provider", "gemini", "test-api-key"])
+    result = cli_runner.invoke(cli, ["setup", "--provider", "gemini", "test-api-key"], catch_exceptions=False)
     
-    assert "Error" in result.output
+    assert result.exit_code == 0
+    assert "Error saving API Key" in result.output
 
 
 def test_set_default_provider(cli_runner, mock_config):
