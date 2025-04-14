@@ -45,7 +45,12 @@ sonar-scanner \
   -Dsonar.python.coverage.reportPaths=coverage.xml \
   -Dsonar.host.url=https://sonarcloud.io \
   -Dsonar.projectKey=$(grep "sonar.projectKey" sonar-project.properties | cut -d= -f2) \
-  -Dsonar.organization=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2)
+  -Dsonar.organization=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2) \
+  -Dsonar.sources=$(grep "sonar.sources" sonar-project.properties | cut -d= -f2) \
+  -Dsonar.tests=$(grep "sonar.tests" sonar-project.properties | cut -d= -f2) \
+  -Dsonar.sourceEncoding=$(grep "sonar.sourceEncoding" sonar-project.properties | cut -d= -f2) \
+  -Dsonar.scm.provider=$(grep "sonar.scm.provider" sonar-project.properties | cut -d= -f2) \
+  -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
 
 # Check if sonar-scanner was successful
 if [ $? -eq 0 ]; then
