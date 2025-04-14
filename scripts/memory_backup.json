@@ -6,9 +6,9 @@
       "entityType": "Person",
       "observations": [
         "Is the current user I am interacting with",
-        "Has workspace path /Users/james/Workspace/gh/lab/monorepo",
-        "Is working on the BlueCentre/monorepo repository",
-        "GitHub username is ipv1337"
+        "GitHub username is ipv1337",
+        "GitHub token is stored in keyring",
+        "GitHub Organization is BlueCentre"
       ]
     },
     {
@@ -89,11 +89,55 @@
       "name": "CLI-Code Development Workflow",
       "entityType": "Workflow",
       "observations": [
-        "Add coverage_report.xml to .gitignore to avoid committing generated test artifacts",
-        "Use GitHub CLI with proper authentication by using the ghauth wrapper script",
-        "Run tests locally before pushing changes",
-        "Create PRs against the main branch",
-        "When encountering GitHub authentication issues, use GITHUB_TOKEN=\"\" gh command pattern"
+        "Step 1: Analysis and Planning - Understand requirements, run local SonarCloud scan, review current metrics",
+        "Step 2: Plan Implementation Steps - Break down solution, document the plan, consider edge cases",
+        "Step 3: Implementation - First fetch latest from main (git fetch origin main), create a new feature branch (git checkout -b feature/name), then execute plan step by step, follow code style, avoid scope creep, commit major changes to feature branch regularly in case reversion is needed",
+        "Step 4: Testing - Add/update tests, maintain code coverage, run tests frequently",
+        "Step 5: Verification - Perform end-to-end testing, get user feedback, run final SonarCloud scan",
+        "Step 6: Documentation - Update relevant docs, add code comments, update README if needed",
+        "Step 7: Commit Preparation - Prepare detailed commit description, write clear messages, reference issues",
+        "Step 8: Review and Submit - Final review, push only completed changes, submit PR"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "SonarCloud Analysis Process",
+      "entityType": "TechnicalProcess",
+      "observations": [
+        "Generate coverage report with: pytest --cov=src test_dir --cov-report=xml",
+        "Run local SonarCloud scan with: sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN or use environment variable",
+        "Local analysis allows for faster feedback loop before pushing changes",
+        "GitHub Actions workflow automatically runs scans on push",
+        "Add coverage_report.xml to .gitignore to avoid committing generated test artifacts"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "GitHub PR Process",
+      "entityType": "TechnicalProcess",
+      "observations": [
+        "When creating PRs with GitHub CLI, use: GITHUB_TOKEN=\"\" gh pr create --title \"[Title]\" --body \"[Description]\" --base main --head [branch-name]",
+        "The GITHUB_TOKEN=\"\" prefix bypasses any environment variable token and uses properly scoped token in keyring",
+        "If encountering 'GraphQL: Resource not accessible by personal access token' error, ensure GITHUB_TOKEN is unset",
+        "Reference relevant issues in PR description",
+        "Ensure all tests pass and code quality metrics meet standards before submitting PR",
+        "Follow the project's PR template if available"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Code Quality Standards",
+      "entityType": "Guidelines",
+      "observations": [
+        "Follow the project's code style enforced by ruff",
+        "Address SonarCloud issues proactively",
+        "Document public functions and methods with docstrings",
+        "Aim for comprehensive test coverage with unit and integration tests",
+        "Test edge cases and failure scenarios",
+        "Mock external dependencies appropriately",
+        "Be mindful of performance implications",
+        "Profile code for expensive operations when necessary",
+        "Consider memory usage for larger data processing"
       ]
     }
   ],
@@ -121,6 +165,36 @@
       "from": "Google Tasks Integration",
       "to": "Tool Connection",
       "relationType": "is connected"
+    },
+    {
+      "type": "relation",
+      "from": "CLI-Code Development Workflow",
+      "to": "SonarCloud Analysis Process",
+      "relationType": "includes"
+    },
+    {
+      "type": "relation",
+      "from": "CLI-Code Development Workflow",
+      "to": "GitHub PR Process",
+      "relationType": "includes"
+    },
+    {
+      "type": "relation",
+      "from": "CLI-Code Development Workflow",
+      "to": "Code Quality Standards",
+      "relationType": "enforces"
+    },
+    {
+      "type": "relation",
+      "from": "GitHub PR Process",
+      "to": "GitHub CLI Auth Workaround",
+      "relationType": "utilizes"
+    },
+    {
+      "type": "relation",
+      "from": "SonarCloud Analysis Process",
+      "to": "Code Quality Standards",
+      "relationType": "supports"
     }
   ]
 } 
