@@ -18,8 +18,6 @@ python -m pytest \
   --cov-report=html:coverage_html \
   test_dir/ || true
 
-# Ensure coverage.xml exists for SonarCloud and PR reporting
-if [ -f "coverage.xml" ]; then
     echo "Coverage data will be analyzed by SonarCloud"
 else
     echo "Coverage report not generated. Creating minimal placeholder..."
@@ -28,4 +26,3 @@ else
     mkdir -p coverage_html
     echo '<html><body><h1>Coverage Report</h1><p>Coverage report generation failed. Minimal placeholder created for CI.</p></body></html>' > coverage_html/index.html
     echo "Minimal coverage placeholder created."
-fi 
