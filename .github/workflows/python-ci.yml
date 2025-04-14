@@ -111,31 +111,27 @@ jobs:
       env:
         COVERAGE_PERCENTAGE: ${{ steps.coverage.outputs.percentage }}
 
-    # Temporarily disable SonarCloud scan to allow PR to be merged
-    # Will be fixed in a separate PR
-    - name: SonarCloud Scan (Disabled)
-      if: false # Skip this step entirely
-      uses: SonarSource/sonarqube-scan-action@master
+    # Fix SonarCloud scan to use proper configuration
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: https://sonarcloud.io
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Required: Store your SonarCloud token as a GitHub secret
       with:
         args: >
           -Dsonar.projectKey=BlueCentre_cli-code
           -Dsonar.organization=vitruviansoftware
           -Dsonar.python.coverage.reportPaths=coverage.xml
-          -Dsonar.sources=src/cli_code
+          -Dsonar.sources=src
           -Dsonar.tests=test_dir
-          -Dsonar.scm.revision=${{ github.event.pull_request.head.sha }}
-          -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
-          -Dsonar.pullrequest.branch=${{ github.head_ref || github.ref_name }}
-          -Dsonar.pullrequest.base=${{ github.base_ref || 'main' }}
+          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.verbose=true
 
     - name: Report SonarCloud Results
       run: |
-        echo "SonarCloud scan temporarily disabled for this PR."
-        echo "A separate PR will address SonarCloud configuration issues."
+        echo "Coverage and code quality results are available in SonarCloud dashboard:"
+        echo "https://sonarcloud.io/project/overview?id=BlueCentre_cli-code"
+        echo "SonarCloud is the primary source for coverage reporting for this project."
 
     - name: Build package
       run: python -m build
