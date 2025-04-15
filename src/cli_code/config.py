@@ -26,11 +26,11 @@ log = logging.getLogger(__name__)
 class Config:
     """
     Configuration management for the CLI Code application.
-    
+
     This class manages loading configuration from a YAML file, creating a
     default configuration file if one doesn't exist, and loading environment
     variables.
-    
+
     The configuration is loaded in the following order of precedence:
     1. Environment variables (highest precedence)
     2. Configuration file
@@ -40,24 +40,24 @@ class Config:
     def __init__(self):
         """
         Initialize the configuration.
-        
+
         This will load environment variables, ensure the configuration file
         exists, and load the configuration from the file.
         """
         # Construct path correctly
         home_dir = Path(os.path.expanduser("~"))
-        self.config_dir = home_dir / ".config" / "cli-code" 
+        self.config_dir = home_dir / ".config" / "cli-code"
         self.config_file = self.config_dir / "config.yaml"
-        
+
         # Load environment variables
         self._load_dotenv()
-        
+
         # Ensure config file exists
         self._ensure_config_exists()
-        
+
         # Load config from file
         self.config = self._load_config()
-        
+
         # Apply environment variable overrides
         self._apply_env_vars()
 
@@ -95,8 +95,9 @@ class Config:
                             value = value.strip()
 
                             # Remove quotes if present
-                            if (value.startswith('"') and value.endswith('"')) or \
-                               (value.startswith("'") and value.endswith("'")):
+                            if (value.startswith('"') and value.endswith('"')) or (
+                                value.startswith("'") and value.endswith("'")
+                            ):
                                 value = value[1:-1]
 
                             # Fix: Set env var even if value is empty, but only if key exists
@@ -111,7 +112,9 @@ class Config:
                             log.debug(f"Skipping line without '=' in {loaded_source}: {line}")
 
                 if loaded_vars_log:
-                    log.info(f"Loaded {len(loaded_vars_log)} CLI_CODE vars from {loaded_source}: {', '.join(loaded_vars_log)}")
+                    log.info(
+                        f"Loaded {len(loaded_vars_log)} CLI_CODE vars from {loaded_source}: {', '.join(loaded_vars_log)}"
+                    )
                 else:
                     log.debug(f"No CLI_CODE environment variables found in {loaded_source}")
             except Exception as e:
@@ -120,48 +123,48 @@ class Config:
     def _apply_env_vars(self):
         """
         Apply environment variable overrides to the configuration.
-        
+
         Environment variables take precedence over configuration file values.
         Environment variables are formatted as:
         CLI_CODE_SETTING_NAME
-        
+
         For example:
         CLI_CODE_GOOGLE_API_KEY=my-api-key
         CLI_CODE_DEFAULT_PROVIDER=gemini
         CLI_CODE_SETTINGS_MAX_TOKENS=4096
         """
-        
+
         # Direct mappings from env to config keys
         env_mappings = {
-            'CLI_CODE_GOOGLE_API_KEY': 'google_api_key',
-            'CLI_CODE_DEFAULT_PROVIDER': 'default_provider',
-            'CLI_CODE_DEFAULT_MODEL': 'default_model',
-            'CLI_CODE_OLLAMA_API_URL': 'ollama_api_url',
-            'CLI_CODE_OLLAMA_DEFAULT_MODEL': 'ollama_default_model',
+            "CLI_CODE_GOOGLE_API_KEY": "google_api_key",
+            "CLI_CODE_DEFAULT_PROVIDER": "default_provider",
+            "CLI_CODE_DEFAULT_MODEL": "default_model",
+            "CLI_CODE_OLLAMA_API_URL": "ollama_api_url",
+            "CLI_CODE_OLLAMA_DEFAULT_MODEL": "ollama_default_model",
         }
-        
+
         # Apply direct mappings
         for env_key, config_key in env_mappings.items():
             if env_key in os.environ:
                 self.config[config_key] = os.environ[env_key]
-        
+
         # Settings with CLI_CODE_SETTINGS_ prefix go into settings dict
-        if 'settings' not in self.config:
-            self.config['settings'] = {}
-            
+        if "settings" not in self.config:
+            self.config["settings"] = {}
+
         for env_key, env_value in os.environ.items():
-            if env_key.startswith('CLI_CODE_SETTINGS_'):
-                setting_name = env_key[len('CLI_CODE_SETTINGS_'):].lower()
-                
+            if env_key.startswith("CLI_CODE_SETTINGS_"):
+                setting_name = env_key[len("CLI_CODE_SETTINGS_") :].lower()
+
                 # Try to convert to appropriate type (int, float, bool)
                 if env_value.isdigit():
-                    self.config['settings'][setting_name] = int(env_value)
-                elif env_value.replace('.', '', 1).isdigit() and env_value.count('.') <= 1:
-                    self.config['settings'][setting_name] = float(env_value)
-                elif env_value.lower() in ('true', 'false'):
-                    self.config['settings'][setting_name] = env_value.lower() == 'true'
+                    self.config["settings"][setting_name] = int(env_value)
+                elif env_value.replace(".", "", 1).isdigit() and env_value.count(".") <= 1:
+                    self.config["settings"][setting_name] = float(env_value)
+                elif env_value.lower() in ("true", "false"):
+                    self.config["settings"][setting_name] = env_value.lower() == "true"
                 else:
-                    self.config['settings'][setting_name] = env_value
+                    self.config["settings"][setting_name] = env_value
 
     def _ensure_config_exists(self):
         """Create config directory and file with defaults if they don't exist."""
@@ -171,14 +174,14 @@ class Config:
             log.error(f"Failed to create config directory {self.config_dir}: {e}", exc_info=True)
             # Decide if we should raise here or just log and potentially fail later
             # For now, log and continue, config loading will likely fail
-            return # Exit early if dir creation fails
+            return  # Exit early if dir creation fails
 
         if not self.config_file.exists():
             default_config = {
                 "google_api_key": None,
                 "default_provider": "gemini",
                 "default_model": "models/gemini-2.5-pro-exp-03-25",
-                "ollama_api_url": None, # http://localhost:11434/v1
+                "ollama_api_url": None,  # http://localhost:11434/v1
                 "ollama_default_model": "llama3.2",
                 "settings": {
                     "max_tokens": 1000000,
@@ -245,7 +248,7 @@ class Config:
     def get_default_provider(self) -> str:
         """Get the default provider."""
         if not self.config:
-            return "gemini" # Default if config is None
+            return "gemini"  # Default if config is None
         # Return "gemini" as fallback if default_provider is None or not set
         return self.config.get("default_provider") or "gemini"
 
@@ -265,21 +268,21 @@ class Config:
         # Handle if config is None early
         if not self.config:
             # Return hardcoded defaults if config doesn't exist
-            temp_provider = provider or "gemini" # Determine provider based on input or default
+            temp_provider = provider or "gemini"  # Determine provider based on input or default
             if temp_provider == "gemini":
-                return "models/gemini-1.5-pro-latest" # Or your actual default
+                return "models/gemini-1.5-pro-latest"  # Or your actual default
             elif temp_provider == "ollama":
-                return "llama2" # Or your actual default
+                return "llama2"  # Or your actual default
             else:
                 return None
-            
+
         target_provider = provider or self.get_default_provider()
         if target_provider == "gemini":
             # Use actual default from constants or hardcoded
-            return self.config.get("default_model", "models/gemini-1.5-pro-latest") 
+            return self.config.get("default_model", "models/gemini-1.5-pro-latest")
         elif target_provider == "ollama":
             # Use actual default from constants or hardcoded
-            return self.config.get("ollama_default_model", "llama2") 
+            return self.config.get("ollama_default_model", "llama2")
         elif target_provider in ["openai", "anthropic"]:
             # Handle known providers that might have specific config keys
             return self.config.get(f"{target_provider}_default_model")
@@ -306,7 +309,7 @@ class Config:
         """Get a specific setting value from the 'settings' section."""
         settings_dict = self.config.get("settings", {}) if self.config else {}
         # Handle case where 'settings' key exists but value is None, or self.config is None
-        if settings_dict is None: 
+        if settings_dict is None:
             settings_dict = {}
         return settings_dict.get(setting, default)
 
@@ -318,7 +321,7 @@ class Config:
             # Or initialize self.config = {} here if preferred?
             # For now, just return to avoid error
             return
-        
+
         if "settings" not in self.config or self.config["settings"] is None:
             self.config["settings"] = {}
         self.config["settings"][setting] = value

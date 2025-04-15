@@ -65,7 +65,7 @@ TOOLS_TESTS=(
   "tests/tools/test_file_tools.py"
   "tests/tools/test_system_tools.py"
   "tests/tools/test_directory_tools.py"
-  "tests/tools/test_quality_tools.py"
+  "tests/tools/test_quality_tools.py" # Assuming improved moved to root tests/tools
   "tests/tools/test_summarizer_tool.py"
   "tests/tools/test_tree_tool.py"
   "tests/tools/test_base_tool.py"
@@ -203,13 +203,13 @@ run_test_group "main" \
 run_test_group "remaining" \
   "tests/tools/test_task_complete_tool.py" \
   "tests/tools/test_base_tool.py" \
-  "tests/test_tools_init_coverage.py"
+  "tests/test_tools_init_coverage.py" # Assuming this stayed in root tests?
   "tests/test_utils.py" \
   "tests/test_utils_comprehensive.py" \
   "tests/tools/test_test_runner_tool.py" \
-  "tests/test_basic_functions.py"
-  "tests/tools/test_tools_basic.py"
-  "tests/tools/test_tree_tool_edge_cases.py"
+  "tests/test_basic_functions.py" # Assuming this stayed in root tests?
+  "tests/tools/test_tools_basic.py" # Assuming this moved?
+  "tests/tools/test_tree_tool_edge_cases.py" # Assuming this moved?
 
 # Generate a final coverage report
 echo "Generating final coverage report..." | tee -a "$SUMMARY_LOG"
