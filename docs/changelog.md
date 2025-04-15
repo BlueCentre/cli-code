@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0]
+
+- Improved Gemini error handling and UI feedback:
+  - Added rich status spinner for thinking and tool execution phases
+  - Gracefully handle Gemini quota errors with fallback to alternative models
+  - Added better logging of API errors at DEBUG level
+  - Removed redundant status messages for cleaner output
+- Optimized CI/CD pipeline:
+  - Reduced redundant builds by limiting push triggers to main branch only
+  - Improved GitHub Actions workflow documentation
+  - Organized SonarCloud analysis steps for better clarity
+- Fixed linting issues in Gemini implementation and test files
+- Updated default fallback model to `gemini-2.0-flash`
+- Increased `OLLAMA_MAX_CONTEXT_TOKENS` to 80000 for better performance
+- Restored missing history management methods
+
 ## [0.2.2]
 
 - Significantly improved test coverage across multiple modules:
