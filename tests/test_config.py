@@ -3,12 +3,12 @@ Tests for the configuration management in src/cli_code/config.py.
 """
 
 import os
-import yaml
 import unittest
 from pathlib import Path
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
+import yaml
 
 # Assume cli_code is importable
 from cli_code.config import Config

@@ -3,39 +3,41 @@ Tests for the Ollama Model context management functionality.
 
 To run these tests specifically:
     python -m pytest test_dir/test_ollama_model_context.py
-    
+
 To run a specific test:
     python -m pytest test_dir/test_ollama_model_context.py::TestOllamaModelContext::test_manage_ollama_context_truncation_needed
-    
+
 To run all tests related to context management:
     python -m pytest -k "ollama_context"
 """
-import os
-import logging
-import json
+
 import glob
-from unittest.mock import patch, MagicMock, mock_open
+import json
+import logging
+import os
+import random
+import string
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from rich.console import Console
-from pathlib import Path
-import sys
-import random
-import string
 
 # Ensure src is in the path for imports
 src_path = str(Path(__file__).parent.parent / "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from cli_code.models.ollama import OllamaModel, OLLAMA_MAX_CONTEXT_TOKENS
 from cli_code.config import Config
+from cli_code.models.ollama import OLLAMA_MAX_CONTEXT_TOKENS, OllamaModel
 
 # Define skip reason for clarity
 SKIP_REASON = "Skipping model tests in CI or if imports fail to avoid dependency issues."
-IMPORTS_AVAILABLE = True # Assume imports are available unless check fails
-IN_CI = os.environ.get('CI', 'false').lower() == 'true'
+IMPORTS_AVAILABLE = True  # Assume imports are available unless check fails
+IN_CI = os.environ.get("CI", "false").lower() == "true"
 SHOULD_SKIP_TESTS = IN_CI
+
 
 @pytest.mark.skipif(SHOULD_SKIP_TESTS, reason=SKIP_REASON)
 class TestOllamaModelContext:
@@ -44,7 +46,7 @@ class TestOllamaModelContext:
     @pytest.fixture
     def mock_openai(self):
         """Mock the OpenAI client dependency."""
-        with patch('cli_code.models.ollama.OpenAI') as mock:
+        with patch("cli_code.models.ollama.OpenAI") as mock:
             mock_instance = MagicMock()
             mock.return_value = mock_instance
             yield mock_instance
@@ -55,7 +57,7 @@ class TestOllamaModelContext:
         mock_console = MagicMock()
         model = OllamaModel(api_url="http://mock-url", console=mock_console, model_name="mock-model")
         model.client = mock_openai
-        model.history = [] 
+        model.history = []
         model.system_prompt = "System prompt for testing"
         model.add_to_history({"role": "system", "content": model.system_prompt})
         yield model
@@ -65,11 +67,11 @@ class TestOllamaModelContext:
         # Initial history should contain only the system prompt
         assert len(ollama_model.history) == 1
         assert ollama_model.history[0]["role"] == "system"
-        
+
         # Add a user message
         user_message = {"role": "user", "content": "Test message"}
         ollama_model.add_to_history(user_message)
-        
+
         # Check that message was added
         assert len(ollama_model.history) == 2
         assert ollama_model.history[1] == user_message
@@ -80,10 +82,10 @@ class TestOllamaModelContext:
         ollama_model.add_to_history({"role": "user", "content": "User message"})
         ollama_model.add_to_history({"role": "assistant", "content": "Assistant response"})
         assert len(ollama_model.history) == 3  # System + 2 added messages
-        
+
         # Clear history
         ollama_model.clear_history()
-        
+
         # Check that history was cleared and system prompt was re-added
         assert len(ollama_model.history) == 1
         assert ollama_model.history[0]["role"] == "system"
@@ -94,20 +96,22 @@ class TestOllamaModelContext:
         """Test _manage_ollama_context when truncation is not needed."""
         # Setup count_tokens to return a small number of tokens
         mock_count_tokens.return_value = OLLAMA_MAX_CONTEXT_TOKENS // 4  # Well under the limit
-        
+
         # Add some messages
         ollama_model.add_to_history({"role": "user", "content": "User message 1"})
         ollama_model.add_to_history({"role": "assistant", "content": "Assistant response 1"})
         initial_history_length = len(ollama_model.history)
-        
+
         # Call the manage context method
         ollama_model._manage_ollama_context()
-        
+
         # Assert that history was not modified since we're under the token limit
         assert len(ollama_model.history) == initial_history_length
 
     # TODO: Revisit this test. Truncation logic fails unexpectedly.
-    @pytest.mark.skip(reason="Mysterious failure: truncation doesn't reduce length despite mock forcing high token count. Revisit.")
+    @pytest.mark.skip(
+        reason="Mysterious failure: truncation doesn't reduce length despite mock forcing high token count. Revisit."
+    )
     @patch("src.cli_code.utils.count_tokens")
     def test_manage_ollama_context_truncation_needed(self, mock_count_tokens, ollama_model):
         """Test _manage_ollama_context when truncation is needed (mocking token count correctly)."""
@@ -115,7 +119,7 @@ class TestOllamaModelContext:
         # Set a value per message that ensures the total will exceed the limit.
         # Example: Limit is 8000. We add 201 user/assistant messages.
         # If each is > 8000/201 (~40) tokens, truncation will occur.
-        tokens_per_message = 100 # Set this > (OLLAMA_MAX_CONTEXT_TOKENS / num_messages_in_history)
+        tokens_per_message = 100  # Set this > (OLLAMA_MAX_CONTEXT_TOKENS / num_messages_in_history)
         mock_count_tokens.return_value = tokens_per_message
 
         # Initial history should be just the system message
@@ -123,7 +127,7 @@ class TestOllamaModelContext:
         assert len(ollama_model.history) == 1
 
         # Add many messages
-        num_messages_to_add = 100 # Keep this number
+        num_messages_to_add = 100  # Keep this number
         for i in range(num_messages_to_add):
             ollama_model.history.append({"role": "user", "content": f"User message {i}"})
             ollama_model.history.append({"role": "assistant", "content": f"Assistant response {i}"})
@@ -135,7 +139,7 @@ class TestOllamaModelContext:
 
         # Verify initial length
         initial_history_length = 1 + (2 * num_messages_to_add) + 1
-        assert len(ollama_model.history) == initial_history_length # Should be 202
+        assert len(ollama_model.history) == initial_history_length  # Should be 202
 
         # Call the function that should truncate history
         # It will use mock_count_tokens.return_value (100) for all internal calls
@@ -143,7 +147,9 @@ class TestOllamaModelContext:
 
         # After truncation, verify the history was actually truncated
         final_length = len(ollama_model.history)
-        assert final_length < initial_history_length, f"Expected fewer than {initial_history_length} messages, got {final_length}"
+        assert final_length < initial_history_length, (
+            f"Expected fewer than {initial_history_length} messages, got {final_length}"
+        )
 
         # Verify system message is still at position 0
         assert ollama_model.history[0]["role"] == "system"
@@ -158,32 +164,32 @@ class TestOllamaModelContext:
         """Test _manage_ollama_context preserves recent messages."""
         # Set up token count to exceed the limit to trigger truncation
         mock_count_tokens.side_effect = lambda text: OLLAMA_MAX_CONTEXT_TOKENS * 2  # Double the limit
-        
+
         # Add a system message first
         system_message = {"role": "system", "content": "System instruction"}
         ollama_model.history = [system_message]
-        
+
         # Add multiple messages to the history
         for i in range(20):
             ollama_model.add_to_history({"role": "user", "content": f"User message {i}"})
             ollama_model.add_to_history({"role": "assistant", "content": f"Assistant response {i}"})
-        
+
         # Mark some recent messages to verify they're preserved
         recent_messages = [
             {"role": "user", "content": "Important recent user message"},
-            {"role": "assistant", "content": "Important recent assistant response"}
+            {"role": "assistant", "content": "Important recent assistant response"},
         ]
-        
+
         for msg in recent_messages:
             ollama_model.add_to_history(msg)
-            
+
         # Call the function that should truncate history
         ollama_model._manage_ollama_context()
-        
+
         # Verify system message is preserved
         assert ollama_model.history[0]["role"] == "system"
         assert ollama_model.history[0]["content"] == "System instruction"
-        
+
         # Verify the most recent messages are preserved at the end of history
         assert ollama_model.history[-2:] == recent_messages
 
@@ -194,7 +200,7 @@ class TestOllamaModelContext:
         rules_dir.mkdir()
         (rules_dir / "context.md").write_text("# Context Rule\nRule one content.")
         (rules_dir / "tools.md").write_text("# Tools Rule\nRule two content.")
-        (rules_dir / "other.txt").write_text("Ignore this file.") # Non-md file
+        (rules_dir / "other.txt").write_text("Ignore this file.")  # Non-md file
 
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -262,14 +268,14 @@ class TestOllamaModelContext:
         """Test that tools are prepared for the OpenAI API format."""
         # Rather than mocking a specific method, just check that the result is well-formed
         # This relies on the actual implementation, not a mock of _prepare_openai_tools
-        
+
         # The method should return a list of dictionaries with function definitions
         tools = ollama_model._prepare_openai_tools()
-        
+
         # Basic validation that we get a list of tool definitions
         assert isinstance(tools, list)
         if tools:  # If there are any tools
             assert isinstance(tools[0], dict)
             assert "type" in tools[0]
             assert tools[0]["type"] == "function"
-            assert "function" in tools[0] 
+            assert "function" in tools[0]

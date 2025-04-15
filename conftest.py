@@ -8,9 +8,11 @@ import os
 # Only import pytest if the module is available
 try:
     import pytest
+
     PYTEST_AVAILABLE = True
 except ImportError:
     PYTEST_AVAILABLE = False
+
 
 def pytest_ignore_collect(path, config):
     """Ignore tests containing '_comprehensive' in their path when CI=true."""
@@ -18,4 +20,4 @@ def pytest_ignore_collect(path, config):
     #     print(f"Ignoring comprehensive test in CI: {path}")
     #     return True
     # return False
-    pass # Keep the function valid syntax, but effectively do nothing.
+    pass  # Keep the function valid syntax, but effectively do nothing.

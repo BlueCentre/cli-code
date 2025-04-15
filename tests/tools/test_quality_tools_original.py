@@ -1,14 +1,16 @@
 """
 Tests for code quality tools.
 """
+
 import os
 import subprocess
+from unittest.mock import ANY, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, ANY
 
 # Direct import for coverage tracking
 import src.cli_code.tools.quality_tools
-from src.cli_code.tools.quality_tools import _run_quality_command, LinterCheckerTool, FormatterTool
+from src.cli_code.tools.quality_tools import FormatterTool, LinterCheckerTool, _run_quality_command
 
 
 class TestRunQualityCommand:
@@ -23,21 +25,15 @@ class TestRunQualityCommand:
         mock_process.stdout = "Successful output"
         mock_process.stderr = ""
         mock_run.return_value = mock_process
-        
+
         # Execute function
         result = _run_quality_command(["test", "command"], "TestTool")
-        
+
         # Verify results
         assert "TestTool Result (Exit Code: 0)" in result
         assert "Successful output" in result
         assert "-- Errors --" not in result
-        mock_run.assert_called_once_with(
-            ["test", "command"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=120
-        )
+        mock_run.assert_called_once_with(["test", "command"], capture_output=True, text=True, check=False, timeout=120)
 
     @patch("subprocess.run")
     def test_run_quality_command_with_errors(self, mock_run):
@@ -48,10 +44,10 @@ class TestRunQualityCommand:
         mock_process.stdout = "Output"
         mock_process.stderr = "Error message"
         mock_run.return_value = mock_process
-        
+
         # Execute function
         result = _run_quality_command(["test", "command"], "TestTool")
-        
+
         # Verify results
         assert "TestTool Result (Exit Code: 1)" in result
         assert "Output" in result
@@ -67,10 +63,10 @@ class TestRunQualityCommand:
         mock_process.stdout = ""
         mock_process.stderr = ""
         mock_run.return_value = mock_process
-        
+
         # Execute function
         result = _run_quality_command(["test", "command"], "TestTool")
-        
+
         # Verify results
         assert "TestTool Result (Exit Code: 0)" in result
         assert "(No output)" in result
@@ -84,10 +80,10 @@ class TestRunQualityCommand:
         mock_process.stdout = "A" * 3000  # More than the 2000 character limit
         mock_process.stderr = ""
         mock_run.return_value = mock_process
-        
+
         # Execute function
         result = _run_quality_command(["test", "command"], "TestTool")
-        
+
         # Verify results
         assert "... (output truncated)" in result
         assert len(result) < 3000
@@ -98,7 +94,7 @@ class TestRunQualityCommand:
         with patch("subprocess.run", side_effect=FileNotFoundError("No such file or directory: 'nonexistent'")):
             # Execute function
             result = _run_quality_command(["nonexistent"], "TestTool")
-            
+
             # Verify results
             assert "Error: Command 'nonexistent' not found" in result
             assert "Is 'nonexistent' installed and in PATH?" in result
@@ -109,7 +105,7 @@ class TestRunQualityCommand:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="slow_command", timeout=120)):
             # Execute function
             result = _run_quality_command(["slow_command"], "TestTool")
-            
+
             # Verify results
             assert "Error: TestTool run timed out" in result
 
@@ -119,7 +115,7 @@ class TestRunQualityCommand:
         with patch("subprocess.run", side_effect=Exception("Unexpected error")):
             # Execute function
             result = _run_quality_command(["command"], "TestTool")
-            
+
             # Verify results
             assert "Error running TestTool" in result
             assert "Unexpected error" in result
@@ -150,8 +146,11 @@ class TestLinterCheckerTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            ["ruff", "check", os.path.abspath(".")], # Use absolute path
-            capture_output=True, text=True, check=False, timeout=ANY
+            ["ruff", "check", os.path.abspath(".")],  # Use absolute path
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Mocked Linter output - Defaults" in result, f"Expected output not in result: {result}"
 
@@ -172,8 +171,11 @@ class TestLinterCheckerTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            ["ruff", "check", os.path.abspath(custom_path)], # Use absolute path
-            capture_output=True, text=True, check=False, timeout=ANY
+            ["ruff", "check", os.path.abspath(custom_path)],  # Use absolute path
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Linter output for src" in result
 
@@ -194,8 +196,11 @@ class TestLinterCheckerTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            ["flake8", os.path.abspath(".")], # Use absolute path
-             capture_output=True, text=True, check=False, timeout=ANY
+            ["flake8", os.path.abspath(".")],  # Use absolute path
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Linter output - Custom Command" in result
 
@@ -215,10 +220,9 @@ class TestLinterCheckerTool:
         result = tool.execute(linter_command=complex_linter_command)
 
         # Verify results
-        expected_cmd_list = ["flake8", "--max-line-length=100", os.path.abspath(".")] # Use absolute path
+        expected_cmd_list = ["flake8", "--max-line-length=100", os.path.abspath(".")]  # Use absolute path
         mock_subprocess_run.assert_called_once_with(
-            expected_cmd_list,
-            capture_output=True, text=True, check=False, timeout=ANY
+            expected_cmd_list, capture_output=True, text=True, check=False, timeout=ANY
         )
         assert "Linter output - Complex Command" in result
 
@@ -231,8 +235,11 @@ class TestLinterCheckerTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            ["ruff", "check", os.path.abspath(".")], # Use absolute path
-            capture_output=True, text=True, check=False, timeout=ANY
+            ["ruff", "check", os.path.abspath(".")],  # Use absolute path
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Error: Command 'ruff' not found." in result
 
@@ -240,7 +247,7 @@ class TestLinterCheckerTool:
         """Test linter check with parent directory traversal."""
         tool = LinterCheckerTool()
         result = tool.execute(path="../dangerous")
-        
+
         # Verify results
         assert "Error: Invalid path" in result
         assert "Cannot access parent directories" in result
@@ -271,8 +278,11 @@ class TestFormatterTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            ["black", os.path.abspath(".")], # Use absolute path
-            capture_output=True, text=True, check=False, timeout=ANY
+            ["black", os.path.abspath(".")],  # Use absolute path
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Formatted code output - Defaults" in result
         assert "files were modified" in result
@@ -294,8 +304,11 @@ class TestFormatterTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            ["black", os.path.abspath(custom_path)], # Use absolute path
-            capture_output=True, text=True, check=False, timeout=ANY
+            ["black", os.path.abspath(custom_path)],  # Use absolute path
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Formatted code output - Custom Path" in result
 
@@ -316,8 +329,11 @@ class TestFormatterTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            [custom_formatter_command, os.path.abspath(".")], # Use absolute path, command directly
-            capture_output=True, text=True, check=False, timeout=ANY
+            [custom_formatter_command, os.path.abspath(".")],  # Use absolute path, command directly
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Formatted code output - Custom Command" in result
 
@@ -338,10 +354,9 @@ class TestFormatterTool:
         result = tool.execute(formatter_command=complex_formatter_command)
 
         # Verify results
-        expected_cmd_list = [formatter_base_command, "--line-length", "88", os.path.abspath(".")] # Use absolute path
+        expected_cmd_list = [formatter_base_command, "--line-length", "88", os.path.abspath(".")]  # Use absolute path
         mock_subprocess_run.assert_called_once_with(
-            expected_cmd_list,
-            capture_output=True, text=True, check=False, timeout=ANY
+            expected_cmd_list, capture_output=True, text=True, check=False, timeout=ANY
         )
         assert "Formatted code output - Complex Command" in result
 
@@ -354,8 +369,11 @@ class TestFormatterTool:
 
         # Verify results
         mock_subprocess_run.assert_called_once_with(
-            ["black", os.path.abspath(".")], # Use absolute path
-            capture_output=True, text=True, check=False, timeout=ANY
+            ["black", os.path.abspath(".")],  # Use absolute path
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ANY,
         )
         assert "Error: Command 'black' not found." in result
 
@@ -363,7 +381,7 @@ class TestFormatterTool:
         """Test formatter with parent directory traversal."""
         tool = FormatterTool()
         result = tool.execute(path="../dangerous")
-        
+
         # Verify results
         assert "Error: Invalid path" in result
-        assert "Cannot access parent directories" in result 
+        assert "Cannot access parent directories" in result

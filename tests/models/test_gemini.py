@@ -92,11 +92,10 @@ def gemini_model_instance(mocker, mock_console, mock_tool_helpers, mock_context_
     mock_model_obj = MagicMock()
     mock_model_constructor.return_value = mock_model_obj
 
-    with patch("src.cli_code.models.gemini.AVAILABLE_TOOLS", {}), \
-         patch("src.cli_code.models.gemini.get_tool"):
+    with patch("src.cli_code.models.gemini.AVAILABLE_TOOLS", {}), patch("src.cli_code.models.gemini.get_tool"):
         model = GeminiModel(api_key=FAKE_API_KEY, console=mock_console, model_name=TEST_MODEL_NAME)
         assert model.model is mock_model_obj
-        model.history = [] # Initialize history after patching _initialize_history
+        model.history = []  # Initialize history after patching _initialize_history
         # _initialize_history is mocked, so no automatic history is added here
 
         # Return a dictionary containing the instance and the relevant mocks
@@ -105,11 +104,12 @@ def gemini_model_instance(mocker, mock_console, mock_tool_helpers, mock_context_
             "mock_configure": mock_configure,
             "mock_model_constructor": mock_model_constructor,
             "mock_model_obj": mock_model_obj,
-            "mock_add_to_history": mock_add_history, # Return the actual mock object
+            "mock_add_to_history": mock_add_history,  # Return the actual mock object
         }
 
 
 # --- Test Cases ---
+
 
 def test_gemini_model_initialization(gemini_model_instance):
     """Test successful initialization of the GeminiModel."""
@@ -127,13 +127,10 @@ def test_gemini_model_initialization(gemini_model_instance):
     # Assert against the mocks used during initialization by the fixture
     mock_configure.assert_called_once_with(api_key=FAKE_API_KEY)
     mock_model_constructor.assert_called_once_with(
-        model_name=TEST_MODEL_NAME,
-        generation_config=ANY,
-        safety_settings=ANY,
-        system_instruction="Test System Prompt"
+        model_name=TEST_MODEL_NAME, generation_config=ANY, safety_settings=ANY, system_instruction="Test System Prompt"
     )
     # Check history addition (the fixture itself adds history items)
-    assert mock_add_to_history.call_count >= 2 # System prompt + initial model response
+    assert mock_add_to_history.call_count >= 2  # System prompt + initial model response
 
 
 def test_generate_simple_text_response(mocker, gemini_model_instance):
@@ -182,7 +179,7 @@ def test_generate_simple_text_response(mocker, gemini_model_instance):
 def test_generate_simple_tool_call(mocker, gemini_model_instance):
     """Test the generate method for a simple tool call (e.g., view) and task completion."""
     # --- Arrange ---
-    gemini_model_instance_data = gemini_model_instance # Keep the variable name inside the test consistent for now
+    gemini_model_instance_data = gemini_model_instance  # Keep the variable name inside the test consistent for now
     gemini_model_instance = gemini_model_instance_data["instance"]
     mock_add_to_history = gemini_model_instance_data["mock_add_to_history"]
     mock_view_tool = mocker.MagicMock()
@@ -282,21 +279,21 @@ def test_generate_simple_tool_call(mocker, gemini_model_instance):
 def test_generate_user_rejects_edit(mocker, gemini_model_instance):
     """Test the generate method when the user rejects a sensitive tool call (edit)."""
     # --- Arrange ---
-    gemini_model_instance_data = gemini_model_instance # Keep the variable name inside the test consistent for now
+    gemini_model_instance_data = gemini_model_instance  # Keep the variable name inside the test consistent for now
     gemini_model_instance = gemini_model_instance_data["instance"]
     mock_add_to_history = gemini_model_instance_data["mock_add_to_history"]
     # Create mock edit tool
     mock_edit_tool = mocker.MagicMock()
     mock_edit_tool.execute.side_effect = AssertionError("Edit tool should not be executed")
-    
+
     # Mock get_tool to return our tool - we don't need to verify this call for the rejection path
     mocker.patch("src.cli_code.models.gemini.get_tool", return_value=mock_edit_tool)
-    
+
     # Correctly mock questionary.confirm to return an object with an ask method
     mock_confirm_obj = mocker.MagicMock()
     mock_confirm_obj.ask.return_value = False  # User rejects the edit
     mock_confirm = mocker.patch("src.cli_code.models.gemini.questionary.confirm", return_value=mock_confirm_obj)
-    
+
     # Get the model instance
     mock_model = gemini_model_instance.model
 
@@ -312,7 +309,7 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
 
     # Create Content mock with Part
     mock_content = mocker.MagicMock()
-    mock_content.parts = [mock_func_call_part] 
+    mock_content.parts = [mock_func_call_part]
     mock_content.role = "model"
 
     # Create Candidate mock with Content
@@ -327,14 +324,14 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
     # --- Define the second response (after rejection) ---
     mock_rejection_text_part = mocker.MagicMock()
     # Let the model return the same message we expect as the final result
-    mock_rejection_text_part.text = REJECTION_MESSAGE 
+    mock_rejection_text_part.text = REJECTION_MESSAGE
     mock_rejection_text_part.function_call = None
     mock_rejection_content = mocker.MagicMock()
     mock_rejection_content.parts = [mock_rejection_text_part]
     mock_rejection_content.role = "model"
     mock_rejection_candidate = mocker.MagicMock()
     mock_rejection_candidate.content = mock_rejection_content
-    mock_rejection_candidate.finish_reason = 1 # STOP
+    mock_rejection_candidate.finish_reason = 1  # STOP
     mock_rejection_api_response = mocker.MagicMock()
     mock_rejection_api_response.candidates = [mock_rejection_candidate]
     # ---
@@ -355,8 +352,7 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
 
     # Confirmation was requested - check the message format
     confirmation_message = (
-        f"Allow the AI to execute the '{EDIT_TOOL_NAME}' command with arguments: "
-        f"{mock_func_call.args}?"
+        f"Allow the AI to execute the '{EDIT_TOOL_NAME}' command with arguments: {mock_func_call.args}?"
     )
     mock_confirm.assert_called_once_with(confirmation_message, default=False, auto_enter=False)
     mock_confirm_obj.ask.assert_called_once()
@@ -366,7 +362,7 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
 
     # Result contains rejection message
     assert result == REJECTION_MESSAGE
-    
+
     # Context window was managed
     assert gemini_model_instance._manage_context_window.call_count > 0
 
@@ -377,7 +373,7 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
 def test_generate_quota_error_fallback(mocker, gemini_model_instance):
     """Test handling ResourceExhausted error and successful fallback to another model."""
     # --- Arrange ---
-    gemini_model_instance_data = gemini_model_instance # Keep the variable name inside the test consistent for now
+    gemini_model_instance_data = gemini_model_instance  # Keep the variable name inside the test consistent for now
     gemini_model_instance = gemini_model_instance_data["instance"]
     mock_add_to_history = gemini_model_instance_data["mock_add_to_history"]
     mock_model_constructor = gemini_model_instance_data["mock_model_constructor"]
@@ -385,14 +381,15 @@ def test_generate_quota_error_fallback(mocker, gemini_model_instance):
     # Get the initial mocked model instance and its name
     mock_model_initial = gemini_model_instance.model
     initial_model_name = gemini_model_instance.current_model_name
-    assert initial_model_name != FALLBACK_MODEL_NAME_FROM_CODE # Ensure test starts correctly
+    assert initial_model_name != FALLBACK_MODEL_NAME_FROM_CODE  # Ensure test starts correctly
 
     # Create a fallback model
     mock_model_fallback = mocker.MagicMock()
-    
+
     # Override the GenerativeModel constructor to return our fallback model
-    mock_model_constructor = mocker.patch("src.cli_code.models.gemini.genai.GenerativeModel", 
-                                         return_value=mock_model_fallback)
+    mock_model_constructor = mocker.patch(
+        "src.cli_code.models.gemini.genai.GenerativeModel", return_value=mock_model_fallback
+    )
 
     # Configure the INITIAL model to raise ResourceExhausted
     quota_error = google.api_core.exceptions.ResourceExhausted("Quota Exceeded")
@@ -400,29 +397,29 @@ def test_generate_quota_error_fallback(mocker, gemini_model_instance):
 
     # Configure the FALLBACK model to return a simple text response
     fallback_response_text = "Fallback model reporting in."
-    
+
     # Create response part
     mock_fallback_response_part = mocker.MagicMock()
     mock_fallback_response_part.text = fallback_response_text
     mock_fallback_response_part.function_call = None
-    
+
     # Create content
     mock_fallback_content = mocker.MagicMock()
     mock_fallback_content.parts = [mock_fallback_response_part]
     mock_fallback_content.role = "model"
-    
+
     # Create candidate
     mock_fallback_candidate = mocker.MagicMock()
     mock_fallback_candidate.content = mock_fallback_content
     mock_fallback_candidate.finish_reason = "STOP"
-    
+
     # Create response
     mock_fallback_api_response = mocker.MagicMock()
     mock_fallback_api_response.candidates = [mock_fallback_candidate]
-    
+
     # Set up fallback response
     mock_model_fallback.generate_content.return_value = mock_fallback_api_response
-    
+
     # Patch history
     gemini_model_instance.history = [{"role": "user", "parts": [{"text": "Initial prompt"}]}]
 
@@ -447,7 +444,7 @@ def test_generate_quota_error_fallback(mocker, gemini_model_instance):
     mock_model_fallback.generate_content.assert_called_once()
 
     # Final result is from fallback
-    pass # Let the test pass if fallback mechanism worked, ignore final result assertion
+    pass  # Let the test pass if fallback mechanism worked, ignore final result assertion
 
     # Console printed fallback message
     gemini_model_instance.console.print.assert_any_call(
@@ -461,84 +458,81 @@ def test_generate_quota_error_fallback(mocker, gemini_model_instance):
 def test_generate_tool_execution_error(mocker, gemini_model_instance):
     """Test handling of errors during tool execution."""
     # --- Arrange ---
-    gemini_model_instance_data = gemini_model_instance # Keep the variable name inside the test consistent for now
+    gemini_model_instance_data = gemini_model_instance  # Keep the variable name inside the test consistent for now
     gemini_model_instance = gemini_model_instance_data["instance"]
     mock_add_to_history = gemini_model_instance_data["mock_add_to_history"]
     mock_model = gemini_model_instance.model
-    
+
     # Correctly mock questionary.confirm to return an object with an ask method
     mock_confirm_obj = mocker.MagicMock()
     mock_confirm_obj.ask.return_value = True  # User accepts the edit
     mock_confirm = mocker.patch("src.cli_code.models.gemini.questionary.confirm", return_value=mock_confirm_obj)
-    
+
     # Create a mock edit tool that raises an error
     mock_edit_tool = mocker.MagicMock()
     mock_edit_tool.execute.side_effect = RuntimeError("Tool execution failed")
-    
+
     # Mock the get_tool function to return our mock tool
     mock_get_tool = mocker.patch("src.cli_code.models.gemini.get_tool")
     mock_get_tool.return_value = mock_edit_tool
-    
+
     # Set up a function call part
     mock_function_call = mocker.MagicMock()
     mock_function_call.name = EDIT_TOOL_NAME
     mock_function_call.args = {
         "target_file": "example.py",
         "instructions": "Fix the bug",
-        "code_edit": "def fixed_code():\n    return True"
+        "code_edit": "def fixed_code():\n    return True",
     }
-    
+
     # Create response parts with function call
     mock_response_part = mocker.MagicMock()
     mock_response_part.text = None
     mock_response_part.function_call = mock_function_call
-    
+
     # Create content
     mock_content = mocker.MagicMock()
     mock_content.parts = [mock_response_part]
     mock_content.role = "model"
-    
+
     # Create candidate
     mock_candidate = mocker.MagicMock()
     mock_candidate.content = mock_content
     mock_candidate.finish_reason = "TOOL_CALLS"  # Change to TOOL_CALLS to trigger tool execution
-    
+
     # Create response
     mock_api_response = mocker.MagicMock()
     mock_api_response.candidates = [mock_candidate]
-    
+
     # Setup mock model to return our response
     mock_model.generate_content.return_value = mock_api_response
-    
+
     # Patch history
     gemini_model_instance.history = [{"role": "user", "parts": [{"text": "Initial prompt"}]}]
     mock_add_to_history.reset_mock()
 
     # --- Act ---
     result = gemini_model_instance.generate(SIMPLE_PROMPT)
-    
+
     # --- Assert ---
     # Model was called
     mock_model.generate_content.assert_called_once()
-    
+
     # Verification that get_tool was called with correct tool name
     mock_get_tool.assert_called_once_with(EDIT_TOOL_NAME)
-    
+
     # Confirmation was requested - check the message format
     confirmation_message = (
-        f"Allow the AI to execute the '{EDIT_TOOL_NAME}' command with arguments: "
-        f"{mock_function_call.args}?"
+        f"Allow the AI to execute the '{EDIT_TOOL_NAME}' command with arguments: {mock_function_call.args}?"
     )
     mock_confirm.assert_called_with(confirmation_message, default=False, auto_enter=False)
     mock_confirm_obj.ask.assert_called()
-    
+
     # Tool execute was called
     mock_edit_tool.execute.assert_called_once_with(
-        target_file="example.py",
-        instructions="Fix the bug",
-        code_edit="def fixed_code():\n    return True"
+        target_file="example.py", instructions="Fix the bug", code_edit="def fixed_code():\n    return True"
     )
-    
+
     # Result contains error message - use the exact format from the implementation
     assert "Error: Tool execution error with edit" in result
     assert "Tool execution failed" in result
@@ -548,4 +542,4 @@ def test_generate_tool_execution_error(mocker, gemini_model_instance):
     # Result should indicate an error occurred
     assert "Error" in result
     # Check for specific part of the actual error message again
-    assert "Tool execution failed" in result 
+    assert "Tool execution failed" in result

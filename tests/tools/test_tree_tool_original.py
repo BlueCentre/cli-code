@@ -1,16 +1,18 @@
 """
 Tests for the tree tool module.
 """
+
 import os
 import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
 
 # Direct import for coverage tracking
 import src.cli_code.tools.tree_tool
-from src.cli_code.tools.tree_tool import TreeTool, DEFAULT_TREE_DEPTH, MAX_TREE_DEPTH
+from src.cli_code.tools.tree_tool import DEFAULT_TREE_DEPTH, MAX_TREE_DEPTH, TreeTool
 
 
 class TestTreeTool:
@@ -33,11 +35,11 @@ class TestTreeTool:
         mock_process.returncode = 0
         mock_process.stdout = ".\n├── file1.txt\n└── dir1\n    └── file2.txt"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute()
-        
+
         # Verify results
         assert "file1.txt" in result
         assert "dir1" in result
@@ -56,11 +58,11 @@ class TestTreeTool:
         mock_process.returncode = 0
         mock_process.stdout = "test_dir\n├── file1.txt\n└── file2.txt"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute(path="test_dir")
-        
+
         # Verify results
         assert "test_dir" in result
         mock_run.assert_called_once()
@@ -75,11 +77,11 @@ class TestTreeTool:
         mock_process.returncode = 0
         mock_process.stdout = ".\n├── file1.txt\n└── dir1"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute(depth=2)
-        
+
         # Verify results
         assert "file1.txt" in result
         mock_run.assert_called_once()
@@ -94,11 +96,11 @@ class TestTreeTool:
         mock_process.returncode = 0
         mock_process.stdout = ".\n├── file1.txt\n└── dir1"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute(depth="2")  # String instead of int
-        
+
         # Verify results
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
@@ -112,11 +114,11 @@ class TestTreeTool:
         mock_process.returncode = 0
         mock_process.stdout = ".\n├── file1.txt\n└── dir1"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute(depth="invalid")  # Invalid depth string
-        
+
         # Verify results
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
@@ -130,11 +132,11 @@ class TestTreeTool:
         mock_process.returncode = 0
         mock_process.stdout = ".\n├── file1.txt\n└── dir1"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute(depth=MAX_TREE_DEPTH + 5)  # Too large
-        
+
         # Verify results
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
@@ -148,11 +150,11 @@ class TestTreeTool:
         mock_process.returncode = 0
         mock_process.stdout = ".\n├── file1.txt\n└── dir1"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute(depth=0)  # Too small
-        
+
         # Verify results
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
@@ -167,11 +169,11 @@ class TestTreeTool:
         # Create an output with 201 lines (more than the 200 line limit)
         mock_process.stdout = "\n".join([f"line{i}" for i in range(201)])
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute()
-        
+
         # Verify results
         assert "... (output truncated)" in result
         # Result should have only 200 lines + truncation message
@@ -189,15 +191,15 @@ class TestTreeTool:
         mock_process.returncode = 127  # Command not found
         mock_process.stderr = "tree: command not found"
         mock_run.return_value = mock_process
-        
+
         # Mock the fallback implementation
-        with patch.object(TreeTool, '_fallback_tree_implementation') as mock_fallback:
+        with patch.object(TreeTool, "_fallback_tree_implementation") as mock_fallback:
             mock_fallback.return_value = "Fallback tree output"
-            
+
             # Execute tool
             tool = TreeTool()
             result = tool.execute()
-            
+
             # Verify results
             assert result == "Fallback tree output"
             mock_fallback.assert_called_once_with(".", DEFAULT_TREE_DEPTH)
@@ -210,15 +212,15 @@ class TestTreeTool:
         mock_process.returncode = 1  # Error
         mock_process.stderr = "Some error"
         mock_run.return_value = mock_process
-        
+
         # Mock the fallback implementation
-        with patch.object(TreeTool, '_fallback_tree_implementation') as mock_fallback:
+        with patch.object(TreeTool, "_fallback_tree_implementation") as mock_fallback:
             mock_fallback.return_value = "Fallback tree output"
-            
+
             # Execute tool
             tool = TreeTool()
             result = tool.execute()
-            
+
             # Verify results
             assert result == "Fallback tree output"
             mock_fallback.assert_called_once_with(".", DEFAULT_TREE_DEPTH)
@@ -228,15 +230,15 @@ class TestTreeTool:
         """Test when the 'tree' command itself isn't found."""
         # Setup mock
         mock_run.side_effect = FileNotFoundError("No such file or directory: 'tree'")
-        
+
         # Mock the fallback implementation
-        with patch.object(TreeTool, '_fallback_tree_implementation') as mock_fallback:
+        with patch.object(TreeTool, "_fallback_tree_implementation") as mock_fallback:
             mock_fallback.return_value = "Fallback tree output"
-            
+
             # Execute tool
             tool = TreeTool()
             result = tool.execute()
-            
+
             # Verify results
             assert result == "Fallback tree output"
             mock_fallback.assert_called_once_with(".", DEFAULT_TREE_DEPTH)
@@ -246,11 +248,11 @@ class TestTreeTool:
         """Test tree command timeout."""
         # Setup mock
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="tree", timeout=15)
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute()
-        
+
         # Verify results
         assert "Error: Tree command timed out" in result
         assert "too large or complex" in result
@@ -260,15 +262,15 @@ class TestTreeTool:
         """Test unexpected error with successful fallback."""
         # Setup mock
         mock_run.side_effect = Exception("Unexpected error")
-        
+
         # Mock the fallback implementation
-        with patch.object(TreeTool, '_fallback_tree_implementation') as mock_fallback:
+        with patch.object(TreeTool, "_fallback_tree_implementation") as mock_fallback:
             mock_fallback.return_value = "Fallback tree output"
-            
+
             # Execute tool
             tool = TreeTool()
             result = tool.execute()
-            
+
             # Verify results
             assert result == "Fallback tree output"
             mock_fallback.assert_called_once_with(".", DEFAULT_TREE_DEPTH)
@@ -278,15 +280,15 @@ class TestTreeTool:
         """Test unexpected error with failed fallback."""
         # Setup mock
         mock_run.side_effect = Exception("Unexpected error")
-        
+
         # Mock the fallback implementation
-        with patch.object(TreeTool, '_fallback_tree_implementation') as mock_fallback:
+        with patch.object(TreeTool, "_fallback_tree_implementation") as mock_fallback:
             mock_fallback.side_effect = Exception("Fallback error")
-            
+
             # Execute tool
             tool = TreeTool()
             result = tool.execute()
-            
+
             # Verify results
             assert "An unexpected error occurred" in result
             assert "Unexpected error" in result
@@ -305,13 +307,13 @@ class TestTreeTool:
         mock_walk.return_value = [
             ("test_dir", ["dir1", "dir2"], ["file1.txt"]),
             ("test_dir/dir1", [], ["file2.txt"]),
-            ("test_dir/dir2", [], ["file3.txt"])
+            ("test_dir/dir2", [], ["file3.txt"]),
         ]
-        
+
         # Execute fallback
         tool = TreeTool()
         result = tool._fallback_tree_implementation("test_dir")
-        
+
         # Verify results
         assert "." in result  # Root directory
         assert "dir1" in result  # Subdirectories
@@ -327,11 +329,11 @@ class TestTreeTool:
         # Setup mocks
         mock_resolve.return_value = Path("nonexistent")
         mock_exists.return_value = False
-        
+
         # Execute fallback
         tool = TreeTool()
         result = tool._fallback_tree_implementation("nonexistent")
-        
+
         # Verify results
         assert "Error: Path 'nonexistent' does not exist" in result
 
@@ -344,11 +346,11 @@ class TestTreeTool:
         mock_resolve.return_value = Path("file.txt")
         mock_exists.return_value = True
         mock_is_dir.return_value = False
-        
+
         # Execute fallback
         tool = TreeTool()
         result = tool._fallback_tree_implementation("file.txt")
-        
+
         # Verify results
         assert "Error: Path 'file.txt' is not a directory" in result
 
@@ -362,15 +364,15 @@ class TestTreeTool:
         mock_resolve.return_value = Path("test_dir")
         mock_exists.return_value = True
         mock_is_dir.return_value = True
-        
+
         # Create a directory structure with more than 200 files
         dirs = [("test_dir", [], [f"file{i}.txt" for i in range(201)])]
         mock_walk.return_value = dirs
-        
+
         # Execute fallback
         tool = TreeTool()
         result = tool._fallback_tree_implementation("test_dir")
-        
+
         # Verify results
         assert "... (output truncated)" in result
         assert len(result.splitlines()) <= 201  # 200 lines + truncation message
@@ -386,11 +388,11 @@ class TestTreeTool:
         mock_exists.return_value = True
         mock_is_dir.return_value = True
         mock_walk.side_effect = Exception("Unexpected error")
-        
+
         # Execute fallback
         tool = TreeTool()
         result = tool._fallback_tree_implementation("test_dir")
-        
+
         # Verify results
         assert "Error generating directory tree" in result
-        assert "Unexpected error" in result 
+        assert "Unexpected error" in result

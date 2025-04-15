@@ -1,14 +1,16 @@
 """
 Tests for the summarizer tool module.
 """
+
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 # Direct import for coverage tracking
 import src.cli_code.tools.summarizer_tool
-from src.cli_code.tools.summarizer_tool import SummarizeCodeTool, MAX_LINES_FOR_FULL_CONTENT, MAX_CHARS_FOR_FULL_CONTENT
+from src.cli_code.tools.summarizer_tool import MAX_CHARS_FOR_FULL_CONTENT, MAX_LINES_FOR_FULL_CONTENT, SummarizeCodeTool
+
 
 # Mock classes for google.generativeai
 class MockCandidate:
@@ -18,9 +20,11 @@ class MockCandidate:
         self.finish_reason = MagicMock()
         self.finish_reason.name = finish_reason
 
+
 class MockResponse:
     def __init__(self, text=None, finish_reason="STOP"):
         self.candidates = [MockCandidate(text, finish_reason)] if text is not None else []
+
 
 class TestSummarizeCodeTool(unittest.TestCase):
     """Tests for the SummarizeCodeTool class."""
@@ -52,10 +56,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
         mock_exists.return_value = True
         mock_isfile.return_value = True
         mock_getsize.return_value = 100  # Small file
-        
+
         # Execute with a test file path
         result = self.tool.execute(file_path="test_file.py")
-        
+
         # Verify results
         self.assertIn("Full Content of test_file.py", result)
         self.assertIn("Small file content", result)
@@ -72,19 +76,19 @@ class TestSummarizeCodeTool(unittest.TestCase):
         mock_exists.return_value = True
         mock_isfile.return_value = True
         mock_getsize.return_value = MAX_CHARS_FOR_FULL_CONTENT + 1000  # Large file
-        
+
         # Mock the file reading
         mock_file = MagicMock()
         mock_file.__enter__.return_value.read.return_value = "Large file content" * 1000
         mock_open.return_value = mock_file
-        
+
         # Mock the model response
         mock_response = MockResponse(text="This is a summary of the file")
         self.mock_model.generate_content.return_value = mock_response
-        
+
         # Execute with a test file path
         result = self.tool.execute(file_path="large_file.py")
-        
+
         # Verify results
         self.assertIn("Summary of large_file.py", result)
         self.assertIn("This is a summary of the file", result)
@@ -94,10 +98,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
     def test_file_not_found(self, mock_exists):
         """Test handling of a non-existent file."""
         mock_exists.return_value = False
-        
+
         # Execute with a non-existent file
         result = self.tool.execute(file_path="nonexistent.py")
-        
+
         # Verify results
         self.assertIn("Error: File not found", result)
         self.mock_model.generate_content.assert_not_called()
@@ -108,10 +112,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
         """Test handling of a path that is not a file."""
         mock_exists.return_value = True
         mock_isfile.return_value = False
-        
+
         # Execute with a directory path
         result = self.tool.execute(file_path="directory/")
-        
+
         # Verify results
         self.assertIn("Error: Path is not a file", result)
         self.mock_model.generate_content.assert_not_called()
@@ -120,7 +124,7 @@ class TestSummarizeCodeTool(unittest.TestCase):
         """Test protection against parent directory traversal."""
         # Execute with a path containing parent directory traversal
         result = self.tool.execute(file_path="../dangerous.py")
-        
+
         # Verify results
         self.assertIn("Error: Invalid file path", result)
         self.mock_model.generate_content.assert_not_called()
@@ -129,10 +133,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
         """Test execution when model is not provided."""
         # Create a tool without a model
         tool = SummarizeCodeTool()
-        
+
         # Execute without a model
         result = tool.execute(file_path="test.py")
-        
+
         # Verify results
         self.assertIn("Error: Summarization tool not properly configured", result)
 
@@ -146,15 +150,15 @@ class TestSummarizeCodeTool(unittest.TestCase):
         mock_exists.return_value = True
         mock_isfile.return_value = True
         mock_getsize.return_value = MAX_CHARS_FOR_FULL_CONTENT + 1000  # Large but empty file
-        
+
         # Mock the file reading to return empty content
         mock_file = MagicMock()
         mock_file.__enter__.return_value.read.return_value = ""
         mock_open.return_value = mock_file
-        
+
         # Execute with a test file path
         result = self.tool.execute(file_path="empty_file.py")
-        
+
         # Verify results
         self.assertIn("Summary of empty_file.py", result)
         self.assertIn("(File is empty)", result)
@@ -172,10 +176,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
         mock_isfile.return_value = True
         mock_getsize.return_value = 100  # Small file
         mock_open.side_effect = IOError("Error reading file")
-        
+
         # Execute with a test file path
         result = self.tool.execute(file_path="error_file.py")
-        
+
         # Verify results
         self.assertIn("Error reading file", result)
         self.mock_model.generate_content.assert_not_called()
@@ -190,18 +194,18 @@ class TestSummarizeCodeTool(unittest.TestCase):
         mock_exists.return_value = True
         mock_isfile.return_value = True
         mock_getsize.return_value = MAX_CHARS_FOR_FULL_CONTENT + 1000  # Large file
-        
+
         # Mock the file reading
         mock_file = MagicMock()
         mock_file.__enter__.return_value.read.return_value = "Large file content" * 1000
         mock_open.return_value = mock_file
-        
+
         # Mock the model to raise an exception
         self.mock_model.generate_content.side_effect = Exception("Summarization error")
-        
+
         # Execute with a test file path
         result = self.tool.execute(file_path="error_summarize.py")
-        
+
         # Verify results
         self.assertIn("Error generating summary", result)
         self.mock_model.generate_content.assert_called_once()
@@ -210,10 +214,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
         """Test successful text extraction from summary response."""
         # Create a mock response with text
         mock_response = MockResponse(text="Extracted summary text")
-        
+
         # Extract text
         result = self.tool._extract_text_from_summary_response(mock_response)
-        
+
         # Verify results
         self.assertEqual(result, "Extracted summary text")
 
@@ -222,10 +226,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
         # Create a mock response without candidates
         mock_response = MockResponse()
         mock_response.candidates = []
-        
+
         # Extract text
         result = self.tool._extract_text_from_summary_response(mock_response)
-        
+
         # Verify results
         self.assertEqual(result, "(Summarization failed: No candidates)")
 
@@ -233,10 +237,10 @@ class TestSummarizeCodeTool(unittest.TestCase):
         """Test text extraction when finish reason is not STOP."""
         # Create a mock response with a failed finish reason
         mock_response = MockResponse(text="Partial text", finish_reason="ERROR")
-        
+
         # Extract text
         result = self.tool._extract_text_from_summary_response(mock_response)
-        
+
         # Verify results
         self.assertEqual(result, "(Summarization failed: ERROR)")
 
@@ -244,19 +248,19 @@ class TestSummarizeCodeTool(unittest.TestCase):
         """Test handling of exceptions during text extraction."""
         # Create a test response with a structure that will cause an exception
         # when accessing candidates
-        
+
         # Create a response object that raises an exception when candidates is accessed
         class ExceptionRaisingResponse:
             @property
             def candidates(self):
                 raise Exception("Extraction error")
-        
+
         # Call the method directly
         result = self.tool._extract_text_from_summary_response(ExceptionRaisingResponse())
-        
+
         # Verify results
         self.assertEqual(result, "(Error extracting summary text)")
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

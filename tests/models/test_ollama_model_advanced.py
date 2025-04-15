@@ -3,19 +3,22 @@ Tests specifically for the OllamaModel class targeting advanced scenarios and ed
 to improve code coverage on complex methods like generate().
 """
 
-import os
 import json
+import os
 import sys
-from unittest.mock import patch, MagicMock, mock_open, call, ANY
+from unittest.mock import ANY, MagicMock, call, mock_open, patch
+
 import pytest
 
 # Check if running in CI
-IN_CI = os.environ.get('CI', 'false').lower() == 'true'
+IN_CI = os.environ.get("CI", "false").lower() == "true"
 
 # Handle imports
 try:
-    from cli_code.models.ollama import OllamaModel, MAX_OLLAMA_ITERATIONS
     from rich.console import Console
+
+    from cli_code.models.ollama import MAX_OLLAMA_ITERATIONS, OllamaModel
+
     IMPORTS_AVAILABLE = True
 except ImportError:
     IMPORTS_AVAILABLE = False
@@ -32,48 +35,49 @@ SKIP_REASON = "Required imports not available and not in CI"
 @pytest.mark.skipif(SHOULD_SKIP_TESTS, reason=SKIP_REASON)
 class TestOllamaModelAdvanced:
     """Test suite for OllamaModel class focusing on complex methods and edge cases."""
-    
+
     def setup_method(self):
         """Set up test fixtures."""
         # Mock OpenAI module
-        self.openai_patch = patch('cli_code.models.ollama.OpenAI')
+        self.openai_patch = patch("cli_code.models.ollama.OpenAI")
         self.mock_openai = self.openai_patch.start()
-        
+
         # Mock the OpenAI client instance
         self.mock_client = MagicMock()
         self.mock_openai.return_value = self.mock_client
-        
+
         # Mock console
         self.mock_console = MagicMock(spec=Console)
-        
+
         # Mock tool-related components
-        self.get_tool_patch = patch('cli_code.models.ollama.get_tool')
+        self.get_tool_patch = patch("cli_code.models.ollama.get_tool")
         self.mock_get_tool = self.get_tool_patch.start()
-        
+
         # Default tool mock
         self.mock_tool = MagicMock()
         self.mock_tool.execute.return_value = "Tool execution result"
         self.mock_get_tool.return_value = self.mock_tool
-        
+
         # Mock initial context method to avoid complexity
         self.get_initial_context_patch = patch.object(
-            OllamaModel, '_get_initial_context', return_value="Initial context")
+            OllamaModel, "_get_initial_context", return_value="Initial context"
+        )
         self.mock_get_initial_context = self.get_initial_context_patch.start()
-        
+
         # Set up mock for JSON loads
-        self.json_loads_patch = patch('json.loads')
+        self.json_loads_patch = patch("json.loads")
         self.mock_json_loads = self.json_loads_patch.start()
-        
+
         # Mock questionary for user confirmations
-        self.questionary_patch = patch('questionary.confirm')
+        self.questionary_patch = patch("questionary.confirm")
         self.mock_questionary = self.questionary_patch.start()
         self.mock_questionary_confirm = MagicMock()
         self.mock_questionary.return_value = self.mock_questionary_confirm
         self.mock_questionary_confirm.ask.return_value = True  # Default to confirmed
-        
+
         # Create model instance
         self.model = OllamaModel("http://localhost:11434", self.mock_console, "llama3")
-        
+
     def teardown_method(self):
         """Tear down test fixtures."""
         self.openai_patch.stop()
@@ -81,33 +85,33 @@ class TestOllamaModelAdvanced:
         self.get_initial_context_patch.stop()
         self.json_loads_patch.stop()
         self.questionary_patch.stop()
-    
+
     def test_generate_with_text_response(self):
         """Test generate method with a simple text response."""
         # Mock chat completions response with text
         mock_message = MagicMock()
         mock_message.content = "This is a simple text response."
         mock_message.tool_calls = None
-        
+
         mock_choice = MagicMock()
         mock_choice.message = mock_message
-        
+
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        
+
         self.mock_client.chat.completions.create.return_value = mock_response
-        
+
         # Call generate
         result = self.model.generate("Tell me something interesting")
-        
+
         # Verify API was called correctly
         self.mock_client.chat.completions.create.assert_called_once()
         call_kwargs = self.mock_client.chat.completions.create.call_args[1]
         assert call_kwargs["model"] == "llama3"
-        
+
         # Verify result
         assert result == "This is a simple text response."
-    
+
     def test_generate_with_tool_call(self):
         """Test generate method with a tool call response."""
         # Mock a tool call in the response
@@ -115,49 +119,52 @@ class TestOllamaModelAdvanced:
         mock_tool_call.id = "call123"
         mock_tool_call.function.name = "ls"
         mock_tool_call.function.arguments = '{"dir": "."}'
-        
+
         # Parse the arguments as expected
         self.mock_json_loads.return_value = {"dir": "."}
-        
+
         mock_message = MagicMock()
         mock_message.content = None
         mock_message.tool_calls = [mock_tool_call]
-        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [{"type": "function", "function": {"name": "ls", "arguments": '{"dir": "."}'}}]}
-        
+        mock_message.model_dump.return_value = {
+            "role": "assistant",
+            "tool_calls": [{"type": "function", "function": {"name": "ls", "arguments": '{"dir": "."}'}}],
+        }
+
         mock_choice = MagicMock()
         mock_choice.message = mock_message
-        
+
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        
+
         # Set up initial response
         self.mock_client.chat.completions.create.return_value = mock_response
-        
+
         # Create a second response for after tool execution
         mock_message2 = MagicMock()
         mock_message2.content = "Tool executed successfully."
         mock_message2.tool_calls = None
-        
+
         mock_choice2 = MagicMock()
         mock_choice2.message = mock_message2
-        
+
         mock_response2 = MagicMock()
         mock_response2.choices = [mock_choice2]
-        
+
         # Set up successive responses
         self.mock_client.chat.completions.create.side_effect = [mock_response, mock_response2]
-        
+
         # Call generate
         result = self.model.generate("List the files in this directory")
-        
+
         # Verify tool was called
         self.mock_get_tool.assert_called_with("ls")
         self.mock_tool.execute.assert_called_once()
-        
+
         assert result == "Tool executed successfully."
         # Example of a more specific assertion
         # assert "Tool executed successfully" in result and "ls" in result
-    
+
     def test_generate_with_task_complete_tool(self):
         """Test generate method with task_complete tool."""
         # Mock a task_complete tool call
@@ -165,29 +172,37 @@ class TestOllamaModelAdvanced:
         mock_tool_call.id = "call123"
         mock_tool_call.function.name = "task_complete"
         mock_tool_call.function.arguments = '{"summary": "Task completed successfully!"}'
-        
+
         # Parse the arguments as expected
         self.mock_json_loads.return_value = {"summary": "Task completed successfully!"}
-        
+
         mock_message = MagicMock()
         mock_message.content = None
         mock_message.tool_calls = [mock_tool_call]
-        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [{"type": "function", "function": {"name": "task_complete", "arguments": '{"summary": "Task completed successfully!"}'}}]}
-        
+        mock_message.model_dump.return_value = {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "function": {"name": "task_complete", "arguments": '{"summary": "Task completed successfully!"}'},
+                }
+            ],
+        }
+
         mock_choice = MagicMock()
         mock_choice.message = mock_message
-        
+
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        
+
         self.mock_client.chat.completions.create.return_value = mock_response
-        
+
         # Call generate
         result = self.model.generate("Complete this task")
-        
+
         # Verify result contains the summary
         assert result == "Task completed successfully!"
-    
+
     def test_generate_with_sensitive_tool_approved(self):
         """Test generate method with sensitive tool that requires approval."""
         # Mock a sensitive tool call (edit)
@@ -195,54 +210,62 @@ class TestOllamaModelAdvanced:
         mock_tool_call.id = "call123"
         mock_tool_call.function.name = "edit"
         mock_tool_call.function.arguments = '{"file_path": "file.txt", "content": "new content"}'
-        
+
         # Parse the arguments as expected
         self.mock_json_loads.return_value = {"file_path": "file.txt", "content": "new content"}
-        
+
         mock_message = MagicMock()
         mock_message.content = None
         mock_message.tool_calls = [mock_tool_call]
-        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [{"type": "function", "function": {"name": "edit", "arguments": '{"file_path": "file.txt", "content": "new content"}'}}]}
-        
+        mock_message.model_dump.return_value = {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "function": {"name": "edit", "arguments": '{"file_path": "file.txt", "content": "new content"}'},
+                }
+            ],
+        }
+
         mock_choice = MagicMock()
         mock_choice.message = mock_message
-        
+
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        
+
         # Set up confirmation to be approved
         self.mock_questionary_confirm.ask.return_value = True
-        
+
         # Set up initial response
         self.mock_client.chat.completions.create.return_value = mock_response
-        
+
         # Create a second response for after tool execution
         mock_message2 = MagicMock()
         mock_message2.content = "Edit completed."
         mock_message2.tool_calls = None
-        
+
         mock_choice2 = MagicMock()
         mock_choice2.message = mock_message2
-        
+
         mock_response2 = MagicMock()
         mock_response2.choices = [mock_choice2]
-        
+
         # Set up successive responses
         self.mock_client.chat.completions.create.side_effect = [mock_response, mock_response2]
-        
+
         # Call generate
         result = self.model.generate("Edit this file")
-        
+
         # Verify user was asked for confirmation
         self.mock_questionary_confirm.ask.assert_called_once()
-        
+
         # Verify tool was called after approval
         self.mock_get_tool.assert_called_with("edit")
         self.mock_tool.execute.assert_called_once()
-        
+
         # Verify result
         assert result == "Edit completed."
-    
+
     def test_generate_with_sensitive_tool_rejected(self):
         """Test generate method with sensitive tool that is rejected."""
         # Mock a sensitive tool call (edit)
@@ -250,53 +273,61 @@ class TestOllamaModelAdvanced:
         mock_tool_call.id = "call123"
         mock_tool_call.function.name = "edit"
         mock_tool_call.function.arguments = '{"file_path": "file.txt", "content": "new content"}'
-        
+
         # Parse the arguments as expected
         self.mock_json_loads.return_value = {"file_path": "file.txt", "content": "new content"}
-        
+
         mock_message = MagicMock()
         mock_message.content = None
         mock_message.tool_calls = [mock_tool_call]
-        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [{"type": "function", "function": {"name": "edit", "arguments": '{"file_path": "file.txt", "content": "new content"}'}}]}
-        
+        mock_message.model_dump.return_value = {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "function": {"name": "edit", "arguments": '{"file_path": "file.txt", "content": "new content"}'},
+                }
+            ],
+        }
+
         mock_choice = MagicMock()
         mock_choice.message = mock_message
-        
+
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        
+
         # Set up confirmation to be rejected
         self.mock_questionary_confirm.ask.return_value = False
-        
+
         # Set up initial response
         self.mock_client.chat.completions.create.return_value = mock_response
-        
+
         # Create a second response for after rejection
         mock_message2 = MagicMock()
         mock_message2.content = "I'll find another approach."
         mock_message2.tool_calls = None
-        
+
         mock_choice2 = MagicMock()
         mock_choice2.message = mock_message2
-        
+
         mock_response2 = MagicMock()
         mock_response2.choices = [mock_choice2]
-        
+
         # Set up successive responses
         self.mock_client.chat.completions.create.side_effect = [mock_response, mock_response2]
-        
+
         # Call generate
         result = self.model.generate("Edit this file")
-        
+
         # Verify user was asked for confirmation
         self.mock_questionary_confirm.ask.assert_called_once()
-        
+
         # Verify tool was NOT called after rejection
         self.mock_tool.execute.assert_not_called()
-        
+
         # Verify result
         assert result == "I'll find another approach."
-    
+
     def test_generate_with_api_error(self):
         """Test generate method with API error."""
         # Mock API error
@@ -308,10 +339,14 @@ class TestOllamaModelAdvanced:
 
         # Verify error handling
         expected_error_start = "(Error interacting with Ollama:"
-        assert result.startswith(expected_error_start), f"Expected result to start with '{expected_error_start}', got '{result}'"
+        assert result.startswith(expected_error_start), (
+            f"Expected result to start with '{expected_error_start}', got '{result}'"
+        )
         # Check message includes original exception and ends with ')'
-        assert exception_message in result, f"Expected exception message '{exception_message}' to be in result '{result}'"
-        assert result.endswith(')')
+        assert exception_message in result, (
+            f"Expected exception message '{exception_message}' to be in result '{result}'"
+        )
+        assert result.endswith(")")
 
         # Print to console was called
         self.mock_console.print.assert_called_once()
@@ -320,7 +355,7 @@ class TestOllamaModelAdvanced:
         # The console print uses different formatting
         assert "Error during Ollama interaction:" in args[0]
         assert exception_message in args[0]
-    
+
     def test_generate_max_iterations(self):
         """Test generate method with maximum iterations reached."""
         # Mock a tool call that will keep being returned
@@ -328,27 +363,30 @@ class TestOllamaModelAdvanced:
         mock_tool_call.id = "call123"
         mock_tool_call.function.name = "ls"
         mock_tool_call.function.arguments = '{"dir": "."}'
-        
+
         # Parse the arguments as expected
         self.mock_json_loads.return_value = {"dir": "."}
-        
+
         mock_message = MagicMock()
         mock_message.content = None
         mock_message.tool_calls = [mock_tool_call]
-        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [{"type": "function", "function": {"name": "ls", "arguments": '{"dir": "."}'}}]}
-        
+        mock_message.model_dump.return_value = {
+            "role": "assistant",
+            "tool_calls": [{"type": "function", "function": {"name": "ls", "arguments": '{"dir": "."}'}}],
+        }
+
         mock_choice = MagicMock()
         mock_choice.message = mock_message
-        
+
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        
+
         # Always return the same response with a tool call to force iteration
         self.mock_client.chat.completions.create.return_value = mock_response
-        
+
         # Call generate
         result = self.model.generate("List files recursively")
-        
+
         # Verify max iterations were handled
         # The loop runs MAX_OLLAMA_ITERATIONS times
         assert self.mock_client.chat.completions.create.call_count == MAX_OLLAMA_ITERATIONS
@@ -357,11 +395,11 @@ class TestOllamaModelAdvanced:
         assert result == expected_return_message, f"Expected '{expected_return_message}', got '{result}'"
         # Verify console output (No specific error print in this case, only a log warning)
         # self.mock_console.print.assert_called_with(...) # Remove this check
-    
+
     def test_manage_ollama_context(self):
         """Test context window management for Ollama."""
         # Add many more messages to history to force truncation
-        num_messages = 50 # Increase from 30
+        num_messages = 50  # Increase from 30
         for i in range(num_messages):
             self.model.add_to_history({"role": "user", "content": f"Message {i}"})
             self.model.add_to_history({"role": "assistant", "content": f"Response {i}"})
@@ -372,52 +410,54 @@ class TestOllamaModelAdvanced:
 
         # Mock count_tokens to ensure truncation is triggered
         # Assign a large value to ensure the limit is exceeded
-        with patch('cli_code.models.ollama.count_tokens') as mock_count_tokens:
-             mock_count_tokens.return_value = 10000 # Assume large token count per message
+        with patch("cli_code.models.ollama.count_tokens") as mock_count_tokens:
+            mock_count_tokens.return_value = 10000  # Assume large token count per message
 
-             # Manage context
-             self.model._manage_ollama_context()
+            # Manage context
+            self.model._manage_ollama_context()
 
-             # Verify truncation occurred
-             final_length = len(self.model.history)
-             assert final_length < initial_length, f"History length did not decrease. Initial: {initial_length}, Final: {final_length}"
+            # Verify truncation occurred
+            final_length = len(self.model.history)
+            assert final_length < initial_length, (
+                f"History length did not decrease. Initial: {initial_length}, Final: {final_length}"
+            )
 
-             # Verify system prompt is preserved
-             assert self.model.history[0]["role"] == "system"
-             assert "You are a helpful AI coding assistant" in self.model.history[0]["content"]
+            # Verify system prompt is preserved
+            assert self.model.history[0]["role"] == "system"
+            assert "You are a helpful AI coding assistant" in self.model.history[0]["content"]
 
-             # Optionally, verify the *last* message is also preserved if needed
-             # assert self.model.history[-1]["content"] == f"Response {num_messages - 1}"
-    
+            # Optionally, verify the *last* message is also preserved if needed
+            # assert self.model.history[-1]["content"] == f"Response {num_messages - 1}"
+
     def test_generate_with_token_counting(self):
         """Test generate method with token counting and context management."""
         # Mock token counting to simulate context window being exceeded
-        with patch('cli_code.models.ollama.count_tokens') as mock_count_tokens:
+        with patch("cli_code.models.ollama.count_tokens") as mock_count_tokens:
             # Set up a high token count to trigger context management
             mock_count_tokens.return_value = 10000  # Above context limit
-            
+
             # Set up a basic response
             mock_message = MagicMock()
             mock_message.content = "Response after context management"
             mock_message.tool_calls = None
-            
+
             mock_choice = MagicMock()
             mock_choice.message = mock_message
-            
+
             mock_response = MagicMock()
             mock_response.choices = [mock_choice]
-            
+
             self.mock_client.chat.completions.create.return_value = mock_response
-            
+
             # Call generate
             result = self.model.generate("Generate with large context")
-            
+
             # Verify token counting was used
             mock_count_tokens.assert_called()
-            
+
             # Verify result
             assert result == "Response after context management"
-    
+
     def test_error_handling_for_tool_execution(self):
         """Test error handling during tool execution."""
         # Mock a tool call
@@ -425,45 +465,48 @@ class TestOllamaModelAdvanced:
         mock_tool_call.id = "call123"
         mock_tool_call.function.name = "ls"
         mock_tool_call.function.arguments = '{"dir": "."}'
-        
+
         # Parse the arguments as expected
         self.mock_json_loads.return_value = {"dir": "."}
-        
+
         mock_message = MagicMock()
         mock_message.content = None
         mock_message.tool_calls = [mock_tool_call]
-        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [{"type": "function", "function": {"name": "ls", "arguments": '{"dir": "."}'}}]}
-        
+        mock_message.model_dump.return_value = {
+            "role": "assistant",
+            "tool_calls": [{"type": "function", "function": {"name": "ls", "arguments": '{"dir": "."}'}}],
+        }
+
         mock_choice = MagicMock()
         mock_choice.message = mock_message
-        
+
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        
+
         # Set up initial response
         self.mock_client.chat.completions.create.return_value = mock_response
-        
+
         # Make tool execution fail
         error_message = "Tool execution failed"
         self.mock_tool.execute.side_effect = Exception(error_message)
-        
+
         # Create a second response for after tool failure
         mock_message2 = MagicMock()
         mock_message2.content = "I encountered an error."
         mock_message2.tool_calls = None
-        
+
         mock_choice2 = MagicMock()
         mock_choice2.message = mock_message2
-        
+
         mock_response2 = MagicMock()
         mock_response2.choices = [mock_choice2]
-        
+
         # Set up successive responses
         self.mock_client.chat.completions.create.side_effect = [mock_response, mock_response2]
-        
+
         # Call generate
         result = self.model.generate("List the files")
-        
+
         # Verify error was handled gracefully with specific assertions
         assert result == "I encountered an error."
         # Verify that error details were added to history
@@ -474,76 +517,3 @@ class TestOllamaModelAdvanced:
                 assert error_message in message.get("content", "")
                 error_found = True
         assert error_found, "Error message not found in history"
-
-    def test_generate_max_iterations(self):
-        """Test generate method reaching max iterations without task_complete."""
-        # Configure MAX_OLLAMA_ITERATIONS for the test if needed, or use the imported value
-        # For this test, let's assume MAX_OLLAMA_ITERATIONS is reliably 2 as set up in mocks
-        
-        # Mock tool call responses to loop indefinitely
-        mock_tool_call = MagicMock()
-        mock_tool_call.id = "call_loop"
-        mock_tool_call.function.name = "some_tool"
-        mock_tool_call.function.arguments = '{}'
-
-        mock_message = MagicMock()
-        mock_message.content = None
-        mock_message.tool_calls = [mock_tool_call]
-        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [mock_tool_call]} # Simplified dump
-
-        mock_choice = MagicMock()
-        mock_choice.message = mock_message
-
-        mock_response_loop = MagicMock()
-        mock_response_loop.choices = [mock_choice]
-
-        # Make the API always return a tool call
-        self.mock_client.chat.completions.create.side_effect = [mock_response_loop] * MAX_OLLAMA_ITERATIONS
-
-        # Call generate
-        result = self.model.generate("Loop forever")
-
-        # Verify the API was called MAX_OLLAMA_ITERATIONS times
-        assert self.mock_client.chat.completions.create.call_count == MAX_OLLAMA_ITERATIONS
-
-        # Verify the correct max iterations error message
-        expected_error = "(Agent reached maximum iterations)" # Changed expected message
-        assert expected_error in result
-
-    def test_manage_ollama_context(self):
-        """Test context management calls during conversation, focusing on history length."""
-        # Patch the actual context management to isolate history adding
-        self.mock_manage_context = MagicMock(return_value=None)
-        with patch.object(self.model, '_manage_ollama_context', self.mock_manage_context):
-            # --- Turn 1: Simple Text ---
-            mock_message_text = MagicMock(content="First response", tool_calls=None)
-            # Mock model_dump for the first assistant message
-            mock_message_text.model_dump.return_value = {"role": "assistant", "content": "First response"}
-            mock_choice_text = MagicMock(message=mock_message_text)
-            mock_response_text = MagicMock(choices=[mock_choice_text])
-            self.mock_client.chat.completions.create.return_value = mock_response_text
-            self.model.generate("first prompt") # user + assistant_text = 2 entries added
-
-            # --- Turn 2: Tool Call ---
-            mock_tool_call = MagicMock(id="t1", function=MagicMock(name="tool", arguments='{}'))
-            mock_message_tool = MagicMock(content=None, tool_calls=[mock_tool_call])
-            # Mock model_dump for the tool call message
-            mock_message_tool.model_dump.return_value = {"role": "assistant", "tool_calls": [{"id": "t1", "type": "function", "function": {"name": "tool", "arguments": "{}"}}]} # More realistic dump
-            mock_choice_tool = MagicMock(message=mock_message_tool)
-            mock_response_tool = MagicMock(choices=[mock_choice_tool])
-
-            mock_message_final = MagicMock(content="Final text after tool", tool_calls=None)
-            # Mock model_dump for the final assistant message
-            mock_message_final.model_dump.return_value = {"role": "assistant", "content": "Final text after tool"}
-            mock_choice_final = MagicMock(message=mock_message_final)
-            mock_response_final = MagicMock(choices=[mock_choice_final])
-
-            self.mock_client.chat.completions.create.side_effect = [mock_response_tool, mock_response_final]
-            self.model.generate("second prompt with tool") # user + assistant_tool + tool_result + assistant_text = 4 entries added
-
-            # Verify _manage_ollama_context was called (likely before each API call)
-            assert self.mock_manage_context.call_count > 0
-
-            # Verify final history length (Initial + Turn 1 + Turn 2)
-            # 1 (system) + 2 (turn 1) + 4 (turn 2) = 7
-            assert len(self.model.history) == 7 # Keep assertion at 7 

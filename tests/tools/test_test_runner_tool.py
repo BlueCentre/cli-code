@@ -2,10 +2,11 @@
 Tests for the TestRunnerTool class.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
-import subprocess
 import logging
+import subprocess
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.cli_code.tools.test_runner import TestRunnerTool
 
@@ -90,9 +91,7 @@ def test_with_options(test_runner_tool):
         mock_run.return_value = mock_process
 
         # Execute the tool with options
-        result = test_runner_tool.execute(
-            options="-v --cov=src --junit-xml=results.xml"
-        )
+        result = test_runner_tool.execute(options="-v --cov=src --junit-xml=results.xml")
 
         # Verify the command that was run with all the options
         mock_run.assert_called_once_with(
@@ -119,9 +118,7 @@ def test_with_different_runner(test_runner_tool):
         mock_run.return_value = mock_process
 
         # Execute the tool with a different runner command
-        result = test_runner_tool.execute(
-            runner_command="python -m unittest"
-        )
+        result = test_runner_tool.execute(runner_command="python -m unittest")
 
         # Verify the command that was run
         mock_run.assert_called_once_with(
@@ -183,13 +180,14 @@ def test_general_error(test_runner_tool):
 
 def test_invalid_options_parsing(test_runner_tool):
     """Test handling of invalid options string."""
-    with patch("subprocess.run") as mock_run, \
-         patch("shlex.split") as mock_split, \
-         patch("src.cli_code.tools.test_runner.log") as mock_log:
-        
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("shlex.split") as mock_split,
+        patch("src.cli_code.tools.test_runner.log") as mock_log,
+    ):
         # Configure shlex.split to raise ValueError
         mock_split.side_effect = ValueError("Invalid option string")
-        
+
         # Configure subprocess.run for normal execution after the error
         mock_process = MagicMock()
         mock_process.returncode = 0
@@ -202,7 +200,7 @@ def test_invalid_options_parsing(test_runner_tool):
 
         # Verify warning was logged
         mock_log.warning.assert_called_once()
-        
+
         # Verify run was called without the options
         mock_run.assert_called_once_with(
             ["pytest"],
@@ -232,4 +230,4 @@ def test_no_tests_collected(test_runner_tool):
         # Check the result
         assert "FAILED" in result
         assert "exit code 5" in result.lower()
-        assert "no tests were found" in result.lower() 
+        assert "no tests were found" in result.lower()

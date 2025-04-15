@@ -460,10 +460,10 @@ class OllamaModel(AbstractModelAgent):
         system_prompt = None
         if self.history and self.history[0].get("role") == "system":
             system_prompt = self.history[0]["content"]
-        
+
         # Clear the history
         self.history = []
-        
+
         # Re-add system prompt after clearing if it exists
         if system_prompt:
             self.history.insert(0, {"role": "system", "content": system_prompt})
@@ -479,7 +479,7 @@ class OllamaModel(AbstractModelAgent):
 
         # Separate system prompt (must be kept)
         system_message = None
-        current_history = list(self.history) # Work on a copy
+        current_history = list(self.history)  # Work on a copy
         if current_history and current_history[0].get("role") == "system":
             system_message = current_history.pop(0)
 
@@ -496,7 +496,7 @@ class OllamaModel(AbstractModelAgent):
         log.debug(f"Estimated total tokens before truncation: {total_tokens}")
 
         if total_tokens <= OLLAMA_MAX_CONTEXT_TOKENS:
-            return # No truncation needed
+            return  # No truncation needed
 
         log.warning(
             f"Ollama history token count ({total_tokens}) exceeds limit ({OLLAMA_MAX_CONTEXT_TOKENS}). Truncating."
@@ -504,9 +504,9 @@ class OllamaModel(AbstractModelAgent):
 
         # Keep removing the oldest messages (after system prompt) until under limit
         messages_removed = 0
-        initial_length_before_trunc = len(current_history) # Length excluding system prompt
+        initial_length_before_trunc = len(current_history)  # Length excluding system prompt
         while total_tokens > OLLAMA_MAX_CONTEXT_TOKENS and len(current_history) > 0:
-            removed_message = current_history.pop(0) # Remove from the beginning (oldest)
+            removed_message = current_history.pop(0)  # Remove from the beginning (oldest)
             messages_removed += 1
             try:
                 removed_tokens = count_tokens(json.dumps(removed_message))
@@ -519,14 +519,16 @@ class OllamaModel(AbstractModelAgent):
         final_history = []
         if system_message:
             final_history.append(system_message)
-        final_history.extend(current_history) # Add the remaining (truncated) messages
+        final_history.extend(current_history)  # Add the remaining (truncated) messages
 
         # Update the model's history
         original_total_length = len(self.history)
         self.history = final_history
         final_total_length = len(self.history)
 
-        log.info(f"Ollama history truncated from {original_total_length} to {final_total_length} messages ({messages_removed} removed).")
+        log.info(
+            f"Ollama history truncated from {original_total_length} to {final_total_length} messages ({messages_removed} removed)."
+        )
 
     # --- Tool Preparation Helper ---
     def _prepare_openai_tools(self) -> List[Dict] | None:

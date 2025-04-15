@@ -2,14 +2,15 @@
 Tests for utility functions in src/cli_code/utils.py.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-# Update import to use absolute import path including 'src'
-from src.cli_code.utils import count_tokens
+import pytest
 
 # Force module import for coverage
 import src.cli_code.utils
+
+# Update import to use absolute import path including 'src'
+from src.cli_code.utils import count_tokens
 
 
 def test_count_tokens_simple():

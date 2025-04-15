@@ -3,21 +3,23 @@ Tests for edge cases in the TreeTool functionality.
 
 To run these tests specifically:
     python -m pytest test_dir/test_tree_tool_edge_cases.py
-    
+
 To run a specific test:
     python -m pytest test_dir/test_tree_tool_edge_cases.py::TestTreeToolEdgeCases::test_tree_empty_result
-    
+
 To run all tests related to tree tool:
     python -m pytest -k "tree_tool"
 """
+
 import os
 import subprocess
 import sys
 from pathlib import Path
-import pytest
-from unittest.mock import patch, MagicMock, mock_open, call
+from unittest.mock import MagicMock, call, mock_open, patch
 
-from src.cli_code.tools.tree_tool import TreeTool, DEFAULT_TREE_DEPTH, MAX_TREE_DEPTH
+import pytest
+
+from src.cli_code.tools.tree_tool import DEFAULT_TREE_DEPTH, MAX_TREE_DEPTH, TreeTool
 
 
 class TestTreeToolEdgeCases:
@@ -31,12 +33,12 @@ class TestTreeToolEdgeCases:
         mock_process.returncode = 0
         mock_process.stdout = "path with spaces\n└── file.txt"
         mock_run.return_value = mock_process
-        
+
         # Execute tool with path containing spaces
         tool = TreeTool()
         complex_path = "path with spaces"
         result = tool.execute(path=complex_path)
-        
+
         # Verify results
         assert "path with spaces" in result
         mock_run.assert_called_once()
@@ -51,11 +53,11 @@ class TestTreeToolEdgeCases:
         mock_process.returncode = 0
         mock_process.stdout = ""  # Empty output
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute()
-        
+
         # Verify results
         assert result == ""  # Should return the empty string as is
 
@@ -67,11 +69,11 @@ class TestTreeToolEdgeCases:
         mock_process.returncode = 0
         mock_process.stdout = ".\n├── file-with-dashes.txt\n├── file_with_underscores.txt\n├── 特殊字符.txt"
         mock_run.return_value = mock_process
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute()
-        
+
         # Verify results
         assert "file-with-dashes.txt" in result
         assert "file_with_underscores.txt" in result
@@ -85,11 +87,11 @@ class TestTreeToolEdgeCases:
         mock_process.returncode = 0
         mock_process.stdout = ".\n└── file.txt"
         mock_run.return_value = mock_process
-        
+
         # Execute tool with negative depth
         tool = TreeTool()
         result = tool.execute(depth=-5)
-        
+
         # Verify results
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
@@ -104,11 +106,11 @@ class TestTreeToolEdgeCases:
         mock_process.returncode = 0
         mock_process.stdout = ".\n└── file.txt"
         mock_run.return_value = mock_process
-        
+
         # Execute tool with float depth
         tool = TreeTool()
         result = tool.execute(depth=2.7)
-        
+
         # Verify results
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
@@ -125,7 +127,7 @@ class TestTreeToolEdgeCases:
         mock_resolve.return_value = Path("test_dir")
         mock_exists.return_value = True
         mock_is_dir.return_value = True
-        
+
         # Setup mock directory structure:
         # test_dir/
         # ├── dir1/
@@ -138,11 +140,11 @@ class TestTreeToolEdgeCases:
             ("test_dir/dir1", ["subdir1"], ["file2.txt"]),
             ("test_dir/dir1/subdir1", [], ["file3.txt"]),
         ]
-        
+
         # Execute fallback tree implementation
         tool = TreeTool()
         result = tool._fallback_tree_implementation("test_dir", 3)
-        
+
         # Verify results
         assert "." in result
         assert "file1.txt" in result
@@ -156,15 +158,15 @@ class TestTreeToolEdgeCases:
         """Test tree command raising an OSError."""
         # Setup mock to raise OSError
         mock_run.side_effect = OSError("Simulated OS error")
-        
+
         # Mock the fallback implementation
-        with patch.object(TreeTool, '_fallback_tree_implementation') as mock_fallback:
+        with patch.object(TreeTool, "_fallback_tree_implementation") as mock_fallback:
             mock_fallback.return_value = "Fallback tree output"
-            
+
             # Execute tool
             tool = TreeTool()
             result = tool.execute()
-            
+
             # Verify results
             assert result == "Fallback tree output"
             mock_fallback.assert_called_once_with(".", DEFAULT_TREE_DEPTH)
@@ -179,16 +181,16 @@ class TestTreeToolEdgeCases:
         mock_resolve.return_value = Path("empty_dir")
         mock_exists.return_value = True
         mock_is_dir.return_value = True
-        
+
         # Empty directory
         mock_walk.return_value = [
             ("empty_dir", [], []),
         ]
-        
+
         # Execute fallback tree implementation
         tool = TreeTool()
         result = tool._fallback_tree_implementation("empty_dir", 3)
-        
+
         # Verify results
         assert "." in result
         assert len(result.splitlines()) == 1  # Only the root directory line
@@ -201,14 +203,14 @@ class TestTreeToolEdgeCases:
         mock_process.returncode = 0
         mock_process.stdout = "very/long/path\n└── file.txt"
         mock_run.return_value = mock_process
-        
+
         # Very long path
         long_path = "/".join(["directory"] * 20)  # Creates a very long path
-        
+
         # Execute tool
         tool = TreeTool()
         result = tool.execute(path=long_path)
-        
+
         # Verify results
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
@@ -222,15 +224,15 @@ class TestTreeToolEdgeCases:
         mock_process.returncode = 1
         mock_process.stderr = "tree: nonexistent_path: No such file or directory"
         mock_run.return_value = mock_process
-        
+
         # Mock the fallback implementation
-        with patch.object(TreeTool, '_fallback_tree_implementation') as mock_fallback:
+        with patch.object(TreeTool, "_fallback_tree_implementation") as mock_fallback:
             mock_fallback.return_value = "Error: Path 'nonexistent_path' does not exist."
-            
+
             # Execute tool
             tool = TreeTool()
             result = tool.execute(path="nonexistent_path")
-            
+
             # Verify results
             assert "does not exist" in result
-            mock_fallback.assert_called_once_with("nonexistent_path", DEFAULT_TREE_DEPTH) 
+            mock_fallback.assert_called_once_with("nonexistent_path", DEFAULT_TREE_DEPTH)
