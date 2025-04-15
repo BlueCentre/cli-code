@@ -10,7 +10,7 @@ Thank you for your interest in contributing to CLI-Code! This document outlines 
   ```bash
   # Generate coverage report
   pytest --cov=src tests --cov-report=xml
-  
+
   # Run local SonarCloud scan
   sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
   ```
@@ -42,7 +42,7 @@ Thank you for your interest in contributing to CLI-Code! This document outlines 
   ```bash
   # Generate final coverage report
   pytest --cov=src tests --cov-report=xml
-  
+
   # Run local SonarCloud scan
   sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
   ```
@@ -87,7 +87,7 @@ For the fastest feedback loop, run SonarCloud analysis locally before pushing ch
    ```bash
    # On macOS with Homebrew
    brew install sonar-scanner
-   
+
    # On NixOS
    nix-env -iA nixpkgs.sonar-scanner-cli.out
    ```
@@ -101,11 +101,11 @@ For the fastest feedback loop, run SonarCloud analysis locally before pushing ch
    ```bash
    # Option 1: Pass token directly (do not commit this command!)
    sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN
-   
+
    # Option 2: Use environment variable (recommended)
    export SONAR_TOKEN=YOUR_SONARCLOUD_TOKEN
    sonar-scanner
-   
+
    # Option 3: Add to ~/.bash_profile or ~/.zshrc (for convenience)
    # export SONAR_TOKEN=YOUR_SONARCLOUD_TOKEN
    ```
@@ -114,4 +114,56 @@ For the fastest feedback loop, run SonarCloud analysis locally before pushing ch
 
 4. Review the results and address any issues before pushing.
 
-This local workflow complements (but doesn't replace) the GitHub Actions workflow that runs automatically on push. 
+This local workflow complements (but doesn't replace) the GitHub Actions workflow that runs automatically on push.
+
+## Pre-commit Hooks
+
+Pre-commit hooks automatically check your code before each commit to ensure it meets quality standards and passes linting. This helps prevent CI/CD pipeline failures and ensures consistent code quality.
+
+### Setup
+
+We've provided a script to easily install pre-commit hooks:
+
+```bash
+# Run the provided setup script
+./scripts/setup_pre_commit.sh
+```
+
+This will:
+1. Install pre-commit if it's not already installed
+2. Set up the git hooks from our configuration
+3. Run the hooks against all files to verify setup
+
+### Available Hooks
+
+The following checks run automatically before each commit:
+
+1. **Ruff Linting**: Checks Python code for style issues and common problems
+2. **Ruff Formatting**: Ensures consistent code formatting
+3. **Additional Quality Checks**:
+   - Trailing whitespace removal
+   - End-of-file fixer (ensures files end with a newline)
+   - YAML syntax validation
+   - Prevention of large file commits
+
+### Bypass Hooks Temporarily
+
+If you need to bypass the hooks temporarily (not recommended), you can use:
+
+```bash
+git commit -m "Your message" --no-verify
+```
+
+### Manual Execution
+
+You can also run the hooks manually at any time:
+
+```bash
+# Run on all files
+pre-commit run --all-files
+
+# Run on staged files only
+pre-commit run
+```
+
+This local validation ensures your code meets project standards before submission and prevents linting-related CI failures.

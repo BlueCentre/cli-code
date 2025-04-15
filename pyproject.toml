@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cli-code-agent" 
-version = "0.3.0"  
+name = "cli-code-agent"
+version = "0.3.0"
 authors = [
   { name="James Nguyen", email="git@nocentre.net" }
 ]
@@ -43,6 +43,7 @@ dev = [
     "pytest-mock>=3.6.0", # Add pytest-mock dependency for mocker fixture
     "ruff>=0.1.0",    # For linting and formatting
     "protobuf>=4.0.0", # Also add to dev dependencies
+    "pre-commit>=3.5.0",  # For pre-commit hooks
     # Add other dev tools like coverage, mypy etc. here if needed
 ]
 

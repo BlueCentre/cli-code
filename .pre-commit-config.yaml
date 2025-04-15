@@ -1,0 +1,29 @@
+repos:
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.5  # Use the latest version from https://github.com/astral-sh/ruff-pre-commit/releases
+    hooks:
+    -   id: ruff
+        args: [--fix, --verbose, --preview]
+    -   id: ruff-format
+
+# Optionally you could add other hooks like:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0  # Use the latest version from https://github.com/pre-commit/pre-commit-hooks/releases
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files 
+
+# Code coverage check using the optimized local script that matches CI thresholds
+-   repo: local
+    hooks:
+    -   id: test-coverage
+        name: Check test coverage
+        entry: bash scripts/run_coverage_local.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        # Can be skipped with SKIP=test-coverage git commit -m "..."
+        stages: [pre-commit] 
