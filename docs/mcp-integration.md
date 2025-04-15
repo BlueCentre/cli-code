@@ -123,16 +123,26 @@ classDiagram
 ```
 
 **Tasks**:
-- [ ] Create model adapter interface
-- [ ] Implement Gemini-specific adapter
-- [ ] Add MCP protocol formatting in the adapter
-- [ ] Modify existing Gemini implementation to use the adapter
+- [x] Create model adapter interface
+- [x] Implement Gemini-specific adapter
+- [x] Add MCP protocol formatting in the adapter
+- [x] Modify existing Gemini implementation to use the adapter
 
 **Tests**:
-- [ ] Test Gemini request formatting
-- [ ] Test response parsing
-- [ ] Test error handling
-- [ ] Integration tests with mock MCP server
+- [x] Test Gemini request formatting
+- [x] Test response parsing
+- [x] Test error handling
+- [x] Integration tests with mock MCP server
+
+**Status**: Completed
+
+Implementation details:
+- Created `MCPModelAdapter` abstract class in `src/cli_code/mcp/model_adapter.py` as the adapter interface
+- Implemented `GeminiModelAdapter` in `src/cli_code/mcp/adapters/gemini_adapter.py` for Gemini model
+- Added message format conversion between Gemini and MCP formats
+- Added tool execution support via the adapter
+- Created `ModelAdapterFactory` for creating appropriate model adapters
+- Added comprehensive tests for both the abstract adapter and Gemini implementation
 
 ### Step 3: Tool Execution Framework
 
@@ -265,7 +275,7 @@ graph TD
 | Step | Description | Status | Completion Date |
 |------|-------------|--------|----------------|
 | 1    | Core MCP Protocol Client | Completed | 2025-06-09 |
-| 2    | Gemini Model Adapter | Not Started | - |
+| 2    | Gemini Model Adapter | Completed | 2025-06-09 |
 | 3    | Tool Execution Framework | Not Started | - |
 | 4    | Conversation Management | Not Started | - |
 | 5    | Configuration and Integration | Not Started | - |
