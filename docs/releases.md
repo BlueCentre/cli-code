@@ -102,7 +102,22 @@ git push --tags
 
 ## Setting Up PyPI Trusted Publishing (One-time Setup)
 
-Before the automated publishing will work, you need to configure trusted publishing:
+Before the automated publishing will work, you need to configure publishing credentials. There are two options:
+
+### Option A: PyPI API Token (Simpler)
+
+1. **Generate a PyPI API token**:
+   - Go to https://pypi.org/manage/account/
+   - Navigate to API tokens and create a new token with scope limited to the `cli-code-agent` project
+   - Copy the token value (it will only be shown once)
+
+2. **Add the token to GitHub repository secrets**:
+   - Go to your GitHub repository → Settings → Secrets and variables → Actions
+   - Create a new repository secret named `PYPI_API_TOKEN`
+   - Paste the PyPI token value
+   - Set environment variable `USE_TRUSTED_PUBLISHING=false` or omit it
+
+### Option B: Trusted Publishing (More Secure)
 
 1. **Create the PyPI Environment in GitHub:**
    - Go to your GitHub repository → Settings → Environments
@@ -117,6 +132,7 @@ Before the automated publishing will work, you need to configure trusted publish
      - Enter your GitHub organization/username and repository name
      - Enter "publish" as the environment name 
      - Save the publisher settings
+   - Set environment variable `USE_TRUSTED_PUBLISHING=true`
 
 ## Versioning Guidelines
 
@@ -211,6 +227,34 @@ If the automated publishing fails:
 2. Verify PyPI credentials and trusted publishing setup
 3. Ensure the version number in `pyproject.toml` is unique and hasn't been published before
 4. Check if the package passes all tests and linting checks
+
+## Verification Steps After Publishing
+
+After publishing, verify the package works correctly:
+
+1. **Check PyPI Listing**:
+   - Verify the package is visible on PyPI at https://pypi.org/project/cli-code-agent/
+   - Confirm the correct version is displayed
+   - Verify the package metadata (description, classifiers, dependencies) matches pyproject.toml
+
+2. **Installation Test**:
+   ```bash
+   # Create a fresh virtual environment
+   python -m venv test_install_env
+   source test_install_env/bin/activate  # On Windows: test_install_env\Scripts\activate
+   
+   # Install the package directly from PyPI
+   pip install cli-code-agent==x.y.z
+   ```
+
+3. **Basic Functionality Test**:
+   ```bash
+   # Verify the version is correct
+   python -c "import cli_code; print(cli_code.__version__)"
+   
+   # Verify CLI command works
+   cli-code-agent --help
+   ```
 
 ## Manual Publishing (Fallback)
 
