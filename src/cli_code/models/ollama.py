@@ -33,7 +33,7 @@ except ImportError:
 log = logging.getLogger(__name__)
 MAX_OLLAMA_ITERATIONS = 5  # Limit tool call loops for Ollama initially
 SENSITIVE_TOOLS = ["edit", "create_file"]  # Define sensitive tools requiring confirmation
-OLLAMA_MAX_CONTEXT_TOKENS = 8000  # Example token limit for Ollama models, adjust as needed
+OLLAMA_MAX_CONTEXT_TOKENS = 80000  # Example token limit for Ollama models, adjust as needed
 
 
 class OllamaModel(AbstractModelAgent):

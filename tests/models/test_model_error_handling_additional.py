@@ -55,7 +55,7 @@ class TestModelContextHandling:
         model.client = mock_ollama_client
 
         # Mock the token counting to return a large value
-        mock_count_tokens.return_value = 9000  # Higher than OLLAMA_MAX_CONTEXT_TOKENS (8000)
+        mock_count_tokens.return_value = 90000  # Higher than OLLAMA_MAX_CONTEXT_TOKENS (80000)
 
         # Add a few messages to history
         model.history = [

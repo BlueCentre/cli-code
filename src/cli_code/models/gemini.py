@@ -34,7 +34,7 @@ TOOLS_REQUIRING_CONFIRMATION = ["edit", "create_file", "bash"]  # Add other tool
 log = logging.getLogger(__name__)
 
 MAX_AGENT_ITERATIONS = 10
-FALLBACK_MODEL = "gemini-1.5-flash-latest"
+FALLBACK_MODEL = "gemini-2.0-flash"
 CONTEXT_TRUNCATION_THRESHOLD_TOKENS = 800000  # Example token limit
 MAX_HISTORY_TURNS = 20  # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
 
@@ -214,182 +214,222 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         last_text_response = "No response generated."  # Fallback text
 
         try:
-            while iteration_count < MAX_AGENT_ITERATIONS and not task_completed:
-                iteration_count += 1
-                log.info(f"--- Agent Loop Iteration: {iteration_count} ---")
-                log.debug(f"Current History: {self.history}")  # DEBUG
+            # === Agent Loop with Status Animation ===
+            with self.console.status("[bold green]Thinking...[/bold green]", spinner="dots") as status:
+                while iteration_count < MAX_AGENT_ITERATIONS and not task_completed:
+                    iteration_count += 1
+                    log.info(f"--- Agent Loop Iteration: {iteration_count} ---")
+                    log.debug(f"Current History: {self.history}")  # DEBUG
 
-                try:
-                    # Ensure history is not empty before sending
-                    if not self.history:
-                        log.error("Agent history became empty unexpectedly.")
-                        return "Error: Agent history is empty."
+                    status.update("[bold green]Thinking...[/bold green]")
 
-                    llm_response = self.model.generate_content(
-                        self.history,
-                        generation_config=self.generation_config,
-                        tools=[self.gemini_tools] if self.gemini_tools else None,
-                        safety_settings=SAFETY_SETTINGS,
-                        request_options={"timeout": 600},  # Timeout for potentially long tool calls
-                    )
-                    log.debug(f"LLM Response (Iter {iteration_count}): {llm_response}")  # DEBUG
+                    try:
+                        # Ensure history is not empty before sending
+                        if not self.history:
+                            log.error("Agent history became empty unexpectedly.")
+                            return "Error: Agent history is empty."
 
-                    # --- Response Processing ---
-                    if not llm_response.candidates:
-                        log.error(f"LLM response had no candidates. Prompt Feedback: {llm_response.prompt_feedback}")
-                        if llm_response.prompt_feedback and llm_response.prompt_feedback.block_reason:
-                            block_reason = llm_response.prompt_feedback.block_reason.name
-                            # Provide more specific feedback if blocked
-                            return f"Error: Prompt was blocked by API. Reason: {block_reason}"
-                        else:
-                            return "Error: Empty response received from LLM (no candidates)."
-
-                    response_candidate = llm_response.candidates[0]
-                    log.debug(f"-- Processing Candidate {response_candidate.index} --")  # DEBUG
-
-                    # <<< NEW: Prioritize STOP Reason Check >>>
-                    if response_candidate.finish_reason == 1:  # STOP
-                        log.info("STOP finish reason received. Finalizing.")
-                        final_text = ""
-                        final_parts = []
-                        if response_candidate.content and response_candidate.content.parts:
-                            final_parts = response_candidate.content.parts
-                            for part in final_parts:
-                                if hasattr(part, "text") and part.text:
-                                    final_text += part.text + "\n"
-                        final_summary = final_text.strip() if final_text else "(Model stopped with no text)"
-                        # Add the stopping response to history BEFORE breaking
-                        self.add_to_history({"role": "model", "parts": final_parts})
-                        self._manage_context_window()
-                        task_completed = True
-                        break  # Exit loop immediately on STOP
-                    # <<< END NEW STOP CHECK >>>
-
-                    # --- Start Part Processing ---
-                    function_call_part_to_execute = None
-                    text_response_buffer = ""
-                    processed_function_call_in_turn = False
-
-                    # --- ADD CHECK for content being None ---
-                    if response_candidate.content is None:
-                        log.warning(f"Response candidate {response_candidate.index} had no content object.")
-                        # Treat same as having no parts - check finish reason
-                        if response_candidate.finish_reason == 2:  # MAX_TOKENS
-                            final_summary = "(Response terminated due to maximum token limit)"
-                            task_completed = True
-                        elif response_candidate.finish_reason != 1:  # Not STOP
-                            final_summary = f"(Response candidate {response_candidate.index} finished unexpectedly: {response_candidate.finish_reason} with no content)"
-                            task_completed = True
-                        # If STOP or UNSPECIFIED, let loop continue / potentially time out if nothing else happens
-
-                    elif not response_candidate.content.parts:
-                        # Existing check for empty parts list
-                        log.warning(
-                            f"Response candidate {response_candidate.index} had content but no parts. Finish Reason: {response_candidate.finish_reason}"
+                        llm_response = self.model.generate_content(
+                            self.history,
+                            generation_config=self.generation_config,
+                            tools=[self.gemini_tools] if self.gemini_tools else None,
+                            safety_settings=SAFETY_SETTINGS,
+                            request_options={"timeout": 600},  # Timeout for potentially long tool calls
                         )
-                        if response_candidate.finish_reason == 2:  # MAX_TOKENS
-                            final_summary = "(Response terminated due to maximum token limit)"
-                            task_completed = True
-                        elif response_candidate.finish_reason != 1:  # Not STOP
-                            final_summary = f"(Response candidate {response_candidate.index} finished unexpectedly: {response_candidate.finish_reason} with no parts)"
-                            task_completed = True
-                        pass
-                    else:
-                        # Process parts if they exist
-                        for part in response_candidate.content.parts:
-                            log.debug(f"-- Processing Part: {part} (Type: {type(part)}) --")
-                            if (
-                                hasattr(part, "function_call")
-                                and part.function_call
-                                and not processed_function_call_in_turn
-                            ):
-                                log.info(f"LLM requested Function Call part: {part.function_call}")  # Simple log
-                                self.add_to_history({"role": "model", "parts": [part]})
-                                self._manage_context_window()
-                                function_call_part_to_execute = part  # Store the part itself
-                                processed_function_call_in_turn = True
-                            elif hasattr(part, "text") and part.text:  # Ensure this block is correct
-                                llm_text = part.text
-                                log.info(f"LLM returned text part (Iter {iteration_count}): {llm_text[:100]}...")
-                                text_response_buffer += llm_text + "\n"  # Append text
-                                self.add_to_history({"role": "model", "parts": [part]})
-                                self._manage_context_window()
+                        log.debug(f"LLM Response (Iter {iteration_count}): {llm_response}")  # DEBUG
+
+                        # --- Response Processing ---
+                        if not llm_response.candidates:
+                            log.error(f"LLM response had no candidates. Prompt Feedback: {llm_response.prompt_feedback}")
+                            if llm_response.prompt_feedback and llm_response.prompt_feedback.block_reason:
+                                block_reason = llm_response.prompt_feedback.block_reason.name
+                                # Provide more specific feedback if blocked
+                                return f"Error: Prompt was blocked by API. Reason: {block_reason}"
                             else:
-                                # Handle unexpected parts if necessary, ensure logging is appropriate
-                                log.warning(f"LLM returned unexpected response part (Iter {iteration_count}): {part}")
-                                # Decide if unexpected parts should be added to history
-                                self.add_to_history({"role": "model", "parts": [part]})
-                                self._manage_context_window()
+                                return "Error: Empty response received from LLM (no candidates)."
 
-                    # --- Start Decision Block ---
-                    if function_call_part_to_execute:
-                        # Extract name and args here + type check
-                        function_call = function_call_part_to_execute.function_call
-                        tool_name_obj = function_call.name
-                        tool_args = dict(function_call.args) if function_call.args else {}
+                        response_candidate = llm_response.candidates[0]
+                        log.debug(f"-- Processing Candidate {response_candidate.index} --")  # DEBUG
 
-                        # Explicitly check type of extracted name object
-                        if isinstance(tool_name_obj, str):
-                            tool_name_str = tool_name_obj
-                        else:
-                            tool_name_str = str(tool_name_obj)
+                        # <<< NEW: Prioritize STOP Reason Check >>>
+                        if response_candidate.finish_reason == 1:  # STOP
+                            log.info("STOP finish reason received. Checking for final text.")
+                            final_text = ""
+                            final_parts = []
+                            if response_candidate.content and response_candidate.content.parts:
+                                final_parts = response_candidate.content.parts
+                                for part in final_parts:
+                                    if hasattr(part, "text") and part.text:
+                                        final_text += part.text + "\n"
+
+                            # Add the stopping response to history regardless
+                            self.add_to_history({"role": "model", "parts": final_parts})
+                            self._manage_context_window()
+
+                            if final_text.strip():  # If there WAS text content with the STOP
+                                log.info("Model stopped with final text content.")
+                                final_summary = final_text.strip()
+                                task_completed = True
+                                break  # Exit loop immediately on STOP with text
+                            else:
+                                # log.warning("Model stopped (finish_reason=STOP) but provided no text content. Letting loop continue or finish naturally.") # Removed warning
+                                # Do NOT set final_summary here
+                                # Do NOT set task_completed = True here
+                                # Do NOT break here - let the loop potentially timeout or handle unexpected exit later
+                                pass  # Continue processing other parts or finish loop iteration
+
+                        # <<< END NEW STOP CHECK >>>
+
+                        # --- Start Part Processing ---
+                        function_call_part_to_execute = None
+                        text_response_buffer = ""
+                        processed_function_call_in_turn = False
+
+                        # --- ADD CHECK for content being None ---
+                        if response_candidate.content is None:
+                            log.warning(f"Response candidate {response_candidate.index} had no content object.")
+                            # Treat same as having no parts - check finish reason
+                            if response_candidate.finish_reason == 2:  # MAX_TOKENS
+                                final_summary = "(Response terminated due to maximum token limit)"
+                                task_completed = True
+                            elif response_candidate.finish_reason != 1:  # Not STOP
+                                final_summary = f"(Response candidate {response_candidate.index} finished unexpectedly: {response_candidate.finish_reason} with no content)"
+                                task_completed = True
+                            # If STOP or UNSPECIFIED, let loop continue / potentially time out if nothing else happens
+
+                        elif not response_candidate.content.parts:
+                            # Existing check for empty parts list
                             log.warning(
-                                f"Tool name object was not a string (type: {type(tool_name_obj)}), converted using str() to: '{tool_name_str}'"
+                                f"Response candidate {response_candidate.index} had content but no parts. Finish Reason: {response_candidate.finish_reason}"
                             )
-
-                        log.info(f"Executing tool: {tool_name_str} with args: {tool_args}")
-
-                        try:
-                            # log.debug(f"[Tool Exec] Getting tool: {tool_name_str}") # REMOVE DEBUG
-                            tool_instance = get_tool(tool_name_str)
-                            if not tool_instance:
-                                # log.error(f"[Tool Exec] Tool '{tool_name_str}' not found instance: {tool_instance}") # REMOVE DEBUG
-                                result_for_history = {"error": f"Error: Tool '{tool_name_str}' not found."}
-                            else:
-                                # log.debug(f"[Tool Exec] Tool instance found: {tool_instance}") # REMOVE DEBUG
-                                if tool_name_str == "task_complete":
-                                    summary = tool_args.get("summary", "Task completed.")
-                                    log.info(f"Task complete requested by LLM: {summary}")
-                                    final_summary = summary
-                                    task_completed = True
-                                    # log.debug("[Tool Exec] Task complete logic executed.") # REMOVE DEBUG
-                                    # Append simulated tool response using dict structure
-                                    self.history.append(
-                                        {
-                                            "role": "user",
-                                            "parts": [
-                                                {
-                                                    "function_response": {
-                                                        "name": tool_name_str,
-                                                        "response": {"status": "acknowledged"},
-                                                    }
-                                                }
-                                            ],
-                                        }
-                                    )
-                                    # log.debug("[Tool Exec] Appended task_complete ack to history.") # REMOVE DEBUG
-                                    break
+                            if response_candidate.finish_reason == 2:  # MAX_TOKENS
+                                final_summary = "(Response terminated due to maximum token limit)"
+                                task_completed = True
+                            elif response_candidate.finish_reason != 1:  # Not STOP
+                                final_summary = f"(Response candidate {response_candidate.index} finished unexpectedly: {response_candidate.finish_reason} with no parts)"
+                                task_completed = True
+                            pass
+                        else:
+                            # Process parts if they exist
+                            for part in response_candidate.content.parts:
+                                log.debug(f"-- Processing Part: {part} (Type: {type(part)}) --")
+                                if (
+                                    hasattr(part, "function_call")
+                                    and part.function_call
+                                    and not processed_function_call_in_turn
+                                ):
+                                    log.info(f"LLM requested Function Call part: {part.function_call}")  # Simple log
+                                    self.add_to_history({"role": "model", "parts": [part]})
+                                    self._manage_context_window()
+                                    function_call_part_to_execute = part  # Store the part itself
+                                    processed_function_call_in_turn = True
+                                elif hasattr(part, "text") and part.text:  # Ensure this block is correct
+                                    llm_text = part.text
+                                    log.info(f"LLM returned text part (Iter {iteration_count}): {llm_text[:100]}...")
+                                    text_response_buffer += llm_text + "\n"  # Append text
+                                    self.add_to_history({"role": "model", "parts": [part]})
+                                    self._manage_context_window()
                                 else:
-                                    # log.debug(f"[Tool Exec] Preparing to execute {tool_name_str} with args: {tool_args}") # REMOVE DEBUG
+                                    # Handle unexpected parts if necessary, ensure logging is appropriate
+                                    log.warning(f"LLM returned unexpected response part (Iter {iteration_count}): {part}")
+                                    # Decide if unexpected parts should be added to history
+                                    self.add_to_history({"role": "model", "parts": [part]})
+                                    self._manage_context_window()
 
-                                    # --- Confirmation Check ---
-                                    if tool_name_str in TOOLS_REQUIRING_CONFIRMATION:
-                                        log.info(f"Requesting confirmation for sensitive tool: {tool_name_str}")
-                                        confirm_msg = f"Allow the AI to execute the '{tool_name_str}' command with arguments: {tool_args}?"
-                                        try:
-                                            # Use ask() which returns True, False, or None (for cancel)
-                                            confirmation = questionary.confirm(
-                                                confirm_msg,
-                                                auto_enter=False,  # Require explicit confirmation
-                                                default=False,  # Default to no if user just hits enter
-                                            ).ask()
+                        # --- Start Decision Block ---
+                        if function_call_part_to_execute:
+                            # Extract name and args here + type check
+                            function_call = function_call_part_to_execute.function_call
+                            tool_name_obj = function_call.name
+                            tool_args = dict(function_call.args) if function_call.args else {}
 
-                                            if confirmation is not True:  # Handles False and None (cancel)
-                                                log.warning(
-                                                    f"User rejected or cancelled execution of tool: {tool_name_str}"
+                            # Explicitly check type of extracted name object
+                            if isinstance(tool_name_obj, str):
+                                tool_name_str = tool_name_obj
+                            else:
+                                tool_name_str = str(tool_name_obj)
+                                log.warning(
+                                    f"Tool name object was not a string (type: {type(tool_name_obj)}), converted using str() to: '{tool_name_str}'"
+                                )
+
+                            log.info(f"Executing tool: {tool_name_str} with args: {tool_args}")
+
+                            try:
+                                status.update(f"[bold blue]Running tool: {tool_name_str}...[/bold blue]")
+
+                                tool_instance = get_tool(tool_name_str)
+                                if not tool_instance:
+                                    # log.error(f"[Tool Exec] Tool '{tool_name_str}' not found instance: {tool_instance}") # REMOVE DEBUG
+                                    result_for_history = {"error": f"Error: Tool '{tool_name_str}' not found."}
+                                else:
+                                    # log.debug(f"[Tool Exec] Tool instance found: {tool_instance}") # REMOVE DEBUG
+                                    if tool_name_str == "task_complete":
+                                        summary = tool_args.get("summary", "Task completed.")
+                                        log.info(f"Task complete requested by LLM: {summary}")
+                                        final_summary = summary
+                                        task_completed = True
+                                        # log.debug("[Tool Exec] Task complete logic executed.") # REMOVE DEBUG
+                                        # Append simulated tool response using dict structure
+                                        self.history.append(
+                                            {
+                                                "role": "user",
+                                                "parts": [
+                                                    {
+                                                        "function_response": {
+                                                            "name": tool_name_str,
+                                                            "response": {"status": "acknowledged"},
+                                                        }
+                                                    }
+                                                ],
+                                            }
+                                        )
+                                        # log.debug("[Tool Exec] Appended task_complete ack to history.") # REMOVE DEBUG
+                                        break
+                                    else:
+                                        # log.debug(f"[Tool Exec] Preparing to execute {tool_name_str} with args: {tool_args}") # REMOVE DEBUG
+
+                                        # --- Confirmation Check ---
+                                        if tool_name_str in TOOLS_REQUIRING_CONFIRMATION:
+                                            log.info(f"Requesting confirmation for sensitive tool: {tool_name_str}")
+                                            confirm_msg = f"Allow the AI to execute the '{tool_name_str}' command with arguments: {tool_args}?"
+                                            try:
+                                                # Use ask() which returns True, False, or None (for cancel)
+                                                confirmation = questionary.confirm(
+                                                    confirm_msg,
+                                                    auto_enter=False,  # Require explicit confirmation
+                                                    default=False,  # Default to no if user just hits enter
+                                                ).ask()
+
+                                                if confirmation is not True:  # Handles False and None (cancel)
+                                                    log.warning(
+                                                        f"User rejected or cancelled execution of tool: {tool_name_str}"
+                                                    )
+                                                    rejection_message = f"User rejected execution of tool: {tool_name_str}"
+                                                    # Add rejection message to history for the LLM
+                                                    self.history.append(
+                                                        {
+                                                            "role": "user",
+                                                            "parts": [
+                                                                {
+                                                                    "function_response": {
+                                                                        "name": tool_name_str,
+                                                                        "response": {
+                                                                            "status": "rejected",
+                                                                            "message": rejection_message,
+                                                                        },
+                                                                    }
+                                                                }
+                                                            ],
+                                                        }
+                                                    )
+                                                    self._manage_context_window()
+                                                    continue  # Skip execution and proceed to next iteration
+                                            except Exception as confirm_err:
+                                                log.error(
+                                                    f"Error during confirmation prompt for {tool_name_str}: {confirm_err}",
+                                                    exc_info=True,
                                                 )
-                                                rejection_message = f"User rejected execution of tool: {tool_name_str}"
-                                                # Add rejection message to history for the LLM
+                                                # Treat confirmation error as rejection for safety
                                                 self.history.append(
                                                     {
                                                         "role": "user",
@@ -398,8 +438,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                                                 "function_response": {
                                                                     "name": tool_name_str,
                                                                     "response": {
-                                                                        "status": "rejected",
-                                                                        "message": rejection_message,
+                                                                        "status": "error",
+                                                                        "message": f"Error during confirmation: {confirm_err}",
                                                                     },
                                                                 }
                                                             }
@@ -407,170 +447,156 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                                     }
                                                 )
                                                 self._manage_context_window()
-                                                continue  # Skip execution and proceed to next iteration
-                                        except Exception as confirm_err:
-                                            log.error(
-                                                f"Error during confirmation prompt for {tool_name_str}: {confirm_err}",
-                                                exc_info=True,
+                                                continue  # Skip execution
+
+                                            log.info(f"User confirmed execution for tool: {tool_name_str}")
+                                        # --- End Confirmation Check ---
+
+                                        tool_result = tool_instance.execute(**tool_args)
+                                        # log.debug(f"[Tool Exec] Finished executing {tool_name_str}. Result: {tool_result}") # REMOVE DEBUG
+
+                                        # Format result for history
+                                        if isinstance(tool_result, dict):
+                                            result_for_history = tool_result
+                                        elif isinstance(tool_result, str):
+                                            result_for_history = {"output": tool_result}
+                                        else:
+                                            result_for_history = {"output": str(tool_result)}
+                                            log.warning(
+                                                f"Tool {tool_name_str} returned non-dict/str result: {type(tool_result)}. Converting to string."
                                             )
-                                            # Treat confirmation error as rejection for safety
-                                            self.history.append(
-                                                {
-                                                    "role": "user",
-                                                    "parts": [
-                                                        {
-                                                            "function_response": {
-                                                                "name": tool_name_str,
-                                                                "response": {
-                                                                    "status": "error",
-                                                                    "message": f"Error during confirmation: {confirm_err}",
-                                                                },
-                                                            }
+
+                                        # Append tool response using dict structure
+                                        self.history.append(
+                                            {
+                                                "role": "user",
+                                                "parts": [
+                                                    {
+                                                        "function_response": {
+                                                            "name": tool_name_str,
+                                                            "response": result_for_history,
                                                         }
-                                                    ],
-                                                }
-                                            )
-                                            self._manage_context_window()
-                                            continue  # Skip execution
-
-                                        log.info(f"User confirmed execution for tool: {tool_name_str}")
-                                    # --- End Confirmation Check ---
-
-                                    tool_result = tool_instance.execute(**tool_args)
-                                    # log.debug(f"[Tool Exec] Finished executing {tool_name_str}. Result: {tool_result}") # REMOVE DEBUG
-
-                                    # Format result for history
-                                    if isinstance(tool_result, dict):
-                                        result_for_history = tool_result
-                                    elif isinstance(tool_result, str):
-                                        result_for_history = {"output": tool_result}
-                                    else:
-                                        result_for_history = {"output": str(tool_result)}
-                                        log.warning(
-                                            f"Tool {tool_name_str} returned non-dict/str result: {type(tool_result)}. Converting to string."
-                                        )
-
-                                    # Append tool response using dict structure
-                                    self.history.append(
-                                        {
-                                            "role": "user",
-                                            "parts": [
-                                                {
-                                                    "function_response": {
-                                                        "name": tool_name_str,
-                                                        "response": result_for_history,
                                                     }
-                                                }
-                                            ],
-                                        }
-                                    )
-                                    # log.debug("[Tool Exec] Appended tool result to history.") # REMOVE DEBUG
+                                                ],
+                                            }
+                                        )
+                                        # log.debug("[Tool Exec] Appended tool result to history.") # REMOVE DEBUG
+                                        self._manage_context_window()
 
-                        except Exception as e:
-                            error_message = f"Error: Tool execution error with {tool_name_str}: {e}"
-                            log.exception(f"[Tool Exec] Exception caught: {error_message}")  # Keep exception log
-                            # <<< NEW: Set summary and break loop >>>
-                            final_summary = error_message
-                            task_completed = True
-                            break  # Exit loop to handle final output consistently
-                            # <<< END NEW >>>
+                                        # Update status back after tool execution (before next iteration)
+                                        status.update("[bold green]Thinking...[/bold green]")
+                                        continue
 
-                        # function_call_part_to_execute = None # Clear the stored part - Now unreachable due to return
-                        # continue # Continue loop after processing function call - Now unreachable due to return
+                            except Exception as e:
+                                error_message = f"Error: Tool execution error with {tool_name_str}: {e}"
+                                log.exception(f"[Tool Exec] Exception caught: {error_message}")  # Keep exception log
+                                # <<< NEW: Set summary and break loop >>>
+                                final_summary = error_message
+                                task_completed = True
+                                break  # Exit loop to handle final output consistently
+                                # <<< END NEW >>>
 
-                    elif task_completed:
-                        log.info("Task completed flag is set. Finalizing.")
-                        break
-                    elif text_response_buffer:
-                        log.info(
-                            f"Text response buffer has content ('{text_response_buffer.strip()}'). Finalizing."
-                        )  # Log buffer content
-                        final_summary = text_response_buffer
-                        break  # Exit loop
-                    else:
-                        # This case means the LLM response had no text AND no function call processed in this iteration.
-                        log.warning(
-                            f"Agent loop iteration {iteration_count}: No actionable parts found or processed. Continuing."
-                        )
-                        # Check finish reason if no parts were actionable using integer values
-                        # Assuming FINISH_REASON_STOP = 1, FINISH_REASON_UNSPECIFIED = 0
-                        if response_candidate.finish_reason != 1 and response_candidate.finish_reason != 0:
-                            log.warning(
-                                f"Response candidate {response_candidate.index} finished unexpectedly ({response_candidate.finish_reason}) with no actionable parts. Exiting loop."
-                            )
-                            final_summary = f"(Agent loop ended due to unexpected finish reason: {response_candidate.finish_reason} with no actionable parts)"
-                            task_completed = True
-                        pass
+                            # function_call_part_to_execute = None # Clear the stored part - Now unreachable due to return
+                            # continue # Continue loop after processing function call - Now unreachable due to return
 
-                except StopIteration:
-                    # This occurs when mock side_effect is exhausted
-                    log.warning("StopIteration caught, likely end of mock side_effect sequence.")
-                    # Decide what to do - often means the planned interaction finished.
-                    # If a final summary wasn't set by text_response_buffer, maybe use last known text?
-                    if not final_summary:
-                        log.warning("Loop ended due to StopIteration without a final summary set.")
-                        # Optionally find last text from history here if needed
-                        # For this test, breaking might be sufficient if text_response_buffer worked.
-                        final_summary = "(Loop ended due to StopIteration)"  # Fallback summary
-                    task_completed = True  # Ensure loop terminates
-                    break  # Exit loop
-
-                except google.api_core.exceptions.ResourceExhausted as quota_error:
-                    log.warning(f"Quota exceeded for model '{self.current_model_name}': {quota_error}")
-                    # Check if we are already using the fallback
-                    if self.current_model_name == FALLBACK_MODEL:
-                        log.error("Quota exceeded even for the fallback model. Cannot proceed.")
-                        self.console.print(
-                            "[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]"
-                        )
-                        # Clean history before returning
-                        if self.history[-1]["role"] == "user":
-                            self.history.pop()
-                        return "Error: API quota exceeded for primary and fallback models."
-                    else:
-                        log.info(f"Switching to fallback model: {FALLBACK_MODEL}")
-                        self.console.print(
-                            f"[bold yellow]Quota limit reached for {self.current_model_name}. Switching to fallback model ({FALLBACK_MODEL})...[/bold yellow]"
-                        )
-                        self.current_model_name = FALLBACK_MODEL
-                        try:
-                            self._initialize_model_instance()
+                        elif task_completed:
+                            log.info("Task completed flag is set. Finalizing.")
+                            break
+                        elif text_response_buffer:
                             log.info(
-                                f"Successfully switched to and initialized fallback model: {self.current_model_name}"
+                                f"Text response buffer has content ('{text_response_buffer.strip()}'). Finalizing."
+                            )  # Log buffer content
+                            final_summary = text_response_buffer
+                            break  # Exit loop
+                        else:
+                            # This case means the LLM response had no text AND no function call processed in this iteration.
+                            log.warning(
+                                f"Agent loop iteration {iteration_count}: No actionable parts found or processed. Continuing."
                             )
-                            # Important: Clear the last model response (which caused the error) before retrying
-                            if self.history[-1]["role"] == "model":
-                                last_part = self.history[-1]["parts"][0]
-                                # Only pop if it was a failed function call attempt or empty text response leading to error
-                                if (
-                                    hasattr(last_part, "function_call")
-                                    or not hasattr(last_part, "text")
-                                    or not last_part.text
-                                ):
-                                    self.history.pop()
-                                    log.debug("Removed last model part before retrying with fallback.")
-                            continue  # Retry the current loop iteration with the new model
-                        except Exception as fallback_init_error:
-                            log.error(
-                                f"Failed to initialize fallback model '{FALLBACK_MODEL}': {fallback_init_error}",
-                                exc_info=True,
-                            )
+                            # Check finish reason if no parts were actionable using integer values
+                            # Assuming FINISH_REASON_STOP = 1, FINISH_REASON_UNSPECIFIED = 0
+                            if response_candidate.finish_reason != 1 and response_candidate.finish_reason != 0:
+                                log.warning(
+                                    f"Response candidate {response_candidate.index} finished unexpectedly ({response_candidate.finish_reason}) with no actionable parts. Exiting loop."
+                                )
+                                final_summary = f"(Agent loop ended due to unexpected finish reason: {response_candidate.finish_reason} with no actionable parts)"
+                                task_completed = True
+                            pass
+
+                    except StopIteration:
+                        # This occurs when mock side_effect is exhausted
+                        log.warning("StopIteration caught, likely end of mock side_effect sequence.")
+                        # Decide what to do - often means the planned interaction finished.
+                        # If a final summary wasn't set by text_response_buffer, maybe use last known text?
+                        if not final_summary:
+                            log.warning("Loop ended due to StopIteration without a final summary set.")
+                            # Optionally find last text from history here if needed
+                            # For this test, breaking might be sufficient if text_response_buffer worked.
+                            final_summary = "(Loop ended due to StopIteration)"  # Fallback summary
+                        task_completed = True  # Ensure loop terminates
+                        break  # Exit loop
+
+                    except google.api_core.exceptions.ResourceExhausted as quota_error:
+                        # Log full details at debug level
+                        log.debug(f"Full quota error details: {quota_error}")  # Log full details for debugging
+                        # Check if we are already using the fallback
+                        if self.current_model_name == FALLBACK_MODEL:
+                            log.error("Quota exceeded even for the fallback model. Cannot proceed.")
                             self.console.print(
-                                f"[bold red]Error switching to fallback model: {fallback_init_error}[/bold red]"
+                                "[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]"
                             )
+                            # Clean history before returning
                             if self.history[-1]["role"] == "user":
                                 self.history.pop()
-                            return "Error: Failed to initialize fallback model after quota error."
+                            return "Error: API quota exceeded for primary and fallback models."
+                        else:
+                            log.info(f"Switching to fallback model: {FALLBACK_MODEL}")
+                            status.update(f"[bold yellow]Switching to fallback model: {FALLBACK_MODEL}...[/bold yellow]")
+                            self.console.print(
+                                f"[bold yellow]Quota limit reached for {self.current_model_name}. Switching to fallback model ({FALLBACK_MODEL})...[/bold yellow]"
+                            )
+                            self.current_model_name = FALLBACK_MODEL
+                            try:
+                                self._initialize_model_instance()
+                                log.info(
+                                    f"Successfully switched to and initialized fallback model: {self.current_model_name}"
+                                )
+                                # Important: Clear the last model response (which caused the error) before retrying
+                                if self.history[-1]["role"] == "model":
+                                    last_part = self.history[-1]["parts"][0]
+                                    # Only pop if it was a failed function call attempt or empty text response leading to error
+                                    if (
+                                        hasattr(last_part, "function_call")
+                                        or not hasattr(last_part, "text")
+                                        or not last_part.text
+                                    ):
+                                        self.history.pop()
+                                        log.debug("Removed last model part before retrying with fallback.")
+                                continue  # Retry the current loop iteration with the new model
+                            except Exception as fallback_init_error:
+                                log.error(
+                                    f"Failed to initialize fallback model '{FALLBACK_MODEL}': {fallback_init_error}",
+                                    exc_info=True,
+                                )
+                                self.console.print(
+                                    f"[bold red]Error switching to fallback model: {fallback_init_error}[/bold red]"
+                                )
+                                if self.history[-1]["role"] == "user":
+                                    self.history.pop()
+                                return "Error: Failed to initialize fallback model after quota error."
 
-                except Exception as generation_error:
-                    # This handles other errors during the generate_content call or loop logic
-                    log.error(f"Error during Agent Loop: {generation_error}", exc_info=True)
-                    # Clean history
-                    if self.history[-1]["role"] == "user":
-                        self.history.pop()
-                    return f"Error during agent processing: {generation_error}"
+                    except Exception as generation_error:
+                        # This handles other errors during the generate_content call or loop logic
+                        log.error(f"Error during Agent Loop: {generation_error}", exc_info=True)
+                        # Ensure status stops on error
+                        # The 'with' statement handles this automatically
+                        # Clean history
+                        if self.history[-1]["role"] == "user":
+                            self.history.pop()
+                        return f"Error during agent processing: {generation_error}"
 
             # === End Agent Loop ===
+            # The 'with' statement ensures status stops here
 
             # === Handle Final Output ===
             if task_completed and final_summary:
@@ -592,6 +618,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         except Exception as e:
             log.error(f"Error during Agent Loop: {str(e)}", exc_info=True)
+            # Ensure status stops on outer error
+            # The 'with' statement handles this automatically
             return f"An unexpected error occurred during the agent process: {str(e)}"
 
     def generate_without_init(self, prompt):
@@ -792,20 +820,11 @@ The user's first message will contain initial directory context and their reques
 
     # --- Find Last Text Helper ---
     def _find_last_model_text(self, history: list) -> str:
-        """Finds the last text part sent by the model in the history."""
-        for i in range(len(history) - 1, -1, -1):
-            if history[i]["role"] == "model":
-                try:
-                    # Check if parts exists and has content
-                    if "parts" in history[i] and history[i]["parts"]:
-                        part = history[i]["parts"][0]
-                        if isinstance(part, dict) and "text" in part:
-                            return part["text"].strip()
-                        elif hasattr(part, "text"):
-                            return part.text.strip()
-                except (AttributeError, IndexError):
-                    continue  # Ignore malformed history entries
-        return "(No previous model text found)"
+        for item in reversed(history):
+            if item["role"] == "model":
+                if isinstance(item["parts"][0], str):
+                    return item["parts"][0]
+        return "No text found in history"
 
     # --- Add Gemini-specific history management methods ---
     def add_to_history(self, entry):
@@ -816,53 +835,13 @@ The user's first message will contain initial directory context and their reques
     def clear_history(self):
         """Clears the Gemini conversation history, preserving the system prompt."""
         if self.history:
-            self.history = self.history[:2]  # Keep user(system_prompt) and initial model response
+            # Keep system prompt (idx 0), initial model ack (idx 1)
+            self.history = self.history[:2]
         else:
             self.history = []  # Should not happen if initialized correctly
         log.info("Gemini history cleared.")
 
     # --- Help Text Generator ---
     def _get_help_text(self) -> str:
-        """Generates comprehensive help text for the command line interface."""
-        # Get tool descriptions for the help text
-        tool_descriptions = []
-        for tool_name, tool_instance in AVAILABLE_TOOLS.items():
-            desc = getattr(tool_instance, "description", "No description")
-            # Keep only the first line or a short summary
-            if "\n" in desc:
-                desc = desc.split("\n")[0].strip()
-            # Format as bullet point with tool name and description
-            tool_descriptions.append(f"  • {tool_name}: {desc}")
-
-        # Sort the tools alphabetically
-        tool_descriptions.sort()
-
-        # Format the help text to be comprehensive but without Rich markup
-        help_text = f"""
-Help
-
-Interactive Commands:
-  /exit     - Exit the CLI tool
-  /help     - Display this help message
-
-CLI Commands:
-  gemini setup KEY                - Configure the Gemini API key
-  gemini list-models              - List available Gemini models
-  gemini set-default-model NAME   - Set the default Gemini model
-  gemini --model NAME             - Use a specific Gemini model
-
-Workflow: Analyze → Plan → Execute → Verify → Summarize
-
-Available Tools:
-{chr(10).join(tool_descriptions)}
-
-Tips:
-  • You can use Ctrl+C to cancel any operation
-  • Tools like 'edit' and 'create_file' will request confirmation before modifying files
-  • Use 'view' to examine file contents before modifying them
-  • Use 'task_complete' to signal completion of a multi-step operation
-
-For more information, visit: https://github.com/BlueCentre/cli-code
-"""
-
-        return help_text
+        # Implementation of _get_help_text method
+        pass

@@ -1,12 +1,17 @@
 name: Python CI
 
+# Workflow trigger optimization:
+# - PR events: Run full validation tests to verify code quality before merging
+# - Push to main: Run build and tests after merge to ensure main branch stability
+# - Tag events: Trigger releases to PyPI
+#
+# This separation reduces redundant CI runs by not triggering on feature branch pushes
+# since those will be validated through PR checks when ready to merge
+
 on:
   push:
     branches: 
       - "main"
-      - "feature/**"
-      - "fix/**"
-      - "release/**"
     tags: [ "v*" ]  # Trigger on tags starting with v
   pull_request:
     branches: [ "main" ]
@@ -123,6 +128,7 @@ jobs:
 
     # Fix SonarCloud scan to use proper configuration
     - name: SonarCloud Scan
+      # This step runs for both push to main and PRs - provides baseline analysis
       uses: SonarSource/sonarqube-scan-action@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs with analysis results
@@ -142,6 +148,7 @@ jobs:
 
     # Add specific PR properties based on GitHub context
     - name: SonarCloud PR Analysis
+      # This step runs only for PRs - adds PR-specific metadata
       if: github.event_name == 'pull_request'
       uses: SonarSource/sonarqube-scan-action@master
       env:
