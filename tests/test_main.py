@@ -7,6 +7,15 @@ from click.testing import CliRunner
 
 from cli_code.main import cli
 
+@pytest.fixture
+def mock_console(mocker):
+    """Provides a mocked Console object."""
+    console_mock = mocker.patch("src.cli_code.main.console")
+    # Make sure print method doesn't cause issues
+    console_mock.print.return_value = None
+    # Ensure input method is mockable
+    console_mock.input = mocker.MagicMock()
+    return console_mock
 
 @pytest.fixture
 def mock_config():
@@ -85,4 +94,4 @@ def test_list_models_ollama(mock_ollama_model, runner, mock_config):
     result = runner.invoke(cli, ['list-models', '--provider', 'ollama'])
     assert result.exit_code == 0
     mock_ollama_model.assert_called_once()
-    mock_instance.list_models.assert_called_once() 
+    mock_instance.list_models.assert_called_once()

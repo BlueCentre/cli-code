@@ -60,7 +60,7 @@ def main():
             cmd.append("-v")
             
         # Run tests
-        result = subprocess.run(cmd + ["test_dir/"], check=False)
+        result = subprocess.run(cmd + ["tests/"], check=False)
         
         if result.returncode != 0:
             print("\n⚠️  Some tests failed! See above for details.")

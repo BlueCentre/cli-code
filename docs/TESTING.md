@@ -15,7 +15,7 @@ This document provides guidelines and best practices for writing and maintaining
 Tests are organized in two main directories:
 
 - `test_dir/`: Contains most test files
-- `tests/`: Contains specialized test directories (e.g., `models/`, `tools/`)
+- `tests/`: Contains all test files, organized by module (e.g., `tests/models`, `tests/tools`).
 
 Test file naming follows these conventions:
 
@@ -42,10 +42,10 @@ python -m pytest --cov=src
 
 ```bash
 # Run tests in a specific file
-python -m pytest test_dir/test_gemini_model.py
+python -m pytest tests/models/test_gemini.py
 
 # Run a specific test
-python -m pytest test_dir/test_gemini_model.py::test_generate_simple_text_response
+python -m pytest tests/models/test_gemini.py::test_generate_simple_text_response
 ```
 
 ## Mock Objects and API Interactions

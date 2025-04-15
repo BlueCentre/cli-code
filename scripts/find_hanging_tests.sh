@@ -45,7 +45,7 @@ run_test_with_timeout() {
 }
 
 # Determine test directory
-TEST_DIR="test_dir"
+TEST_DIR="tests"
 
 # Check if TEST_DIR environment variable is set
 if [ -n "$TEST_DIR_ENV" ]; then
