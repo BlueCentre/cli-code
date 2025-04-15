@@ -126,4 +126,4 @@ If you encounter issues:
 3. Check that you have Python 3.9+ installed: `python --version`
 4. For Ollama, ensure the Ollama server is running: `curl http://localhost:11434/v1/models`
 
-For more help, visit: https://github.com/BlueCentre/cli-code 
+For more help, visit: https://github.com/BlueCentre/cli-code
