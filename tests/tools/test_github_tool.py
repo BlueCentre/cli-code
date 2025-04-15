@@ -306,7 +306,7 @@ class TestGitHubToolHandlers:
         }
 
         # Call the handler
-        result = await github_list_repos_handler(username="testuser")
+        result = await github_list_repos_handler({"username": "testuser"})
 
         # Check the result
         assert result["count"] == 1
@@ -332,7 +332,7 @@ class TestGitHubToolHandlers:
         }
 
         # Call the handler
-        result = await github_list_repos_handler()
+        result = await github_list_repos_handler({})
 
         # Check the result
         assert result["count"] == 1
@@ -359,7 +359,7 @@ class TestGitHubToolHandlers:
         }
 
         # Call the handler
-        result = await github_search_repos_handler(query="test", limit=5)
+        result = await github_search_repos_handler({"query": "test", "limit": 5})
 
         # Check the result
         assert result["count"] == 1
@@ -386,7 +386,7 @@ class TestGitHubToolHandlers:
         }
 
         # Call the handler
-        result = await github_search_repos_handler(query="api")
+        result = await github_search_repos_handler({"query": "api"})
 
         # Check the result
         assert result["count"] == 1
@@ -408,7 +408,7 @@ class TestGitHubToolHandlers:
 
         # Call the handler and verify it raises the correct exception
         with pytest.raises(ValueError, match="Failed to list GitHub repositories"):
-            await github_list_repos_handler()
+            await github_list_repos_handler({})
 
     @pytest.mark.asyncio
     @patch("src.cli_code.mcp.tools.examples.github._is_gh_cli_available")
@@ -421,4 +421,4 @@ class TestGitHubToolHandlers:
 
         # Call the handler and verify it raises the correct exception
         with pytest.raises(ValueError, match="Failed to search GitHub repositories"):
-            await github_search_repos_handler(query="test")
+            await github_search_repos_handler({"query": "test"})

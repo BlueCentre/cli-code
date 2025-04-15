@@ -44,15 +44,19 @@ class ToolExecutor:
             tool_name = tool
             tool = self.registry.get_tool(tool_name)
             if tool is None:
-                logger.error(f"Tool '{tool_name}' not found")
+                error_msg = f"Tool '{tool_name}' not found"
+                logger.error(error_msg)
                 return False
 
         # Validate the parameters against the schema
         try:
-            jsonschema.validate(instance=parameters, schema=tool.schema)
+            # The tool.schema contains a nested 'parameters' field that holds the actual schema
+            validation_schema = tool.schema.get('parameters', tool.schema)
+            jsonschema.validate(instance=parameters, schema=validation_schema)
             return True
         except jsonschema.ValidationError as e:
-            logger.error(f"Parameter validation failed for tool '{tool.name}': {e}")
+            error_msg = f"Parameter validation failed for tool '{tool.name}': {e}"
+            logger.error(error_msg)
             return False
 
     async def execute(self, tool_name: str, parameters: Dict[str, Any]) -> ToolResult:
@@ -71,35 +75,50 @@ class ToolExecutor:
             jsonschema.ValidationError: If the parameters are invalid
             Exception: If the tool execution fails
         """
+        logger.info(f"Attempting to execute tool: {tool_name}")
+
         try:
             # Get the tool
             tool = self.registry.get_tool(tool_name)
             if not tool:
+                logger.warning(f"Tool not found: {tool_name}")
                 return ToolResult(
                     tool_name=tool_name,
                     parameters=parameters,
                     result=None,
                     success=False,
-                    error=f"Tool '{tool_name}' not found",
+                    error=f"Tool not found: {tool_name}"
                 )
 
             # Validate parameters
             if not self.validate_parameters(tool, parameters):
+                logger.warning(f"Parameter validation failed for tool: {tool_name}")
                 return ToolResult(
                     tool_name=tool_name,
                     parameters=parameters,
                     result=None,
                     success=False,
-                    error=f"Parameter validation failed for tool '{tool_name}'",
+                    error="Parameter validation failed"
                 )
 
             # Execute the tool
-            logger.info(f"Executing tool '{tool_name}' with parameters: {parameters}")
-            result = await tool.execute(**parameters)
-
-            # Format and return the result
-            return ToolResult(tool_name=tool_name, parameters=parameters, result=result, success=True)
+            logger.info(f"Executing tool: {tool_name}")
+            result = await tool.execute(parameters)
+            logger.info(f"Tool execution completed: {tool_name}")
+            
+            return ToolResult(
+                tool_name=tool_name,
+                parameters=parameters,
+                result=result,
+                success=True
+            )
+            
         except Exception as e:
-            # Log and wrap other exceptions
-            logger.exception(f"Tool execution failed for '{tool_name}': {e}")
-            return ToolResult(tool_name=tool_name, parameters=parameters, result=None, success=False, error=str(e))
+            logger.error(f"Error executing tool {tool_name}: {str(e)}")
+            return ToolResult(
+                tool_name=tool_name,
+                parameters=parameters,
+                result=None,
+                success=False,
+                error=str(e)
+            )

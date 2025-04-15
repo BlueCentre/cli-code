@@ -8,14 +8,15 @@ from typing import Any, Dict, List, Union
 from src.cli_code.mcp.tools.models import Tool, ToolParameter
 
 
-async def calculator_handler(operation: str, a: float, b: float) -> Dict[str, Any]:
+async def calculator_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """
     Perform a basic arithmetic operation.
 
     Args:
-        operation: The operation to perform (add, subtract, multiply, divide)
-        a: The first operand
-        b: The second operand
+        parameters: Dictionary containing:
+            operation: The operation to perform (add, subtract, multiply, divide)
+            a: The first operand
+            b: The second operand
 
     Returns:
         The result of the operation
@@ -23,6 +24,20 @@ async def calculator_handler(operation: str, a: float, b: float) -> Dict[str, An
     Raises:
         ValueError: If the operation is not supported or division by zero
     """
+    # Extract parameters
+    operation = parameters.get("operation")
+    a = parameters.get("a")
+    b = parameters.get("b")
+    
+    # Validate required parameters
+    if not operation:
+        raise ValueError("Operation parameter is required")
+    if a is None:
+        raise ValueError("Parameter 'a' is required")
+    if b is None:
+        raise ValueError("Parameter 'b' is required")
+    
+    # Perform the calculation
     if operation == "add":
         result = a + b
     elif operation == "subtract":

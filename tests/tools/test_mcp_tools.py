@@ -122,11 +122,11 @@ class TestToolExecutor(unittest.TestCase):
         self.executor.validate_parameters(self.tool, parameters)
 
     def test_validate_parameters_invalid(self):
-        """Test validating invalid parameters raises an error."""
+        """Test validating invalid parameters returns False."""
         # Missing required parameter
         parameters = {}
-        with self.assertRaises(ValueError):
-            self.executor.validate_parameters(self.tool, parameters)
+        result = self.executor.validate_parameters(self.tool, parameters)
+        self.assertFalse(result)
 
     async def test_execute_success(self):
         """Test executing a tool successfully."""
@@ -142,16 +142,30 @@ class TestToolExecutor(unittest.TestCase):
         self.assertEqual(result.result, self.tool_result)
 
     async def test_execute_tool_not_found(self):
-        """Test executing a nonexistent tool raises an error."""
-        with self.assertRaises(ValueError):
-            await self.executor.execute("nonexistent_tool", {})
+        """Test executing a nonexistent tool returns a failed result."""
+        result = await self.executor.execute("nonexistent_tool", {})
+        
+        # Verify the result
+        self.assertEqual(result.tool_name, "nonexistent_tool")
+        self.assertEqual(result.parameters, {})
+        self.assertIsNone(result.result)
+        self.assertFalse(result.success)
+        self.assertIsNotNone(result.error)
+        self.assertIn("not found", result.error.lower())
 
     async def test_execute_validation_error(self):
-        """Test executing a tool with invalid parameters raises an error."""
+        """Test executing a tool with invalid parameters returns a failed result."""
         # Missing required parameter
         parameters = {}
-        with self.assertRaises(ValueError):
-            await self.executor.execute("test_tool", parameters)
+        result = await self.executor.execute("test_tool", parameters)
+        
+        # Verify the result
+        self.assertEqual(result.tool_name, "test_tool")
+        self.assertEqual(result.parameters, parameters)
+        self.assertIsNone(result.result)
+        self.assertFalse(result.success)
+        self.assertIsNotNone(result.error)
+        self.assertIn("validation failed", result.error.lower())
 
 
 class TestToolResponseFormatter(unittest.TestCase):

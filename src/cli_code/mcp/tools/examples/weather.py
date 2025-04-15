@@ -11,12 +11,13 @@ import aiohttp
 from src.cli_code.mcp.tools.models import Tool, ToolParameter
 
 
-async def weather_handler(location: str) -> Dict[str, Any]:
+async def weather_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """
     Get current weather information for a location.
 
     Args:
-        location: The city or location to get weather for
+        parameters: Dictionary containing:
+            location: The city or location to get weather for
 
     Returns:
         Weather data including temperature, conditions, and location info
@@ -24,6 +25,13 @@ async def weather_handler(location: str) -> Dict[str, Any]:
     Raises:
         ValueError: If the location is invalid or connection fails
     """
+    # Extract parameters
+    location = parameters.get("location")
+    
+    # Validate required parameters
+    if not location:
+        raise ValueError("Location parameter is required")
+    
     # In a real implementation, you would use an actual weather API
     # This is a mock implementation that returns fake data
     try:

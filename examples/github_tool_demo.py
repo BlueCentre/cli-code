@@ -53,7 +53,10 @@ async def main():
     print("\nListing repositories for authenticated user:")
     try:
         result = await service.execute_tool("github_list_repos", {})
-        print(json.dumps(result, indent=2))
+        if result.success:
+            print(json.dumps(result.result, indent=2))
+        else:
+            print(f"Error: {result.error}")
     except Exception as e:
         print(f"Error listing repositories: {e}")
 
@@ -61,11 +64,11 @@ async def main():
     search_query = "python-tutorial"
     print(f"\nSearching for repositories matching '{search_query}':")
     try:
-        result = await service.execute_tool("github_search_repos", {
-            "query": search_query,
-            "limit": 5
-        })
-        print(json.dumps(result, indent=2))
+        result = await service.execute_tool("github_search_repos", {"query": search_query, "limit": 5})
+        if result.success:
+            print(json.dumps(result.result, indent=2))
+        else:
+            print(f"Error: {result.error}")
     except Exception as e:
         print(f"Error searching repositories: {e}")
 
@@ -73,10 +76,11 @@ async def main():
     username = "microsoft"
     print(f"\nListing repositories for user '{username}':")
     try:
-        result = await service.execute_tool("github_list_repos", {
-            "username": username
-        })
-        print(json.dumps(result, indent=2))
+        result = await service.execute_tool("github_list_repos", {"username": username})
+        if result.success:
+            print(json.dumps(result.result, indent=2))
+        else:
+            print(f"Error: {result.error}")
     except Exception as e:
         print(f"Error listing repositories for user: {e}")
 

@@ -59,7 +59,7 @@ class TestCalculatorTool(unittest.TestCase):
 
         # Check the tool properties
         self.assertEqual(tool.name, "calculator")
-        self.assertEqual(tool.description, "Perform basic arithmetic operations")
+        self.assertEqual(tool.description, "Performs basic arithmetic operations (add, subtract, multiply, divide)")
 
         # Check the parameters
         parameters = {param.name: param for param in tool.parameters}
@@ -67,18 +67,21 @@ class TestCalculatorTool(unittest.TestCase):
         # Check operation parameter
         self.assertIn("operation", parameters)
         self.assertTrue(parameters["operation"].required)
-        self.assertEqual(parameters["operation"].schema["type"], "string")
-        self.assertEqual(parameters["operation"].schema["enum"], ["add", "subtract", "multiply", "divide"])
+        operation_schema = parameters["operation"].to_schema()
+        self.assertEqual(operation_schema["type"], "string")
+        self.assertEqual(operation_schema["enum"], ["add", "subtract", "multiply", "divide"])
 
         # Check a parameter
         self.assertIn("a", parameters)
         self.assertTrue(parameters["a"].required)
-        self.assertEqual(parameters["a"].schema["type"], "number")
+        a_schema = parameters["a"].to_schema()
+        self.assertEqual(a_schema["type"], "number")
 
         # Check b parameter
         self.assertIn("b", parameters)
         self.assertTrue(parameters["b"].required)
-        self.assertEqual(parameters["b"].schema["type"], "number")
+        b_schema = parameters["b"].to_schema()
+        self.assertEqual(b_schema["type"], "number")
 
     @pytest.mark.asyncio
     async def test_tool_execution(self):

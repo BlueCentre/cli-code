@@ -16,13 +16,14 @@ from src.cli_code.mcp.tools.models import Tool, ToolParameter
 logger = logging.getLogger(__name__)
 
 
-async def github_list_repos_handler(username: Optional[str] = None) -> Dict[str, Any]:
+async def github_list_repos_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """
     List GitHub repositories for the authenticated user or a specified user.
 
     Args:
-        username: Optional username to get repositories for. If not provided,
-                 lists repositories for the authenticated user.
+        parameters: Dictionary containing:
+            username: Optional username to get repositories for. If not provided,
+                     lists repositories for the authenticated user.
 
     Returns:
         Dictionary containing repository information
@@ -31,6 +32,9 @@ async def github_list_repos_handler(username: Optional[str] = None) -> Dict[str,
         ValueError: If the operation fails
     """
     try:
+        # Extract parameters
+        username = parameters.get("username")
+        
         # Use GitHub CLI if available (preferred for authentication handling)
         if _is_gh_cli_available():
             return await _list_repos_using_gh_cli(username)
@@ -43,13 +47,14 @@ async def github_list_repos_handler(username: Optional[str] = None) -> Dict[str,
         raise ValueError(f"Failed to list GitHub repositories: {str(e)}") from e
 
 
-async def github_search_repos_handler(query: str, limit: int = 10) -> Dict[str, Any]:
+async def github_search_repos_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """
     Search for GitHub repositories.
 
     Args:
-        query: Search query string
-        limit: Maximum number of results to return (default: 10)
+        parameters: Dictionary containing:
+            query: Search query string
+            limit: Maximum number of results to return (default: 10)
 
     Returns:
         Dictionary containing search results
@@ -58,6 +63,13 @@ async def github_search_repos_handler(query: str, limit: int = 10) -> Dict[str, 
         ValueError: If the search operation fails
     """
     try:
+        # Extract parameters
+        query = parameters.get("query")
+        limit = parameters.get("limit", 10)
+        
+        if not query:
+            raise ValueError("Query parameter is required")
+        
         # Use GitHub CLI if available (preferred for authentication handling)
         if _is_gh_cli_available():
             return await _search_repos_using_gh_cli(query, limit)
