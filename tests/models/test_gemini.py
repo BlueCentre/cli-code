@@ -357,7 +357,7 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
     # Verify history includes the rejection response added by the agent
     # Fix: Assert against the calls to the mock object, not the instance's history list
     found_rejection_in_call = False
-    for call_args, call_kwargs in mock_add_to_history.call_args_list:
+    for call_args, _call_kwargs in mock_add_to_history.call_args_list:
         if call_args: # Ensure there are positional arguments
             entry = call_args[0] # The history entry is the first positional arg
             if (
