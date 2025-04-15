@@ -12,10 +12,7 @@ This document provides guidelines and best practices for writing and maintaining
 
 ## Testing Structure
 
-Tests are organized in two main directories:
-
-- `test_dir/`: Contains most test files
-- `tests/`: Contains all test files, organized by module (e.g., `tests/models`, `tests/tools`).
+Tests are organized in the `tests/` directory, organized by module (e.g., `tests/models`, `tests/tools`).
 
 Test file naming follows these conventions:
 
@@ -110,7 +107,7 @@ mock_confirm = mocker.patch("path.to.questionary.confirm", return_value=mock_con
 
 External APIs evolve over time, which can break tests. Follow these practices to make tests more resilient:
 
-1. Use loose coupling to implementation details 
+1. Use loose coupling to implementation details
 2. Avoid importing classes directly from unstable APIs when possible
 3. For required imports, use try/except blocks to handle missing imports
 4. Consider using conditional test execution with `@pytest.mark.skipif`
@@ -140,7 +137,7 @@ Recent work with the Google Generative AI (Gemini) API highlighted several key l
 
 2. **Import Strategies**:
    - Import specifically from submodules rather than top-level packages
-   - Use alternative imports when direct imports aren't available: 
+   - Use alternative imports when direct imports aren't available:
      ```python
      # Instead of
      from google.generativeai.types import Candidate
@@ -170,7 +167,7 @@ Recent work with the Google Generative AI (Gemini) API highlighted several key l
 
 3. **Regular Updates**: Update tests when APIs change, focusing on the behavior rather than the exact implementation.
 
-4. **Error Handling**: Include proper error handling in tests to make them more robust against changes. 
+4. **Error Handling**: Include proper error handling in tests to make them more robust against changes.
 
 ### Known Test Workarounds
 
@@ -183,4 +180,4 @@ Recent work with the Google Generative AI (Gemini) API highlighted several key l
 
 2. **Mock API Response Structure**: Some tests may have extra or adjusted mock structures to handle the model's specific response processing.
    - Look for comments like `# Mock response adapted for agent loop` to identify these cases.
-   - When updating these tests, ensure you maintain the adjusted structure until the underlying issues are resolved. 
+   - When updating these tests, ensure you maintain the adjusted structure until the underlying issues are resolved.

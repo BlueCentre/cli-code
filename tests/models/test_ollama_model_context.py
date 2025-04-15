@@ -1,11 +1,11 @@
 """
-Tests for the Ollama Model context management functionality.
+Tests for the OllamaModel context management capabilities.
 
-To run these tests specifically:
-    python -m pytest test_dir/test_ollama_model_context.py
+To run this file:
+python -m pytest tests/models/test_ollama_model_context.py
 
 To run a specific test:
-    python -m pytest test_dir/test_ollama_model_context.py::TestOllamaModelContext::test_manage_ollama_context_truncation_needed
+python -m pytest tests/models/test_ollama_model_context.py::TestOllamaModelContext::test_manage_ollama_context_truncation_needed
 
 To run all tests related to context management:
     python -m pytest -k "ollama_context"

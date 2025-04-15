@@ -1,11 +1,11 @@
 """
-Tests for edge cases in the TreeTool functionality.
+Tests for edge cases of the TreeTool.
 
-To run these tests specifically:
-    python -m pytest test_dir/test_tree_tool_edge_cases.py
+To run just this test file:
+python -m pytest tests/tools/test_tree_tool_edge_cases.py
 
-To run a specific test:
-    python -m pytest test_dir/test_tree_tool_edge_cases.py::TestTreeToolEdgeCases::test_tree_empty_result
+To run a specific test function:
+python -m pytest tests/tools/test_tree_tool_edge_cases.py::TestTreeToolEdgeCases::test_tree_empty_result
 
 To run all tests related to tree tool:
     python -m pytest -k "tree_tool"
