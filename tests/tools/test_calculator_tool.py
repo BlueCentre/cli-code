@@ -14,37 +14,64 @@ from src.cli_code.mcp.tools.models import Tool
 class TestCalculatorHandler(unittest.TestCase):
     """Tests for the calculator_handler function."""
 
+    @pytest.mark.asyncio
     async def test_add(self):
         """Test addition operation."""
-        result = await calculator_handler(operation="add", a=5, b=3)
-        self.assertEqual(result, {"result": 8})
+        result = await calculator_handler({"operation": "add", "a": 5, "b": 3})
+        self.assertEqual(result, {"operation": "add", "a": 5, "b": 3, "result": 8})
 
+    @pytest.mark.asyncio
     async def test_subtract(self):
         """Test subtraction operation."""
-        result = await calculator_handler(operation="subtract", a=5, b=3)
-        self.assertEqual(result, {"result": 2})
+        result = await calculator_handler({"operation": "subtract", "a": 5, "b": 3})
+        self.assertEqual(result, {"operation": "subtract", "a": 5, "b": 3, "result": 2})
 
+    @pytest.mark.asyncio
     async def test_multiply(self):
         """Test multiplication operation."""
-        result = await calculator_handler(operation="multiply", a=5, b=3)
-        self.assertEqual(result, {"result": 15})
+        result = await calculator_handler({"operation": "multiply", "a": 5, "b": 3})
+        self.assertEqual(result, {"operation": "multiply", "a": 5, "b": 3, "result": 15})
 
+    @pytest.mark.asyncio
     async def test_divide(self):
         """Test division operation."""
-        result = await calculator_handler(operation="divide", a=6, b=3)
-        self.assertEqual(result, {"result": 2})
+        result = await calculator_handler({"operation": "divide", "a": 6, "b": 3})
+        self.assertEqual(result, {"operation": "divide", "a": 6, "b": 3, "result": 2})
 
+    @pytest.mark.asyncio
     async def test_divide_by_zero(self):
         """Test division by zero raises ValueError."""
         with self.assertRaises(ValueError) as context:
-            await calculator_handler(operation="divide", a=5, b=0)
+            await calculator_handler({"operation": "divide", "a": 5, "b": 0})
         self.assertIn("Division by zero", str(context.exception))
 
+    @pytest.mark.asyncio
     async def test_invalid_operation(self):
         """Test invalid operation raises ValueError."""
         with self.assertRaises(ValueError) as context:
-            await calculator_handler(operation="power", a=5, b=2)
+            await calculator_handler({"operation": "power", "a": 5, "b": 2})
         self.assertIn("Unsupported operation", str(context.exception))
+        
+    @pytest.mark.asyncio
+    async def test_missing_operation(self):
+        """Test missing operation parameter raises ValueError."""
+        with self.assertRaises(ValueError) as context:
+            await calculator_handler({"a": 5, "b": 3})
+        self.assertIn("Operation parameter is required", str(context.exception))
+        
+    @pytest.mark.asyncio
+    async def test_missing_a_parameter(self):
+        """Test missing 'a' parameter raises ValueError."""
+        with self.assertRaises(ValueError) as context:
+            await calculator_handler({"operation": "add", "b": 3})
+        self.assertIn("Parameter 'a' is required", str(context.exception))
+        
+    @pytest.mark.asyncio
+    async def test_missing_b_parameter(self):
+        """Test missing 'b' parameter raises ValueError."""
+        with self.assertRaises(ValueError) as context:
+            await calculator_handler({"operation": "add", "a": 5})
+        self.assertIn("Parameter 'b' is required", str(context.exception))
 
 
 class TestCalculatorTool(unittest.TestCase):
@@ -90,17 +117,17 @@ class TestCalculatorTool(unittest.TestCase):
         tool = CalculatorTool.create()
 
         # Test addition
-        result = await tool.handler(operation="add", a=10, b=5)
-        self.assertEqual(result, {"result": 15})
+        result = await tool.execute({"operation": "add", "a": 10, "b": 5})
+        self.assertEqual(result, {"operation": "add", "a": 10, "b": 5, "result": 15})
 
         # Test subtraction
-        result = await tool.handler(operation="subtract", a=10, b=5)
-        self.assertEqual(result, {"result": 5})
+        result = await tool.execute({"operation": "subtract", "a": 10, "b": 5})
+        self.assertEqual(result, {"operation": "subtract", "a": 10, "b": 5, "result": 5})
 
         # Test multiplication
-        result = await tool.handler(operation="multiply", a=10, b=5)
-        self.assertEqual(result, {"result": 50})
+        result = await tool.execute({"operation": "multiply", "a": 10, "b": 5})
+        self.assertEqual(result, {"operation": "multiply", "a": 10, "b": 5, "result": 50})
 
         # Test division
-        result = await tool.handler(operation="divide", a=10, b=5)
-        self.assertEqual(result, {"result": 2})
+        result = await tool.execute({"operation": "divide", "a": 10, "b": 5})
+        self.assertEqual(result, {"operation": "divide", "a": 10, "b": 5, "result": 2})

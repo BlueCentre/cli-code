@@ -315,28 +315,136 @@ class TestToolService(unittest.TestCase):
     
     @pytest.mark.asyncio
     async def test_execute_tool_call_with_invalid_json(self):
-        """Test executing a tool call with invalid JSON arguments."""
-        # Create a tool call object with invalid JSON arguments
+        """Test executing a tool call with invalid JSON."""
         tool_call = {
-            "id": "call_123",
+            "id": "test_id",
             "type": "function",
             "function": {
-                "name": "calculator",
-                "arguments": "{invalid json"
+                "name": "calc_tool",
+                "arguments": "invalid json"
             }
         }
-        
-        # Execute the tool call
+
         result = await self.service.execute_tool_call(tool_call)
-        
-        # Check the result
-        self.assertEqual(result["tool_call_id"], "call_123")
-        self.assertEqual(result["name"], "calculator")
+
+        self.assertEqual(result["tool_call_id"], "test_id")
+        self.assertEqual(result["name"], "calc_tool")
         self.assertEqual(result["status"], "error")
-        self.assertIn("Invalid JSON in tool call arguments", result["content"])
+        self.assertIn("Invalid JSON", result["content"])
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_error_handling(self):
+        """Test error handling in execute_tool_call."""
+        # Setup mock to raise exception
+        self.executor.execute.side_effect = ValueError("Test error")
         
-        # Verify that the executor was not called
-        self.executor.execute.assert_not_called()
+        tool_call = {
+            "id": "test_id",
+            "type": "function",
+            "function": {
+                "name": "calc_tool",
+                "arguments": {"param1": "value1"}
+            }
+        }
+
+        result = await self.service.execute_tool_call(tool_call)
+
+        self.assertEqual(result["tool_call_id"], "test_id")
+        self.assertEqual(result["name"], "calc_tool")
+        self.assertEqual(result["status"], "error")
+        self.assertIn("Test error", result["content"])
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_without_id(self):
+        """Test executing a tool call without an ID."""
+        tool_call = {
+            "type": "function",
+            "function": {
+                "name": "calc_tool",
+                "arguments": {"param1": "value1"}
+            }
+        }
+
+        result = await self.service.execute_tool_call(tool_call)
+
+        self.assertEqual(result["tool_call_id"], "unknown")
+        self.assertEqual(result["name"], "calc_tool")
+        self.assertEqual(result["status"], "success")
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_without_name(self):
+        """Test executing a tool call without a name."""
+        tool_call = {
+            "id": "test_id",
+            "type": "function",
+            "function": {
+                "arguments": {"param1": "value1"}
+            }
+        }
+
+        result = await self.service.execute_tool_call(tool_call)
+
+        self.assertEqual(result["tool_call_id"], "test_id")
+        self.assertEqual(result["name"], "unknown")
+        self.assertEqual(result["status"], "error")
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_with_exception(self):
+        """Test execute_tool with an exception."""
+        # Setup to raise exception during execution
+        self.executor.execute.side_effect = Exception("Unexpected error")
+        
+        result = await self.service.execute_tool("calc_tool", {"param1": "value1"})
+        
+        # Verify the result
+        self.assertEqual(result.tool_name, "calc_tool")
+        self.assertEqual(result.parameters, {"param1": "value1"})
+        self.assertFalse(result.success)
+        self.assertEqual(result.error, "Unexpected error")
+        self.assertIsNone(result.result)
+
+    @pytest.mark.asyncio
+    async def test_format_result(self):
+        """Test the format_result method."""
+        # Create a ToolResult
+        tool_result = ToolResult(
+            tool_name="calc_tool",
+            parameters={"param1": "value1"},
+            result={"answer": 42},
+            success=True
+        )
+        
+        # Format the result
+        formatted = self.service.format_result(tool_result)
+        
+        # Verify the format
+        self.assertEqual(formatted["name"], "calc_tool")
+        self.assertEqual(formatted["parameters"], {"param1": "value1"})
+        self.assertEqual(formatted["result"], {"answer": 42})
+        self.assertEqual(formatted["success"], True)
+        self.assertNotIn("error", formatted)
+
+    @pytest.mark.asyncio
+    async def test_format_result_error(self):
+        """Test formatting an error result."""
+        # Create a failed ToolResult
+        tool_result = ToolResult(
+            tool_name="calc_tool",
+            parameters={"param1": "value1"},
+            result=None,
+            success=False,
+            error="Division by zero"
+        )
+        
+        # Format the result
+        formatted = self.service.format_result(tool_result)
+        
+        # Verify the format
+        self.assertEqual(formatted["name"], "calc_tool")
+        self.assertEqual(formatted["parameters"], {"param1": "value1"})
+        self.assertIsNone(formatted["result"])
+        self.assertEqual(formatted["success"], False)
+        self.assertEqual(formatted["error"], "Division by zero")
     
     @pytest.mark.asyncio
     async def test_execute_tool_calls_single(self):

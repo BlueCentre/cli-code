@@ -17,6 +17,7 @@ from src.cli_code.mcp.tools.examples.github import (
     _search_repos_using_gh_cli,
     github_list_repos_handler,
     github_search_repos_handler,
+    github_handler,
 )
 from src.cli_code.mcp.tools.models import Tool
 
@@ -53,6 +54,48 @@ class TestGitHubTool(unittest.TestCase):
         self.assertTrue(tool.parameters[0].required)
         self.assertEqual(tool.parameters[1].name, "limit")
         self.assertFalse(tool.parameters[1].required)
+
+    def test_create(self):
+        """Test creating a GitHubTool instance."""
+        github_tool = GitHubTool()
+        
+        # Verify the tool's properties
+        self.assertEqual(github_tool.name, "github")
+        self.assertEqual(github_tool.description, "Search and retrieve information from GitHub repositories.")
+        
+        # Verify parameters
+        params = github_tool.parameters
+        param_names = [p.name for p in params]
+        self.assertIn("operation", param_names)
+        
+        operation_param = next(p for p in params if p.name == "operation")
+        self.assertTrue(operation_param.required)
+        self.assertEqual(operation_param.type, "string")
+        self.assertIn("search_repositories", operation_param.enum)
+        self.assertIn("get_repository", operation_param.enum)
+        
+        # Verify handler function
+        self.assertEqual(github_tool.handler, github_handler)
+
+    @pytest.mark.asyncio
+    async def test_tool_execution(self):
+        """Test the execution of the GitHubTool."""
+        github_tool = GitHubTool()
+        
+        # Mock the handler function
+        mock_result = {
+            "operation": "search_repositories",
+            "repositories": [{"name": "test-repo", "url": "https://github.com/user/test-repo"}],
+            "total_count": 1
+        }
+        
+        with patch('cli_code.mcp.tools.examples.github.github_handler', AsyncMock(return_value=mock_result)):
+            # Execute the tool
+            parameters = {"operation": "search_repositories", "query": "test"}
+            result = await github_tool.execute(parameters)
+            
+            # Verify the result
+            self.assertEqual(result, mock_result)
 
 
 class TestGitHubHelpers:
@@ -422,3 +465,114 @@ class TestGitHubToolHandlers:
         # Call the handler and verify it raises the correct exception
         with pytest.raises(ValueError, match="Failed to search GitHub repositories"):
             await github_search_repos_handler({"query": "test"})
+
+
+class TestGitHubHandler:
+    @pytest.mark.asyncio
+    async def test_search_repositories_success(self):
+        """Test successful repository search."""
+        # Create mock response
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "items": [
+                {"name": "repo1", "description": "Test repo 1", "html_url": "https://github.com/user/repo1"},
+                {"name": "repo2", "description": "Test repo 2", "html_url": "https://github.com/user/repo2"}
+            ],
+            "total_count": 2
+        })
+        
+        # Mock the aiohttp.ClientSession
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = AsyncMock(return_value=mock_response)
+        
+        # Call the handler
+        with patch('aiohttp.ClientSession', return_value=mock_session):
+            result = await github_handler({"operation": "search_repositories", "query": "test repo"})
+        
+        # Verify the result
+        assert result["operation"] == "search_repositories"
+        assert len(result["repositories"]) == 2
+        assert result["repositories"][0]["name"] == "repo1"
+        assert result["repositories"][1]["name"] == "repo2"
+        assert result["total_count"] == 2
+    
+    @pytest.mark.asyncio
+    async def test_get_repository_success(self):
+        """Test successful repository fetch."""
+        # Create mock response
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "name": "test-repo",
+            "description": "A test repository",
+            "html_url": "https://github.com/user/test-repo",
+            "owner": {"login": "user"},
+            "stargazers_count": 10,
+            "forks_count": 5
+        })
+        
+        # Mock the aiohttp.ClientSession
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = AsyncMock(return_value=mock_response)
+        
+        # Call the handler
+        with patch('aiohttp.ClientSession', return_value=mock_session):
+            result = await github_handler({"operation": "get_repository", "owner": "user", "repo": "test-repo"})
+        
+        # Verify the result
+        assert result["operation"] == "get_repository"
+        assert result["repository"]["name"] == "test-repo"
+        assert result["repository"]["description"] == "A test repository"
+        assert result["repository"]["stars"] == 10
+        assert result["repository"]["forks"] == 5
+    
+    @pytest.mark.asyncio
+    async def test_missing_operation(self):
+        """Test missing operation parameter."""
+        with pytest.raises(ValueError, match="Missing required parameter: operation"):
+            await github_handler({})
+    
+    @pytest.mark.asyncio
+    async def test_invalid_operation(self):
+        """Test invalid operation parameter."""
+        with pytest.raises(ValueError, match="Invalid operation: invalid_op"):
+            await github_handler({"operation": "invalid_op"})
+    
+    @pytest.mark.asyncio
+    async def test_search_repositories_missing_query(self):
+        """Test search_repositories with missing query."""
+        with pytest.raises(ValueError, match="Missing required parameter: query"):
+            await github_handler({"operation": "search_repositories"})
+    
+    @pytest.mark.asyncio
+    async def test_get_repository_missing_parameters(self):
+        """Test get_repository with missing parameters."""
+        with pytest.raises(ValueError, match="Missing required parameter: owner"):
+            await github_handler({"operation": "get_repository"})
+        
+        with pytest.raises(ValueError, match="Missing required parameter: repo"):
+            await github_handler({"operation": "get_repository", "owner": "user"})
+    
+    @pytest.mark.asyncio
+    async def test_github_api_error(self):
+        """Test handling of GitHub API errors."""
+        # Create mock response for error
+        mock_response = MagicMock()
+        mock_response.status = 404
+        mock_response.json = AsyncMock(return_value={"message": "Not Found"})
+        
+        # Mock the aiohttp.ClientSession
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = AsyncMock(return_value=mock_response)
+        
+        # Call the handler
+        with patch('aiohttp.ClientSession', return_value=mock_session):
+            with pytest.raises(Exception, match="GitHub API error: Not Found"):
+                await github_handler({"operation": "get_repository", "owner": "user", "repo": "non-existent"})
