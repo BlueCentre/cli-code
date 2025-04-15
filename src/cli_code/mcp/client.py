@@ -1,37 +1,18 @@
 """
-Core MCP Protocol Client Implementation.
+MCP (Model Context Provider) client.
+
+This module provides a client for interacting with MCP servers.
 """
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union
+import uuid
+from typing import Any, Dict, List, Optional
+
+import aiohttp
+import requests
 
 
-class MCPConfig:
-    """Configuration class for the MCP client."""
-    
-    def __init__(
-        self,
-        server_url: str,
-        api_key: Optional[str] = None,
-        server_config: Optional[Dict[str, Any]] = None,
-        model_config: Optional[Dict[str, Any]] = None,
-        tool_config: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        Initialize the MCP configuration.
-        
-        Args:
-            server_url: URL of the MCP server
-            api_key: API key for authentication (if required)
-            server_config: Additional server configuration
-            model_config: LLM model configuration
-            tool_config: Tool configuration options
-        """
-        self.server_url = server_url
-        self.api_key = api_key
-        self.server_config = server_config or {}
-        self.model_config = model_config or {}
-        self.tool_config = tool_config or {}
+logger = logging.getLogger(__name__)
 
 
 class MCPMessage:
@@ -133,38 +114,24 @@ class MCPToolCall:
 class MCPClient:
     """Client for interacting with Model Context Provider servers."""
     
-    def __init__(self, config: MCPConfig):
+    def __init__(
+        self,
+        endpoint: str,
+        api_key: Optional[str] = None,
+        model: str = "default",
+    ):
         """
-        Initialize the MCP client.
+        Initialize the client.
         
         Args:
-            config: Configuration for the MCP client
+            endpoint: URL of the MCP server
+            api_key: API key for authentication
+            model: Model to use for requests
         """
-        self.config = config
-        self.logger = logging.getLogger("mcp_client")
-    
-    def send_message(self, messages: List[MCPMessage]) -> Dict[str, Any]:
-        """
-        Send a list of messages to the MCP server.
-        
-        Args:
-            messages: List of MCPMessage objects
-            
-        Returns:
-            The response from the MCP server
-        
-        Raises:
-            NotImplementedError: This is a placeholder for HTTP implementation
-        """
-        # Format messages for the API
-        formatted_messages = [message.to_dict() for message in messages]
-        
-        # This is where actual HTTP request implementation would go
-        # For now, we'll raise an error as this is just a placeholder
-        raise NotImplementedError(
-            "HTTP request implementation needed. Request would contain: " +
-            json.dumps(formatted_messages)
-        )
+        self.endpoint = endpoint
+        self.api_key = api_key
+        self.model = model
+        self.logger = logging.getLogger(__name__)
     
     def process_response(self, response: Dict[str, Any]) -> MCPMessage:
         """
@@ -187,6 +154,67 @@ class MCPClient:
             # Handle unexpected response format
             self.logger.error(f"Unexpected response format: {response}")
             return MCPMessage(role="assistant", content="Error processing response")
+    
+    async def send_request(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Send a request to the MCP server.
+        
+        Args:
+            messages: List of messages in the conversation
+            tools: List of available tools
+            model: Model to use (overrides the client's default)
+            temperature: Sampling temperature
+            max_tokens: Maximum number of tokens to generate
+            
+        Returns:
+            The server's response
+        """
+        # Prepare the request payload
+        payload = {
+            "model": model or self.model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        
+        if tools:
+            payload["tools"] = tools
+            
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+            
+        # Send the request
+        self.logger.info(f"Sending request to {self.endpoint}")
+        headers = {
+            "Content-Type": "application/json",
+        }
+        
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.endpoint,
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        self.logger.error(f"Error from MCP server: {error_text}")
+                        raise Exception(f"Error from MCP server: {response.status} {error_text}")
+                    
+                    result = await response.json()
+                    return result
+        except aiohttp.ClientError as e:
+            self.logger.error(f"Error sending request: {e}")
+            raise Exception(f"Error sending request: {e}")
     
     def handle_tool_call(self, tool_call: MCPToolCall) -> Dict[str, Any]:
         """
