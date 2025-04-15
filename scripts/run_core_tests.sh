@@ -7,17 +7,17 @@ echo "Running core tests (tests that don't require API access)..."
 
 # Run tests excluding those that require external API calls
 python -m pytest \
-  test_dir/test_tree_tool_edge_cases.py \
-  test_dir/test_ollama_model_context.py \
-  test_dir/test_basic_functions.py \
-  test_dir/test_config.py \
-  test_dir/test_config_edge_cases.py::TestConfigNullHandling \
-  test_dir/test_config_edge_cases.py::TestConfigEdgeCases \
-  test_dir/test_file_tools.py \
-  test_dir/test_directory_tools.py \
-  test_dir/test_tree_tool.py \
-  test_dir/test_utils.py \
-  test_dir/test_tools_base.py \
+  tests/tools/test_tree_tool_edge_cases.py \
+  tests/models/test_ollama_model_context.py \
+  tests/test_basic_functions.py \
+  tests/test_config.py \
+  tests/test_config_edge_cases.py::TestConfigNullHandling \
+  tests/test_config_edge_cases.py::TestConfigEdgeCases \
+  tests/tools/test_file_tools.py \
+  tests/tools/test_directory_tools.py \
+  tests/tools/test_tree_tool.py \
+  tests/test_utils.py \
+  tests/tools/test_tools_base.py \
   -v
 
 exit_code=$?
@@ -29,4 +29,4 @@ else
   echo -e "\n\033[31mSome core tests failed. See details above. ✗\033[0m"
 fi
 
-exit $exit_code 
+exit $exit_code

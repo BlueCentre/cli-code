@@ -33,7 +33,7 @@ rm -rf .coverage coverage.xml coverage_html/
 
 # Run pytest with coverage
 echo -e "${YELLOW}Running pytest with coverage...${NC}"
-python -m pytest --cov=src/cli_code --cov-report=term --cov-report=xml --cov-report=html --verbose test_dir/ "$@"
+python -m pytest --cov=src/cli_code --cov-report=term --cov-report=xml --cov-report=html --verbose tests/ "$@"
 
 # Check if the tests were successful
 if [ $? -eq 0 ]; then
@@ -46,18 +46,18 @@ fi
 if [ -f coverage.xml ]; then
     COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(f\"{float(root.attrib['line-rate'])*100:.2f}\")")
     echo -e "\n${YELLOW}Overall coverage: ${GREEN}${COVERAGE}%${NC}"
-    
+
     # Check if coverage meets the minimum threshold (60%)
     if (( $(echo "$COVERAGE < 60" | bc -l) )); then
         echo -e "${RED}Coverage is below the minimum threshold of 60%!${NC}"
     else
         echo -e "${GREEN}Coverage meets or exceeds the minimum threshold of 60%!${NC}"
     fi
-    
+
     echo -e "\n${YELLOW}Coverage reports generated:${NC}"
     echo -e "XML Report: ${GREEN}coverage.xml${NC}"
     echo -e "HTML Report: ${GREEN}coverage_html/index.html${NC}"
-    
+
     # Open HTML report if on macOS
     if [[ "$OSTYPE" == "darwin"* ]]; then
         echo -e "\n${YELLOW}Opening HTML report...${NC}"
@@ -67,4 +67,4 @@ if [ -f coverage.xml ]; then
     fi
 else
     echo -e "\n${RED}No coverage report generated!${NC}"
-fi 
+fi

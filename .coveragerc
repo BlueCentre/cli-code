@@ -1,14 +1,13 @@
 [run]
 source = src.cli_code
-include = 
+include =
     */src/cli_code/*.py
     */src/cli_code/*/*.py
     */src/cli_code/*/*/*.py
-omit = 
+omit =
     */.rules/*
     */.venv/*
     */docs/*
-    */test_dir/*
     */tests/*
     */__pycache__/*
     */venv/*
@@ -38,4 +37,4 @@ directory = coverage_html
 title = CLI Code Coverage Report
 
 [xml]
-output = coverage.xml 
+output = coverage.xml
