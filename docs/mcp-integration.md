@@ -175,16 +175,27 @@ classDiagram
 ```
 
 **Tasks**:
-- [ ] Create tool registry for managing available tools
-- [ ] Implement tool execution engine
-- [ ] Add parameter validation based on JSON schema
-- [ ] Create tool response formatter
+- [x] Create tool registry for managing available tools
+- [x] Implement tool execution engine
+- [x] Add parameter validation based on JSON schema
+- [x] Create tool response formatter
 
 **Tests**:
-- [ ] Test tool registration
-- [ ] Test parameter validation
-- [ ] Test tool execution
-- [ ] Test error handling during execution
+- [x] Test tool registration
+- [x] Test parameter validation
+- [x] Test tool execution
+- [x] Test error handling during execution
+
+**Status**: Completed
+
+Implementation details:
+- Created `ToolRegistry` class in `src/cli_code/mcp/tools/registry.py` for managing tools
+- Implemented `ToolExecutor` in `src/cli_code/mcp/tools/executor.py` for executing tools with validation
+- Created `ToolResponseFormatter` in `src/cli_code/mcp/tools/formatter.py` for formatting results
+- Added `Tool`, `ToolParameter`, and `ToolResult` classes in `src/cli_code/mcp/tools/models.py`
+- Implemented `ToolService` in `src/cli_code/mcp/tools/service.py` as a high-level API
+- Created example tools: Calculator and GitHub tools
+- Added comprehensive tests for all components
 
 ### Step 4: Conversation Management
 
@@ -276,7 +287,7 @@ graph TD
 |------|-------------|--------|----------------|
 | 1    | Core MCP Protocol Client | Completed | 2025-06-09 |
 | 2    | Gemini Model Adapter | Completed | 2025-06-09 |
-| 3    | Tool Execution Framework | Not Started | - |
+| 3    | Tool Execution Framework | Completed | 2025-06-15 |
 | 4    | Conversation Management | Not Started | - |
 | 5    | Configuration and Integration | Not Started | - |
 | 6    | Advanced Features and Optimization | Not Started | - |
