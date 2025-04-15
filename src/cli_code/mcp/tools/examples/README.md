@@ -91,11 +91,11 @@ result = await executor.execute("github_search_repos", {
 The GitHub tool supports two authentication methods:
 
 1. **GitHub CLI (recommended)**: If the GitHub CLI (`gh`) is installed and configured, the tool will use it for authentication. This method uses the token stored in the system keyring.
-   
+
    When using GitHub CLI, the tool implements a workaround for token scope issues by temporarily unsetting the `GITHUB_TOKEN` environment variable during execution.
 
 2. **Environment Variable**: If the GitHub CLI is not available, the tool falls back to using the `GITHUB_TOKEN` environment variable. Make sure to set this variable with a valid GitHub personal access token before using the tool.
 
 ## Demo Script
 
-For a complete example of using these tools, see the `examples/github_tool_demo.py` script in the repository root. 
+For a complete example of using these tools, see the `examples/github_tool_demo.py` script in the repository root.

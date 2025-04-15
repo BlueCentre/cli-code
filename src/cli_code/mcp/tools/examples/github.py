@@ -11,8 +11,7 @@ import subprocess
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-
-from cli_code.mcp.tools.models import Tool, ToolParameter
+from src.cli_code.mcp.tools.models import Tool, ToolParameter
 
 logger = logging.getLogger(__name__)
 

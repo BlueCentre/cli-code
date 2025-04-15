@@ -6,4 +6,4 @@ This module provides example tool implementations.
 
 from .calculator import CalculatorTool
 from .github import GitHubTool
-from .weather import WeatherTool 
+from .weather import WeatherTool
