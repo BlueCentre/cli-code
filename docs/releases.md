@@ -253,7 +253,7 @@ After publishing, verify the package works correctly:
    python -c "import cli_code; print(cli_code.__version__)"
    
    # Verify CLI command works
-   cli-code-agent --help
+   cli-code --help
    ```
 
 ## Manual Publishing (Fallback)

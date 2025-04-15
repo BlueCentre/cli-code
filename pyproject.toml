@@ -53,7 +53,7 @@ dev = [
 
 # This makes the `cli-code` command run the `cli` function in `main.py`
 [project.scripts]
-cli-code-agent = "cli_code.main:cli"
+cli-code = "cli_code.main:cli"
 
 # Remove the automatic package finding
 # [tool.setuptools.packages.find]

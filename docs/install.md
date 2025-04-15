@@ -25,7 +25,7 @@ Before using CLI-Code, you need to set up credentials for your chosen provider:
 ### For Gemini:
 
 ```bash
-cli-code-agent setup --provider=gemini YOUR_GOOGLE_API_KEY
+cli-code setup --provider=gemini YOUR_GOOGLE_API_KEY
 ```
 
 To get a Google API key for Gemini:
@@ -36,7 +36,7 @@ To get a Google API key for Gemini:
 ### For Ollama:
 
 ```bash
-cli-code-agent setup --provider=ollama http://localhost:11434/v1
+cli-code setup --provider=ollama http://localhost:11434/v1
 ```
 
 Make sure your Ollama server is running and accessible at the specified URL.
@@ -47,35 +47,35 @@ Make sure your Ollama server is running and accessible at the specified URL.
 
 ```bash
 # Start with default provider and model
-cli-code-agent
+cli-code
 
 # Start with a specific provider
-cli-code-agent --provider=ollama
+cli-code --provider=ollama
 
 # Start with a specific provider and model
-cli-code-agent --provider=gemini --model models/gemini-2.5-pro-exp-03-25
-cli-code-agent --provider=ollama --model llama3
+cli-code --provider=gemini --model models/gemini-2.5-pro-exp-03-25
+cli-code --provider=ollama --model llama3
 ```
 
 ### Setting Default Preferences
 
 ```bash
 # Set default provider
-cli-code-agent set-default-provider gemini
+cli-code set-default-provider gemini
 
 # Set default model for a provider
-cli-code-agent set-default-model --provider=gemini models/gemini-2.5-pro-exp-03-25
-cli-code-agent set-default-model --provider=ollama llama3
+cli-code set-default-model --provider=gemini models/gemini-2.5-pro-exp-03-25
+cli-code set-default-model --provider=ollama llama3
 ```
 
 ### Listing Available Models
 
 ```bash
 # List models for Gemini
-cli-code-agent list-models --provider=gemini
+cli-code list-models --provider=gemini
 
 # List models for Ollama
-cli-code-agent list-models --provider=ollama
+cli-code list-models --provider=ollama
 ```
 
 ### Available Commands
@@ -89,7 +89,7 @@ During an interactive session, you can use these commands:
 
 ### Config File
 
-Configuration is stored in `~/.config/cli-code-agent/config.yaml` with this structure:
+Configuration is stored in `~/.config/cli-code/config.yaml` with this structure:
 
 ```yaml
 google_api_key: YOUR_GEMINI_API_KEY_HERE
@@ -121,7 +121,7 @@ CLI_CODE_OLLAMA_DEFAULT_MODEL=llama3.2:latest
 
 If you encounter issues:
 
-1. Verify your API credentials are correct: `cat ~/.config/cli-code-agent/config.yaml`
+1. Verify your API credentials are correct: `cat ~/.config/cli-code/config.yaml`
 2. Ensure you have a working internet connection
 3. Check that you have Python 3.9+ installed: `python --version`
 4. For Ollama, ensure the Ollama server is running: `curl http://localhost:11434/v1/models`

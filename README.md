@@ -52,7 +52,7 @@ Configure API credentials for your desired LLM provider. See the [Installation G
 
 **Example (Gemini):**
 ```bash
-cli-code-agent setup --provider=gemini YOUR_GOOGLE_API_KEY
+cli-code setup --provider=gemini YOUR_GOOGLE_API_KEY
 ```
 
 Configuration is typically stored in `~/.config/cli-code/config.yaml`, but can be overridden by environment variables or a custom file path.
@@ -62,13 +62,13 @@ Configuration is typically stored in `~/.config/cli-code/config.yaml`, but can b
 Start an interactive chat session:
 ```bash
 # Use default provider/model
-cli-code-agent
+cli-code
 
 # Specify provider (uses provider's default model)
-cli-code-agent --provider=ollama
+cli-code --provider=ollama
 
 # Specify provider and model
-cli-code-agent --provider=ollama --model llama3
+cli-code --provider=ollama --model llama3
 ```
 
 **Interactive Commands:**
