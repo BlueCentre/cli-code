@@ -91,21 +91,21 @@ class Config:
             self.config_dir = default_dir
             self.config_file = default_dir / "config.yaml"
             log.debug(f"Using default config path: {self.config_file}")
-            return # Already set default paths
+            return  # Already set default paths
 
         if not config_path_str:
-             # Fallback if env var was empty string (should not happen with default logic, but safety)
-             log.warning("Config file path resolved to empty, falling back to default.")
-             home_dir = Path(os.path.expanduser("~"))
-             default_dir = home_dir / ".config" / "cli-code"
-             self.config_dir = default_dir
-             self.config_file = default_dir / "config.yaml"
-             source = "fallback default"
+            # Fallback if env var was empty string (should not happen with default logic, but safety)
+            log.warning("Config file path resolved to empty, falling back to default.")
+            home_dir = Path(os.path.expanduser("~"))
+            default_dir = home_dir / ".config" / "cli-code"
+            self.config_dir = default_dir
+            self.config_file = default_dir / "config.yaml"
+            source = "fallback default"
         else:
-             # Resolve the path (handles relative paths, expands ~)
-             self.config_file = Path(config_path_str).expanduser().resolve()
-             self.config_dir = self.config_file.parent
-             log.info(f"Using config path from {source}: {self.config_file}")
+            # Resolve the path (handles relative paths, expands ~)
+            self.config_file = Path(config_path_str).expanduser().resolve()
+            self.config_dir = self.config_file.parent
+            log.info(f"Using config path from {source}: {self.config_file}")
 
     def _load_dotenv(self):
         """Load environment variables from .env file if it exists, fallback to .env.example."""

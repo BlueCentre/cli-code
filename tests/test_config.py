@@ -256,8 +256,9 @@ def test_config_env_var_override(mock_save, mock_load_config, mock_config_paths)
 
 # === Tests for Config Path Override ===
 
+
 @patch("cli_code.config.Config._load_dotenv", MagicMock())
-@patch("yaml.dump") # Mock yaml dump to prevent actual file writing
+@patch("yaml.dump")  # Mock yaml dump to prevent actual file writing
 @patch("builtins.open", new_callable=mock_open)
 @patch("pathlib.Path.exists")
 @patch("pathlib.Path.mkdir")
@@ -270,8 +271,7 @@ def test_ensure_config_exists_creates_custom_path(mock_mkdir, mock_exists, mock_
     mock_exists.return_value = False
 
     # Create a config with our custom path
-    with patch("cli_code.config.Config._load_config", return_value={}),\
-         patch("cli_code.config.Config._apply_env_vars"):
+    with patch("cli_code.config.Config._load_config", return_value={}), patch("cli_code.config.Config._apply_env_vars"):
         cfg = Config(config_file_path=custom_file)
 
     # Assertions for _ensure_config_exists behavior
@@ -290,7 +290,7 @@ def test_ensure_config_exists_creates_custom_path(mock_mkdir, mock_exists, mock_
 
 @patch("cli_code.config.Config._load_dotenv", MagicMock())
 @patch("cli_code.config.Config._ensure_config_exists", MagicMock())
-@patch("cli_code.config.Config._load_config") # Mock _load_config
+@patch("cli_code.config.Config._load_config")  # Mock _load_config
 def test_config_load_from_env_var_path(mock_load_config, tmp_path):
     """Test Config loads from path specified by CLI_CODE_CONFIG_FILE env var."""
     custom_dir = tmp_path / "env_config_location"
@@ -317,7 +317,7 @@ def test_config_load_from_env_var_path(mock_load_config, tmp_path):
 
 @patch("cli_code.config.Config._load_dotenv", MagicMock())
 @patch("cli_code.config.Config._ensure_config_exists", MagicMock())
-@patch("cli_code.config.Config._load_config") # Mock _load_config
+@patch("cli_code.config.Config._load_config")  # Mock _load_config
 def test_config_load_from_param_path(mock_load_config, tmp_path):
     """Test Config loads from path specified by __init__ parameter."""
     param_dir = tmp_path / "param_config_location"
@@ -327,7 +327,7 @@ def test_config_load_from_param_path(mock_load_config, tmp_path):
     # Mock the load result
     mock_load_config.return_value = param_data.copy()
 
-    with patch.dict(os.environ, {}, clear=True): # Ensure no env var interference
+    with patch.dict(os.environ, {}, clear=True):  # Ensure no env var interference
         cfg = Config(config_file_path=param_file)
 
     mock_load_config.assert_called_once()
@@ -338,7 +338,7 @@ def test_config_load_from_param_path(mock_load_config, tmp_path):
 
 @patch("cli_code.config.Config._load_dotenv", MagicMock())
 @patch("cli_code.config.Config._ensure_config_exists", MagicMock())
-@patch("cli_code.config.Config._load_config") # Mock _load_config
+@patch("cli_code.config.Config._load_config")  # Mock _load_config
 def test_config_param_overrides_env_var_path(mock_load_config, tmp_path):
     """Test Config parameter path takes precedence over environment variable path."""
     env_dir = tmp_path / "env_config_location_prio"
