@@ -940,19 +940,19 @@ def env_file_with_error():
     # Create a temporary directory
     temp_dir = tempfile.mkdtemp()
     env_path = Path(temp_dir) / ".env"
-    
+
     # Create a .env file that will trigger a permission error
     with open(env_path, "w") as f:
         f.write("TEST=value")
-    
+
     # Save current directory to restore later
     original_dir = os.getcwd()
-    
+
     # Change to temp directory
     os.chdir(temp_dir)
-    
+
     yield temp_dir
-    
+
     # Restore original directory and clean up
     os.chdir(original_dir)
     shutil.rmtree(temp_dir)
@@ -960,16 +960,17 @@ def env_file_with_error():
 
 def test_real_load_dotenv_exception(env_file_with_error, monkeypatch):
     """Test actual _load_dotenv method with a real exception."""
+
     # Patch open to raise an exception
     def mock_open(*args, **kwargs):
         raise Exception("Test exception")
-    
+
     # Setup capturing log messages
     with patch("cli_code.config.log") as mock_log:
         with patch("builtins.open", side_effect=mock_open):
             # Create a real Config instance
             cfg = Config()
-            
+
             # Check that the warning was logged
             assert any("Error loading" in call[0][0] for call in mock_log.warning.call_args_list)
 
@@ -979,32 +980,32 @@ def test_real_load_config_exception(monkeypatch, tmp_path):
     """Test actual _load_config method with a real exception."""
     # Make a temp config file path that doesn't exist yet
     config_file = tmp_path / "config.yaml"
-    
+
     # Mock the initialization to use our temp file
     monkeypatch.setattr(Config, "_determine_config_path", lambda self, path: setattr(self, "config_file", config_file))
     monkeypatch.setattr(Config, "_load_dotenv", lambda self: None)
     monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
     monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
-    
+
     # Patch open to raise a generic exception for the second call
     original_open = open
     call_count = [0]
-    
+
     def mock_open(*args, **kwargs):
         call_count[0] += 1
         if call_count[0] > 1:  # After first call to ensure_config_exists
             raise Exception("Test exception")
         return original_open(*args, **kwargs)
-    
+
     # Setup capturing log messages
     with patch("cli_code.config.log") as mock_log:
         with patch("builtins.open", side_effect=mock_open):
             # Create a real Config instance
             cfg = Config()
-            
+
             # Force a reload of the config
             cfg._load_config()
-            
+
             # Check that the error was logged
             assert any("Error loading config file" in call[0][0] for call in mock_log.error.call_args_list)
 
@@ -1014,23 +1015,23 @@ def test_real_save_config_exception(monkeypatch, tmp_path):
     """Test actual _save_config method with a real exception."""
     # Make a temp config file path
     config_file = tmp_path / "config.yaml"
-    
+
     # Create a real Config instance with minimum setup
     monkeypatch.setattr(Config, "_determine_config_path", lambda self, path: setattr(self, "config_file", config_file))
     monkeypatch.setattr(Config, "_load_dotenv", lambda self: None)
     monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
     monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
     monkeypatch.setattr(Config, "_load_config", lambda self: {})
-    
+
     cfg = Config()
     cfg.config = {"test": "value"}
-    
+
     # Patch open to raise an exception
     with patch("builtins.open", side_effect=Exception("Test exception")):
         with patch("cli_code.config.log") as mock_log:
             # Call the method
             cfg._save_config()
-            
+
             # Check that the error was logged
             assert mock_log.error.called
             assert "Error saving config file" in mock_log.error.call_args[0][0]
@@ -1045,15 +1046,15 @@ def test_real_set_credential_openai(monkeypatch):
     monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
     monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
     monkeypatch.setattr(Config, "_load_config", lambda self: {})
-    
+
     # Mock _save_config to avoid actual file operations
     with patch.object(Config, "_save_config") as mock_save:
         cfg = Config()
         cfg.config = {}
-        
+
         # Call the method for openai provider
         cfg.set_credential("openai", "test-key")
-        
+
         # Verify the key was set
         assert cfg.config.get("openai_api_key") == "test-key"
         assert mock_save.called
@@ -1068,16 +1069,16 @@ def test_real_set_default_model_unknown(monkeypatch):
     monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
     monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
     monkeypatch.setattr(Config, "_load_config", lambda self: {})
-    
+
     # Mock _save_config to avoid actual file operations
     with patch.object(Config, "_save_config") as mock_save:
         with patch("cli_code.config.log") as mock_log:
             cfg = Config()
             cfg.config = {"default_provider": "gemini"}
-            
+
             # Call with unknown provider
             result = cfg.set_default_model("test-model", provider="unknown")
-            
+
             # Verify results
             assert result is None
             assert mock_log.error.called
