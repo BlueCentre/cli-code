@@ -17,6 +17,7 @@ configuration when both are present.
 import logging
 import os
 from pathlib import Path
+from typing import Optional, Union  # Added Optional and Union
 
 import yaml
 
@@ -31,35 +32,80 @@ class Config:
     default configuration file if one doesn't exist, and loading environment
     variables.
 
-    The configuration is loaded in the following order of precedence:
+    The configuration file path can be overridden in the following order of precedence:
+    1. `config_file_path` parameter passed during initialization.
+    2. `CLI_CODE_CONFIG_FILE` environment variable.
+    3. Default path (`~/.config/cli-code/config.yaml`).
+
+    Configuration values are loaded in the following order of precedence:
     1. Environment variables (highest precedence)
     2. Configuration file
     3. Default values (lowest precedence)
     """
 
-    def __init__(self):
+    def __init__(self, config_file_path: Optional[Union[str, Path]] = None):
         """
         Initialize the configuration.
 
-        This will load environment variables, ensure the configuration file
-        exists, and load the configuration from the file.
-        """
-        # Construct path correctly
-        home_dir = Path(os.path.expanduser("~"))
-        self.config_dir = home_dir / ".config" / "cli-code"
-        self.config_file = self.config_dir / "config.yaml"
+        Loads environment variables, determines the configuration file path based on
+        the provided parameter, environment variables, or defaults, ensures the
+        configuration file exists, and loads the configuration from the file.
 
-        # Load environment variables
+        Args:
+            config_file_path: Optional path to the configuration file. If provided,
+                              it overrides the environment variable and default path.
+        """
+        # Determine config file path
+        self._determine_config_path(config_file_path)
+
+        # Load environment variables (consider loading after determining path?)
+        # No, .env loading should happen relative to CWD, not config path.
         self._load_dotenv()
 
-        # Ensure config file exists
+        # Ensure config file exists at the determined path
         self._ensure_config_exists()
 
-        # Load config from file
+        # Load config from the determined file
         self.config = self._load_config()
 
         # Apply environment variable overrides
         self._apply_env_vars()
+
+    def _determine_config_path(self, config_file_path_param: Optional[Union[str, Path]] = None):
+        """Determine the configuration file path based on parameter, env var, or default."""
+        config_path_str = None
+        source = "default"
+
+        # 1. Check __init__ parameter
+        if config_file_path_param:
+            config_path_str = str(config_file_path_param)
+            source = "parameter"
+        # 2. Check environment variable
+        elif "CLI_CODE_CONFIG_FILE" in os.environ:
+            config_path_str = os.environ["CLI_CODE_CONFIG_FILE"]
+            source = "environment variable"
+        # 3. Use default path
+        else:
+            home_dir = Path(os.path.expanduser("~"))
+            default_dir = home_dir / ".config" / "cli-code"
+            self.config_dir = default_dir
+            self.config_file = default_dir / "config.yaml"
+            log.debug(f"Using default config path: {self.config_file}")
+            return # Already set default paths
+
+        if not config_path_str:
+             # Fallback if env var was empty string (should not happen with default logic, but safety)
+             log.warning("Config file path resolved to empty, falling back to default.")
+             home_dir = Path(os.path.expanduser("~"))
+             default_dir = home_dir / ".config" / "cli-code"
+             self.config_dir = default_dir
+             self.config_file = default_dir / "config.yaml"
+             source = "fallback default"
+        else:
+             # Resolve the path (handles relative paths, expands ~)
+             self.config_file = Path(config_path_str).expanduser().resolve()
+             self.config_dir = self.config_file.parent
+             log.info(f"Using config path from {source}: {self.config_file}")
 
     def _load_dotenv(self):
         """Load environment variables from .env file if it exists, fallback to .env.example."""
