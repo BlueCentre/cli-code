@@ -53,28 +53,28 @@ class TestCalculatorTool(unittest.TestCase):
     def test_create(self):
         """Test the creation of a calculator tool."""
         tool = CalculatorTool.create()
-        
+
         # Check that a Tool instance was returned
         self.assertIsInstance(tool, Tool)
-        
+
         # Check the tool properties
         self.assertEqual(tool.name, "calculator")
         self.assertEqual(tool.description, "Perform basic arithmetic operations")
-        
+
         # Check the parameters
         parameters = {param.name: param for param in tool.parameters}
-        
+
         # Check operation parameter
         self.assertIn("operation", parameters)
         self.assertTrue(parameters["operation"].required)
         self.assertEqual(parameters["operation"].schema["type"], "string")
         self.assertEqual(parameters["operation"].schema["enum"], ["add", "subtract", "multiply", "divide"])
-        
+
         # Check a parameter
         self.assertIn("a", parameters)
         self.assertTrue(parameters["a"].required)
         self.assertEqual(parameters["a"].schema["type"], "number")
-        
+
         # Check b parameter
         self.assertIn("b", parameters)
         self.assertTrue(parameters["b"].required)
@@ -85,19 +85,19 @@ class TestCalculatorTool(unittest.TestCase):
         """Test the execution of the calculator tool."""
         # Create the tool
         tool = CalculatorTool.create()
-        
+
         # Test addition
         result = await tool.handler(operation="add", a=10, b=5)
         self.assertEqual(result, {"result": 15})
-        
+
         # Test subtraction
         result = await tool.handler(operation="subtract", a=10, b=5)
         self.assertEqual(result, {"result": 5})
-        
+
         # Test multiplication
         result = await tool.handler(operation="multiply", a=10, b=5)
         self.assertEqual(result, {"result": 50})
-        
+
         # Test division
         result = await tool.handler(operation="divide", a=10, b=5)
-        self.assertEqual(result, {"result": 2}) 
+        self.assertEqual(result, {"result": 2})

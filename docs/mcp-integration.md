@@ -26,7 +26,7 @@ graph TD
         ToolExecution[Tool Execution Framework]
         ConversationMgmt[Conversation Management]
     end
-    
+
     UI -->|User Input| Core
     Core -->|Model Requests| ModelAdapter
     ModelAdapter -->|Protocol Communication| MCPClient
@@ -46,7 +46,7 @@ graph TD
         ConversationContext[Conversation Context]
         ConfigManager[Configuration Manager]
     end
-    
+
     GeminiAdapter -->|Uses| MCPProtocolClient
     MCPProtocolClient -->|Registers| ToolRegistry
     MCPProtocolClient -->|Dispatches Calls| ToolDispatcher
@@ -68,13 +68,13 @@ classDiagram
         +processResponse(response)
         +handleToolCall(toolCall)
     }
-    
+
     class MCPConfig {
         +serverConfig
         +modelConfig
         +toolConfig
     }
-    
+
     MCPClient --> MCPConfig
 ```
 
@@ -110,14 +110,14 @@ classDiagram
         +sendRequest(prompt)
         +processResponse(response)
     }
-    
+
     class GeminiAdapter {
         +sendRequest(prompt)
         +processResponse(response)
         +formatForMCP(request)
         +parseFromMCP(response)
     }
-    
+
     GeminiAdapter ..|> ModelAdapter
     GeminiAdapter --> MCPClient
 ```
@@ -155,20 +155,20 @@ classDiagram
         +listTools()
         +getTool(name)
     }
-    
+
     class ToolExecutor {
         +executeTool(name, parameters)
         +validateParameters(parameters, schema)
         +formatToolResponse(response)
     }
-    
+
     class Tool {
         +name
         +description
         +parameters
         +handler
     }
-    
+
     ToolRegistry --> Tool
     ToolExecutor --> ToolRegistry
     MCPClient --> ToolExecutor
@@ -201,14 +201,14 @@ classDiagram
         +serialize()
         +deserialize(data)
     }
-    
+
     class Message {
         +role
         +content
         +timestamp
         +metadata
     }
-    
+
     ConversationContext --> Message
     MCPClient --> ConversationContext
 ```
@@ -236,7 +236,7 @@ graph TD
         MCPIntegration[MCP Integration]
         AppInterface[Application Interface]
     end
-    
+
     Config -->|Configures| MCPIntegration
     MCPIntegration -->|Exposes| AppInterface
     AppInterface -->|Used by| Application[Existing Application]
@@ -413,7 +413,7 @@ async def calculator_handler(operation: str, a: float, b: float):
         result = a / b
     else:
         raise ValueError(f"Unsupported operation: {operation}")
-    
+
     return {
         "operation": operation,
         "a": a,
@@ -512,4 +512,4 @@ See the example script at `examples/mcp_calculator_example.py` for a complete wo
 
 - [MCP Protocol Documentation](https://example.com/mcp-protocol)
 - [Tool Development Guide](https://example.com/tool-development)
-- [API Reference](https://example.com/api-reference) 
+- [API Reference](https://example.com/api-reference)

@@ -80,7 +80,7 @@ class ToolExecutor:
                     parameters=parameters,
                     result=None,
                     success=False,
-                    error=f"Tool '{tool_name}' not found"
+                    error=f"Tool '{tool_name}' not found",
                 )
 
             # Validate parameters
@@ -90,7 +90,7 @@ class ToolExecutor:
                     parameters=parameters,
                     result=None,
                     success=False,
-                    error=f"Parameter validation failed for tool '{tool_name}'"
+                    error=f"Parameter validation failed for tool '{tool_name}'",
                 )
 
             # Execute the tool
@@ -98,19 +98,8 @@ class ToolExecutor:
             result = await tool.execute(**parameters)
 
             # Format and return the result
-            return ToolResult(
-                tool_name=tool_name,
-                parameters=parameters,
-                result=result,
-                success=True
-            )
+            return ToolResult(tool_name=tool_name, parameters=parameters, result=result, success=True)
         except Exception as e:
             # Log and wrap other exceptions
             logger.exception(f"Tool execution failed for '{tool_name}': {e}")
-            return ToolResult(
-                tool_name=tool_name,
-                parameters=parameters,
-                result=None,
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(tool_name=tool_name, parameters=parameters, result=None, success=False, error=str(e))
