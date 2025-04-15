@@ -10,7 +10,7 @@ Starting with version 0.2.0, the CLI Code Agent project uses GitHub Actions to a
 
 Here's a step-by-step record of the process used for the 0.3.0 release:
 
-1. **Prepared Changes**: 
+1. **Prepared Changes**:
    - Completed all feature and bug fix work in the feature branch (`fix/gemini`)
    - Ensured all tests were passing and linting issues were fixed
    - Merged the feature branch into main via PR #24
@@ -18,7 +18,7 @@ Here's a step-by-step record of the process used for the 0.3.0 release:
 2. **Version Bump and Changelog Update**:
    ```bash
    # Update version in pyproject.toml from 0.2.3 to 0.3.0
-   
+
    # Add new entry in docs/changelog.md with all significant changes:
    ## [0.3.0]
    - Improved Gemini error handling and UI feedback
@@ -59,7 +59,7 @@ With version 0.3.0, we optimized the GitHub Actions workflow to reduce redundant
    # Trigger on specific events only
    on:
      push:
-       branches: 
+       branches:
          - "main"
        tags: [ "v*" ]  # Trigger on tags starting with v
      pull_request:
@@ -130,7 +130,7 @@ Before the automated publishing will work, you need to configure publishing cred
    - Set up a new pending publisher:
      - Select GitHub Actions as the publisher
      - Enter your GitHub organization/username and repository name
-     - Enter "publish" as the environment name 
+     - Enter "publish" as the environment name
      - Save the publisher settings
    - Set environment variable `USE_TRUSTED_PUBLISHING=true`
 
@@ -242,7 +242,7 @@ After publishing, verify the package works correctly:
    # Create a fresh virtual environment
    python -m venv test_install_env
    source test_install_env/bin/activate  # On Windows: test_install_env\Scripts\activate
-   
+
    # Install the package directly from PyPI
    pip install cli-code-agent==x.y.z
    ```
@@ -251,9 +251,9 @@ After publishing, verify the package works correctly:
    ```bash
    # Verify the version is correct
    python -c "import cli_code; print(cli_code.__version__)"
-   
+
    # Verify CLI command works
-   cli-code-agent --help
+   cli-code --help
    ```
 
 ## Manual Publishing (Fallback)
@@ -266,4 +266,4 @@ python -m build
 
 # Publish to PyPI (requires PyPI credentials)
 python -m twine upload dist/cli_code_agent-VERSION*
-``` 
+```
