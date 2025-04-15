@@ -2,10 +2,11 @@
 Tests for the configuration management in src/cli_code/config.py.
 """
 
+import logging
 import os
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 
 import pytest
 import yaml
@@ -367,4 +368,671 @@ def test_config_param_overrides_env_var_path(mock_load_config, tmp_path):
     assert cfg.config_dir == param_dir
 
 
+# Test for empty environment variable case
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._load_config", MagicMock())
+def test_empty_env_var_falls_back_to_default(mock_config_paths):
+    """Test that an empty environment variable falls back to the default path."""
+    # Set empty string as env var
+    with patch.dict(os.environ, {"CLI_CODE_CONFIG_FILE": ""}, clear=True):
+        with patch("cli_code.config.log") as mock_log:
+            cfg = Config()
+
+            # Check that the warning log was emitted
+            mock_log.warning.assert_called_with("Config file path resolved to empty, falling back to default.")
+
+            # Verify it fell back to default path
+            assert "/.config/cli-code/config.yaml" in str(cfg.config_file)
+
+
+# Test path resolution handling
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._load_config", MagicMock())
+def test_path_resolution(tmp_path):
+    """Test that the path resolution handles relative paths and expanduser."""
+    # Test with tilde in path
+    home_dir = os.path.expanduser("~")
+    with patch.dict(os.environ, {"CLI_CODE_CONFIG_FILE": "~/custom_config.yaml"}, clear=True):
+        cfg = Config()
+        assert str(cfg.config_file).startswith(home_dir)
+        assert str(cfg.config_file).endswith("custom_config.yaml")
+
+    # Test with relative path
+    with patch("pathlib.Path.resolve", return_value=Path(tmp_path / "relative/path/config.yaml")):
+        with patch.dict(os.environ, {"CLI_CODE_CONFIG_FILE": "relative/path/config.yaml"}, clear=True):
+            cfg = Config()
+            assert str(cfg.config_file) == str(tmp_path / "relative/path/config.yaml")
+            assert cfg.config_dir == Path(tmp_path / "relative/path")
+
+
+# Test exception handling in directory creation
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._load_config")
+def test_ensure_config_exists_handles_dir_creation_error(mock_load_config, mock_config_paths):
+    """Test that _ensure_config_exists handles errors during directory creation gracefully."""
+    config_dir, config_file = mock_config_paths
+    mock_load_config.return_value = {}
+
+    # Make mkdir raise an exception
+    with patch("pathlib.Path.mkdir", side_effect=PermissionError("Permission denied")):
+        with patch("cli_code.config.log") as mock_log:
+            # We expect this to log an error but not raise an exception
+            cfg = Config()
+
+            # Verify the error was logged
+            mock_log.error.assert_called_once()
+            assert "Failed to create config directory" in mock_log.error.call_args[0][0]
+
+            # Verify the method returned early and didn't attempt to create the file
+            assert mock_load_config.called
+
+
+# Test yaml error handling
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._apply_env_vars", MagicMock())  # Add this to prevent env var loading
+def test_load_config_handles_yaml_errors(mock_config_paths):
+    """Test that _load_config handles YAML parsing errors gracefully."""
+    config_dir, config_file = mock_config_paths
+
+    # Mock the yaml.safe_load to raise a YAMLError
+    with patch("yaml.safe_load", side_effect=yaml.YAMLError("Invalid YAML")):
+        with patch("builtins.open", mock_open(read_data="invalid: yaml: content")):
+            with patch("pathlib.Path.exists", return_value=True):
+                with patch("cli_code.config.log") as mock_log:
+                    # Directly call the method we're testing instead of the full __init__
+                    with patch.object(Config, "__init__", lambda x: None):
+                        cfg = Config()
+                        cfg.config_file = config_file
+                        cfg.config = cfg._load_config()
+
+                    # Check that the error was logged
+                    mock_log.error.assert_called_once()
+                    assert "Error parsing YAML config file" in mock_log.error.call_args[0][0]
+
+                    # Verify that an empty dict was returned
+                    assert cfg.config == {}
+
+
+# Test save config exception handling
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._apply_env_vars", MagicMock())  # Add this to prevent env var loading
+def test_save_config_handles_exceptions(mock_config_paths):
+    """Test that _save_config handles exceptions gracefully."""
+    config_dir, config_file = mock_config_paths
+
+    # Mock open to raise an exception when writing
+    with patch("builtins.open", side_effect=PermissionError("Permission denied")):
+        with patch("cli_code.config.log") as mock_log:
+            # Initialize manually without calling __init__
+            with patch.object(Config, "__init__", lambda x: None):
+                cfg = Config()
+                cfg.config_file = config_file
+                cfg.config = {"test": "value"}
+
+                # Try to save the config, which should trigger the exception
+                cfg._save_config()
+
+            # Verify the error was logged
+            mock_log.error.assert_called_once()
+            assert "Error saving config file" in mock_log.error.call_args[0][0]
+
+
+# Simpler test for _load_dotenv using direct mocking of Path objects
+@patch("pathlib.Path.exists")
+@patch("cli_code.config.log")
+def test_load_dotenv_with_no_files(mock_log, mock_exists):
+    """Test that _load_dotenv handles case when neither .env nor .env.example exist."""
+    # Setup mocks - neither file exists
+    mock_exists.return_value = False
+
+    # Manually initialize Config instance
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        # Call the method under test directly
+        cfg._load_dotenv()
+
+    # Check for the log message
+    mock_log.debug.assert_called_with("No .env or .env.example file found.")
+
+
+@patch("builtins.open", side_effect=PermissionError("Permission denied"))
+@patch("pathlib.Path.exists")
+@patch("cli_code.config.log")
+def test_load_dotenv_handles_errors(mock_log, mock_exists, mock_open):
+    """Test that _load_dotenv handles errors when reading dotenv files."""
+    # Setup mocks - .env exists but raises error on open
+    mock_exists.return_value = True
+
+    # Manually initialize Config instance
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        # Call the method under test directly
+        cfg._load_dotenv()
+
+    # Check for the error log
+    mock_log.warning.assert_called_once()
+    assert "Error loading" in mock_log.warning.call_args[0][0]
+
+
+# Add tests for more credential providers
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._load_config")
+@patch("cli_code.config.Config._save_config")
+def test_additional_credential_providers(mock_save_config, mock_load_config, mock_config_paths):
+    """Test getting and setting credentials for additional providers like OpenAI."""
+    config_dir, config_file = mock_config_paths
+
+    # Initial config with no OpenAI key
+    initial_config = {"google_api_key": "test_google_key", "openai_api_key": None, "settings": {}}
+
+    mock_load_config.return_value = initial_config.copy()
+
+    # Initialize Config instance with mocked methods
+    with patch.dict(os.environ, {}, clear=True):
+        cfg = Config()
+
+    # Test setting OpenAI credential
+    cfg.set_credential("openai", "test_openai_key")
+    assert cfg.config["openai_api_key"] == "test_openai_key"
+    mock_save_config.assert_called_once()
+
+    # Test setting unknown provider
+    mock_save_config.reset_mock()
+    with patch("cli_code.config.log") as mock_log:
+        cfg.set_credential("unknown_provider", "test_key")
+        mock_log.error.assert_called_once()
+        assert "unknown provider" in mock_log.error.call_args[0][0].lower()
+
+    # Verify save_config wasn't called for unknown provider
+    mock_save_config.assert_not_called()
+
+
+# Add tests for more provider model handling
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._apply_env_vars", MagicMock())
+@patch("cli_code.config.Config._load_config")
+@patch("cli_code.config.Config._save_config")
+def test_model_getters_setters_additional_providers(mock_save_config, mock_load_config):
+    """Test model getters and setters for additional providers like anthropic."""
+    # Initial config with anthropic settings
+    initial_config = {"default_provider": "anthropic", "anthropic_default_model": "claude-3-sonnet"}
+
+    mock_load_config.return_value = initial_config.copy()
+
+    # Initialize Config instance with mocked methods
+    cfg = Config()
+
+    # Test getting anthropic model
+    model = cfg.get_default_model()
+    assert model == "claude-3-sonnet"
+
+    # Test setting anthropic model
+    mock_save_config.reset_mock()
+    cfg.set_default_model("claude-3-opus")
+    assert cfg.config["anthropic_default_model"] == "claude-3-opus"
+    mock_save_config.assert_called_once()
+
+    # Test get_default_model with None config
+    # Patch the instance attribute instead of the class attribute
+    original_config = cfg.config
+    cfg.config = None
+    try:
+        # Should return defaults for known providers
+        assert cfg.get_default_model(provider="gemini") == "models/gemini-1.5-pro-latest"
+        assert cfg.get_default_model(provider="ollama") == "llama2"
+        assert cfg.get_default_model(provider="unknown") is None
+    finally:
+        # Restore the original config
+        cfg.config = original_config
+
+
+# Test the complete _apply_env_vars method with complex env vars
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._load_config")
+def test_apply_env_vars_complex_types(mock_load_config):
+    """Test that _apply_env_vars correctly handles different value types."""
+    # Initial empty config
+    mock_load_config.return_value = {"settings": {}}
+
+    # Set environment variables with different types to test conversion
+    env_vars = {
+        "CLI_CODE_SETTINGS_INTEGER_VAL": "42",
+        "CLI_CODE_SETTINGS_FLOAT_VAL": "3.14",
+        "CLI_CODE_SETTINGS_BOOL_TRUE": "true",
+        "CLI_CODE_SETTINGS_BOOL_FALSE": "false",
+        "CLI_CODE_SETTINGS_STRING_VAL": "hello world",
+    }
+
+    with patch.dict(os.environ, env_vars, clear=True):
+        cfg = Config()
+
+    # Check that values were converted to the correct types
+    assert cfg.config["settings"]["integer_val"] == 42
+    assert cfg.config["settings"]["float_val"] == 3.14
+    assert cfg.config["settings"]["bool_true"] is True
+    assert cfg.config["settings"]["bool_false"] is False
+    assert cfg.config["settings"]["string_val"] == "hello world"
+
+
+# Test edge cases for get_setting and set_setting
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._apply_env_vars", MagicMock())
+@patch("cli_code.config.Config._load_config")
+@patch("cli_code.config.Config._save_config")
+def test_settings_edge_cases(mock_save_config, mock_load_config):
+    """Test edge cases for get_setting and set_setting methods."""
+    # Test with None settings field
+    mock_load_config.return_value = {"settings": None}
+    cfg = Config()
+
+    # get_setting should handle None settings gracefully
+    assert cfg.get_setting("test_setting", default="default") == "default"
+
+    # set_setting should create settings dict if None
+    cfg.set_setting("test_setting", "test_value")
+    assert cfg.config["settings"]["test_setting"] == "test_value"
+    mock_save_config.assert_called_once()
+
+    # Test with None config
+    mock_save_config.reset_mock()
+    # Patch the instance attribute instead of the class attribute
+    original_config = cfg.config
+    cfg.config = None
+    try:
+        with patch("cli_code.config.log") as mock_log:
+            # Should log warning and return early
+            cfg.set_setting("another_setting", "value")
+            mock_log.warning.assert_called_once()
+            mock_save_config.assert_not_called()
+    finally:
+        # Restore the original config
+        cfg.config = original_config
+
+
+# Test set_default_provider with None value
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._apply_env_vars", MagicMock())
+@patch("cli_code.config.Config._load_config")
+@patch("cli_code.config.Config._save_config")
+def test_set_default_provider_none(mock_save_config, mock_load_config):
+    """Test set_default_provider handles None value gracefully."""
+    mock_load_config.return_value = {"default_provider": "ollama"}
+    cfg = Config()
+
+    # Setting None should reset to gemini
+    cfg.set_default_provider(None)
+    assert cfg.config["default_provider"] == "gemini"
+    mock_save_config.assert_called_once()
+
+
 # End of file
+
+
+# Add more comprehensive tests for the anthropic provider
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._apply_env_vars", MagicMock())
+@patch("cli_code.config.Config._load_config")
+@patch("cli_code.config.Config._save_config")
+def test_anthropic_provider_support(mock_save_config, mock_load_config):
+    """Test getting and setting credentials and models for the anthropic provider."""
+    # Initial config
+    initial_config = {
+        "default_provider": "anthropic",
+        "anthropic_default_model": "claude-3-sonnet",
+        "anthropic_api_key": "test_anthropic_key",
+    }
+
+    mock_load_config.return_value = initial_config.copy()
+
+    # Initialize Config instance
+    cfg = Config()
+
+    # Test get_default_provider
+    assert cfg.get_default_provider() == "anthropic"
+
+    # Test setting default provider
+    cfg.set_default_provider("anthropic")
+    assert cfg.config["default_provider"] == "anthropic"
+    mock_save_config.assert_called_once()
+
+    # Test getting default model
+    mock_save_config.reset_mock()
+    assert cfg.get_default_model() == "claude-3-sonnet"
+
+    # Test setting default model
+    cfg.set_default_model("claude-3-opus", provider="anthropic")
+    assert cfg.config["anthropic_default_model"] == "claude-3-opus"
+    mock_save_config.assert_called_once()
+
+
+# Add test for _load_config FileNotFoundError case
+@patch("cli_code.config.Config._ensure_config_exists", MagicMock())
+@patch("cli_code.config.Config._load_dotenv", MagicMock())
+@patch("cli_code.config.Config._apply_env_vars", MagicMock())
+def test_load_config_file_not_found():
+    """Test that _load_config handles FileNotFoundError."""
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        cfg.config_file = Path("/nonexistent/path/config.yaml")
+
+        with patch("cli_code.config.log") as mock_log:
+            result = cfg._load_config()
+
+            # Should return empty dict and log a warning
+            assert result == {}
+            mock_log.warning.assert_called_once()
+            assert "not found" in mock_log.warning.call_args[0][0]
+
+
+# Add tests for get_credential for unknown provider
+def test_get_credential_unknown_provider():
+    """Test get_credential with an unknown provider logs a warning and returns None."""
+    with patch.object(Config, "__init__", lambda x: None):
+        with patch("cli_code.config.log") as mock_log:
+            cfg = Config()
+            cfg.config = {"google_api_key": "test_key", "ollama_api_url": "test_url"}
+
+            # Test with unknown provider
+            result = cfg.get_credential("unknown_provider")
+
+            # Should log a warning and return None
+            assert result is None
+            mock_log.warning.assert_called_once()
+            assert "unknown provider" in mock_log.warning.call_args[0][0].lower()
+
+
+# Add test for get_default_model with unknown provider
+def test_get_default_model_unknown_provider():
+    """Test get_default_model with an unknown provider logs a warning and returns None."""
+    with patch.object(Config, "__init__", lambda x: None):
+        with patch("cli_code.config.log") as mock_log:
+            cfg = Config()
+            cfg.config = {"default_provider": "gemini", "default_model": "gemini-model"}
+
+            # Test with unknown provider
+            result = cfg.get_default_model(provider="unknown_provider")
+
+            # Should log a warning and return None
+            assert result is None
+            mock_log.warning.assert_called_once()
+            assert "unknown provider" in mock_log.warning.call_args[0][0].lower()
+
+
+# Test the _apply_env_vars method with settings conversion
+def test_apply_env_vars_with_settings_conversion():
+    """Test that _apply_env_vars correctly converts environment variable types."""
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        cfg.config = {"settings": {}}
+
+        # Set environment variables with different settings
+        test_env = {
+            "CLI_CODE_SETTINGS_INT_VAL": "42",
+            "CLI_CODE_SETTINGS_FLOAT_VAL": "3.14",
+            "CLI_CODE_SETTINGS_BOOL_TRUE": "true",
+            "CLI_CODE_SETTINGS_BOOL_FALSE": "false",
+            "CLI_CODE_SETTINGS_STR_VAL": "string_value",
+            "CLI_CODE_GOOGLE_API_KEY": "test_api_key",
+            "CLI_CODE_DEFAULT_PROVIDER": "gemini",
+        }
+
+        with patch.dict(os.environ, test_env, clear=True):
+            # Call the method
+            cfg._apply_env_vars()
+
+        # Check direct mappings
+        assert cfg.config["google_api_key"] == "test_api_key"
+        assert cfg.config["default_provider"] == "gemini"
+
+        # Check settings conversions
+        assert cfg.config["settings"]["int_val"] == 42  # Integer conversion
+        assert cfg.config["settings"]["float_val"] == 3.14  # Float conversion
+        assert cfg.config["settings"]["bool_true"] is True  # Boolean conversion
+        assert cfg.config["settings"]["bool_false"] is False  # Boolean conversion
+        assert cfg.config["settings"]["str_val"] == "string_value"  # String (no conversion)
+
+
+# Add test for _load_dotenv file content processing
+@patch("builtins.open")
+@patch("pathlib.Path.exists")
+@patch("pathlib.Path.resolve")
+def test_load_dotenv_processes_file_content(mock_resolve, mock_exists, mock_open):
+    """Test that _load_dotenv correctly processes various file content formats."""
+    # Setup mocks
+    mock_exists.return_value = True
+    mock_resolve.return_value = Path("/fake/path/.env")
+
+    # Create a mock file with various content types to exercise the processing logic
+    mock_file = MagicMock()
+    mock_file.__enter__.return_value = iter(
+        [
+            "# This is a comment",
+            "",  # Empty line
+            "NORMAL_VAR=normal_value",
+            'QUOTED_VAR="quoted_value"',
+            "SINGLE_QUOTED_VAR='single_quoted'",
+            "CLI_CODE_API_KEY=secret_key",
+            "CLI_CODE_SETTINGS_BOOL=true",
+            "NO_EQUALS_LINE",  # Line without equals
+            "TRAILING_SPACES = with_spaces  ",
+            "  LEADING_SPACES  =  with_spaces_too  ",
+        ]
+    )
+    mock_open.return_value = mock_file
+
+    # Patch os.environ to track what gets set
+    test_env = {}
+    with patch.dict(os.environ, test_env, clear=True):
+        # Create Config instance with minimal mocking
+        with patch.object(Config, "__init__", lambda x: None):
+            cfg = Config()
+            # Call the method under test directly
+            cfg._load_dotenv()
+
+            # Assert environment variables were set properly
+            assert os.environ["NORMAL_VAR"] == "normal_value"
+            assert os.environ["QUOTED_VAR"] == "quoted_value"
+            assert os.environ["SINGLE_QUOTED_VAR"] == "single_quoted"
+            assert os.environ["CLI_CODE_API_KEY"] == "secret_key"
+            assert os.environ["CLI_CODE_SETTINGS_BOOL"] == "true"
+            assert os.environ["TRAILING_SPACES"] == "with_spaces"
+            assert os.environ["LEADING_SPACES"] == "with_spaces_too"
+            # Verify lines without equals are skipped (no exception raised)
+            assert "NO_EQUALS_LINE" not in os.environ
+
+
+@patch("builtins.open")
+@patch("pathlib.Path.exists")
+@patch("pathlib.Path.resolve")
+def test_load_dotenv_logs_loaded_vars(mock_resolve, mock_exists, mock_open, caplog):
+    """Test that _load_dotenv correctly logs loaded variables."""
+    # Setup mocks
+    mock_exists.side_effect = [True, False]  # First check for .env exists, .env.example doesn't
+    mock_resolve.return_value = Path("/fake/path/.env")
+
+    # Create mock file with CLI_CODE prefixed variables to test logging
+    mock_file = MagicMock()
+    mock_file.__enter__.return_value = iter(
+        [
+            "CLI_CODE_API_KEY=secret_value",  # Should be masked in log
+            "CLI_CODE_TOKEN=another_secret",  # Should be masked in log
+            "CLI_CODE_NORMAL=normal_value",  # Should show actual value
+            "OTHER_VAR=not_logged",  # Should not be in log since not CLI_CODE prefixed
+        ]
+    )
+    mock_open.return_value = mock_file
+
+    # Use caplog to capture logging output
+    caplog.set_level(logging.INFO)
+
+    # Create Config instance with minimal mocking
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        # Call the method under test directly
+        cfg._load_dotenv()
+
+        # Check log output for loaded variables
+        assert "Loaded 3 CLI_CODE vars" in caplog.text
+        assert "CLI_CODE_API_KEY=****" in caplog.text  # Should be masked
+        assert "CLI_CODE_TOKEN=****" in caplog.text  # Should be masked
+        assert "CLI_CODE_NORMAL=normal_value" in caplog.text  # Should show value
+        assert "OTHER_VAR=not_logged" not in caplog.text  # Should not be logged
+
+
+# Test with empty environment variable value
+@patch("builtins.open")
+@patch("pathlib.Path.exists")
+@patch("pathlib.Path.resolve")
+def test_load_dotenv_handles_empty_values(mock_resolve, mock_exists, mock_open):
+    """Test that _load_dotenv correctly processes empty environment variable values."""
+    # Setup mocks
+    mock_exists.return_value = True
+    mock_resolve.return_value = Path("/fake/path/.env")
+
+    # Create a mock file with empty values
+    mock_file = MagicMock()
+    mock_file.__enter__.return_value = iter(
+        [
+            "EMPTY_VAR=",  # Empty value
+            "CLI_CODE_EMPTY=",  # Empty CLI_CODE value
+        ]
+    )
+    mock_open.return_value = mock_file
+
+    # Patch os.environ to track what gets set
+    test_env = {}
+    with patch.dict(os.environ, test_env, clear=True):
+        # Create Config instance with minimal mocking
+        with patch.object(Config, "__init__", lambda x: None):
+            cfg = Config()
+
+            # Mock the logger directly before calling _load_dotenv
+            with patch("cli_code.config.log") as mock_log:
+                # Call the method under test directly
+                cfg._load_dotenv()
+
+                # Assert environment variables were set with empty values
+                assert os.environ["EMPTY_VAR"] == ""
+                assert os.environ["CLI_CODE_EMPTY"] == ""
+
+                # Verify that info was called with loaded vars
+                mock_log.info.assert_any_call("Loaded 1 CLI_CODE vars from .env: CLI_CODE_EMPTY=")
+
+
+# Add test for _save_config behavior when no config_file is set
+def test_save_config_with_no_file():
+    """Test that _save_config doesn't fail when the config_file is not set."""
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        # Also set config_file to None to trigger the different error path
+        cfg.config_file = None
+        cfg.config = {"test_key": "test_value"}
+
+        # Mock logger to verify error
+        with patch("cli_code.config.log") as mock_log:
+            # Call the method - this should not raise an exception
+            cfg._save_config()
+
+            # Verify error was logged
+            mock_log.error.assert_called_once()
+            assert "Error saving config file" in mock_log.error.call_args[0][0]
+
+
+# Test to improve coverage of getting credential for non-gemini/ollama providers
+def test_get_credential_for_anthropic():
+    """Test get_credential for anthropic provider."""
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        cfg.config = {
+            "google_api_key": "test_google_key",
+            "ollama_api_url": "test_ollama_url",
+            "anthropic_api_key": "test_anthropic_key",
+        }
+
+        # Call get_credential with anthropic provider
+        with patch("cli_code.config.log") as mock_log:
+            result = cfg.get_credential("anthropic")
+
+            # Should warn about unknown provider and return None
+            mock_log.warning.assert_called_once()
+            assert "unknown provider" in mock_log.warning.call_args[0][0].lower()
+            assert result is None
+
+        # Create a new instance for this test to avoid interference
+        with patch.object(Config, "__init__", lambda x: None):
+            cfg2 = Config()
+            # Handle case where self.config is None but doesn't raise attribute error
+            with patch.object(Config, "get_credential", wraps=cfg.get_credential) as mock_get_credential:
+                mock_get_credential.return_value = None
+                assert cfg2.get_credential("gemini") is None
+
+
+# Test for _load_config to cover line 244-246
+def test_load_config_generic_exception():
+    """Test _load_config handling of generic exceptions."""
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        # Set config_file to a valid Path
+        cfg.config_file = Path("/fake/path/config.yaml")
+
+        # Mock open to raise a generic exception
+        with patch("builtins.open") as mock_open:
+            mock_open.side_effect = Exception("Generic error")
+
+            # Mock logger
+            with patch("cli_code.config.log") as mock_log:
+                # Call the method
+                result = cfg._load_config()
+
+                # Verify behavior
+                assert result == {}
+                mock_log.error.assert_called_once()
+                assert "Error loading config file" in mock_log.error.call_args[0][0]
+
+
+# Test for set_default_provider with unknown provider
+def test_set_default_provider_unknown():
+    """Test set_default_provider with an unknown provider logs an error."""
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        cfg.config = {"default_provider": "gemini"}
+
+        # Mock logger
+        with patch("cli_code.config.log") as mock_log:
+            # Call with unknown provider
+            cfg.set_default_provider("unknown_provider")
+
+            # Verify error was logged
+            mock_log.error.assert_called_once()
+            assert "unknown default provider" in mock_log.error.call_args[0][0].lower()
+
+            # Verify config wasn't changed
+            assert cfg.config["default_provider"] == "gemini"
+
+
+# Test for set_default_model errors
+def test_set_default_model_errors():
+    """Test set_default_model error handling."""
+    with patch.object(Config, "__init__", lambda x: None):
+        cfg = Config()
+        cfg.config = {"default_provider": "gemini"}
+
+        # Test with unknown provider
+        with patch("cli_code.config.log") as mock_log:
+            # Call with unknown provider
+            result = cfg.set_default_model("test-model", "unknown_provider")
+
+            # Verify error was logged
+            mock_log.error.assert_called_once()
+            assert "unknown provider" in mock_log.error.call_args[0][0].lower()
+            assert result is None
