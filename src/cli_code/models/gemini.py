@@ -280,6 +280,11 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     # Process the response content
                     result = self._process_response_content(response_candidate, status)
                     if result:
+                        # Special case: if the result contains "User rejected" for a tool execution,
+                        # store it as the last_text_response but don't return it yet; continue the loop
+                        if "User rejected" in str(result) and "operation on" in str(result):
+                            last_text_response = result
+                            continue
                         return result
 
                     # Check for loop conditions
@@ -293,6 +298,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                         return result
 
             # Handle loop completion
+            if last_text_response and "User rejected" in last_text_response:
+                return last_text_response
             return self._handle_loop_completion(task_completed, final_summary, iteration_count)
 
     def _get_llm_response(self):
@@ -355,13 +362,15 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         # Process parts if they exist
         for part in response_candidate.content.parts:
-            self._process_individual_part(
-                part,
-                response_candidate,
-                function_call_part_to_execute,
-                text_response_buffer,
-                processed_function_call_in_turn,
-                status,
+            function_call_part_to_execute, text_response_buffer, processed_function_call_in_turn = (
+                self._process_individual_part(
+                    part,
+                    response_candidate,
+                    function_call_part_to_execute,
+                    text_response_buffer,
+                    processed_function_call_in_turn,
+                    status,
+                )
             )
 
         # Process function call if present
@@ -533,7 +542,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     }
                 )
                 self._manage_context_window()
-                return rejection_message
+
+                # Return the rejection message which will be caught by _execute_function_call
+                return f"User rejected the proposed {tool_name_str} operation on {tool_args.get('file_path', 'unknown file')}"
 
         except Exception as confirm_err:
             log.error(f"Error during confirmation: {confirm_err}", exc_info=True)
@@ -632,7 +643,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # Try switching to fallback model
         log.info(f"Switching to fallback model: {FALLBACK_MODEL}")
         status.update(f"[bold yellow]Switching to fallback model: {FALLBACK_MODEL}...[/bold yellow]")
-        self.console.print(f"[bold yellow]Quota limit reached. Switching to fallback model...[/bold yellow]")
+        self.console.print(
+            f"[bold yellow]Quota limit reached for {self.current_model_name}. Switching to fallback model ({FALLBACK_MODEL})...[/bold yellow]"
+        )
 
         self.current_model_name = FALLBACK_MODEL
         try:
@@ -899,5 +912,27 @@ The user's first message will contain initial directory context and their reques
 
     # --- Help Text Generator ---
     def _get_help_text(self) -> str:
-        # Implementation of _get_help_text method
-        pass
+        """Return help text for CLI commands and usage."""
+        help_text = """
+# CLI-Code Assistant Help
+
+## Interactive Commands:
+- `/exit` - Exit the interactive session
+- `/help` - Show this help message
+- `/clear` - Clear the conversation history
+
+## Usage Tips:
+- Ask direct questions about the codebase
+- Request to view, edit, or create files
+- Ask for explanations of code
+- Request to run commands (with confirmation)
+- Ask for help implementing a feature
+
+## Examples:
+- "What files are in this directory?"
+- "Show me the content of file.py"
+- "Explain what this code does"
+- "Create a new file called hello.py with a simple hello world program"
+- "How do I run this application?"
+"""
+        return help_text.strip()
