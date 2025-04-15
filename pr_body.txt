@@ -1,0 +1,29 @@
+# Refactor Agent Loop to Reduce Cognitive Complexity
+
+This PR addresses the SonarCloud issue related to high cognitive complexity in the `_execute_agent_loop` function within the GeminiModel class. The function had a complexity score of 26, whereas SonarCloud recommends a maximum of 15.
+
+## Changes Made
+
+1. Refactored `_execute_agent_loop` into three distinct methods:
+   - `_execute_agent_loop`: Now manages the main loop structure and outcome handling
+   - `_process_agent_iteration`: Handles a single iteration of the agent loop
+   - `_process_candidate_response`: Processes a single response candidate
+
+2. Introduced a clear result pattern using tuples with result types:
+   - `"error"`: Error that terminates processing
+   - `"continue"`: Continue the loop with updated state
+   - `"complete"`: Task is complete, return the final value
+   - `"task_completed"`: Set the task_completed flag
+
+3. Added comprehensive tests in a new file: `tests/models/test_gemini_agent_loop.py`
+
+## Benefits
+
+- Reduced cognitive complexity from 26 to well below the threshold of 15
+- Improved code maintainability with clearer responsibilities for each function
+- Enhanced testability with more focused, single-responsibility methods
+- Added comprehensive test coverage for the refactored methods
+
+## Note
+
+This refactoring maintains all original functionality while making the code structure cleaner and more maintainable.

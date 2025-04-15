@@ -253,54 +253,76 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
                 status.update(self.THINKING_STATUS)
 
-                try:
-                    # Ensure history is not empty before sending
-                    if not self.history:
-                        log.error("Agent history became empty unexpectedly.")
-                        return "Error: Agent history is empty."
+                # Process a single iteration of the agent loop
+                iteration_result = self._process_agent_iteration(status, last_text_response)
 
-                    # Get response from LLM
-                    llm_response = self._get_llm_response()
+                # Handle various outcomes from the iteration
+                if isinstance(iteration_result, tuple) and len(iteration_result) == 2:
+                    # Unpack result type and value
+                    result_type, result_value = iteration_result
 
-                    # Check for valid response
-                    if not llm_response.candidates:
-                        return self._handle_empty_response(llm_response)
-
-                    # Process response from the model
-                    response_candidate = llm_response.candidates[0]
-                    log.debug(f"-- Processing Candidate {response_candidate.index} --")
-
-                    # Check for STOP finish reason first
-                    if self._check_for_stop_reason(response_candidate, status):
-                        final_text = self._extract_final_text(response_candidate)
-                        if final_text.strip():
-                            return final_text.strip()
-                        # If no text with STOP, continue processing
-
-                    # Process the response content
-                    result = self._process_response_content(response_candidate, status)
-                    if result:
-                        # Special case: if the result contains "User rejected" for a tool execution,
-                        # store it as the last_text_response but don't return it yet; continue the loop
-                        if "User rejected" in str(result) and "operation on" in str(result):
-                            last_text_response = result
-                            continue
-                        return result
-
-                    # Check for loop conditions
-                    if task_completed:
+                    if result_type == "error":
+                        return result_value
+                    elif result_type == "continue":
+                        last_text_response = result_value
+                        continue
+                    elif result_type == "complete":
+                        return result_value
+                    elif result_type == "task_completed":
+                        task_completed = True
                         log.info("Task completed flag is set. Finalizing.")
                         break
-
-                except Exception as e:
-                    result = self._handle_agent_loop_exception(e, status)
-                    if result:
-                        return result
 
             # Handle loop completion
             if last_text_response and "User rejected" in last_text_response:
                 return last_text_response
             return self._handle_loop_completion(task_completed, final_summary, iteration_count)
+
+    def _process_agent_iteration(self, status, last_text_response):
+        """Process a single iteration of the agent loop."""
+        try:
+            # Ensure history is not empty before sending
+            if not self.history:
+                log.error("Agent history became empty unexpectedly.")
+                return "error", "Error: Agent history is empty."
+
+            # Get response from LLM
+            llm_response = self._get_llm_response()
+
+            # Check for valid response
+            if not llm_response.candidates:
+                return "error", self._handle_empty_response(llm_response)
+
+            # Process response from the model
+            return self._process_candidate_response(llm_response.candidates[0], status)
+
+        except Exception as e:
+            result = self._handle_agent_loop_exception(e, status)
+            if result:
+                return "error", result
+            return "continue", last_text_response
+
+    def _process_candidate_response(self, response_candidate, status):
+        """Process a response candidate from the LLM."""
+        log.debug(f"-- Processing Candidate {response_candidate.index} --")
+
+        # Check for STOP finish reason first
+        if self._check_for_stop_reason(response_candidate, status):
+            final_text = self._extract_final_text(response_candidate)
+            if final_text.strip():
+                return "complete", final_text.strip()
+
+        # Process the response content
+        result = self._process_response_content(response_candidate, status)
+        if result:
+            # Special case: if the result contains "User rejected" for a tool execution,
+            # store it as the last_text_response but don't return it yet; continue the loop
+            if "User rejected" in str(result) and "operation on" in str(result):
+                return "continue", result
+            return "complete", result
+
+        # No immediate result or completion - check if task is completed via flags
+        return "task_completed", None
 
     def _get_llm_response(self):
         """Get response from the language model."""
