@@ -1,25 +1,32 @@
-import pytest
-from unittest import mock
-import unittest
 import json
+import os
+import unittest
+from unittest.mock import ANY, MagicMock, Mock, patch
+
+import google.api_core.exceptions
 
 # Third-party Libraries
 import google.generativeai as genai
-from google.generativeai.types import GenerateContentResponse
-from google.generativeai.types.content_types import ContentDict as Content, PartDict as Part, FunctionDeclaration
-from google.ai.generativelanguage_v1beta.types.generative_service import Candidate
+import pytest
 import questionary
-import google.api_core.exceptions
+from google.ai.generativelanguage_v1beta.types.generative_service import Candidate
+
 # import vertexai.preview.generative_models as vertexai_models # Commented out problematic import
 from google.api_core.exceptions import ResourceExhausted
+from google.generativeai.types import GenerateContentResponse
+from google.generativeai.types.content_types import ContentDict as Content
+
 # Remove the problematic import line
 # from google.generativeai.types import Candidate, Content, GenerateContentResponse, Part, FunctionCall
-
 # Import FunctionCall separately from content_types
 from google.generativeai.types.content_types import FunctionCallingMode as FunctionCall
+from google.generativeai.types.content_types import FunctionDeclaration
+from google.generativeai.types.content_types import PartDict as Part
+
+from src.cli_code.models.constants import ToolResponseType
+
 # If there are separate objects needed for function calls, you can add them here
 # Alternatively, we could use mock objects for these types if they don't exist in the current package
-
 # Local Application/Library Specific Imports
 from src.cli_code.models.gemini import GeminiModel
 
@@ -52,7 +59,7 @@ TOOL_EXEC_ERROR_MSG = "Something went wrong during tool execution!"
 @pytest.fixture
 def mock_console():
     """Provides a mocked Console object."""
-    mock_console = mock.MagicMock()
+    mock_console = MagicMock()
     mock_console.status.return_value.__enter__.return_value = None
     mock_console.status.return_value.__exit__.return_value = None
     return mock_console
@@ -82,11 +89,11 @@ def gemini_model_instance(mocker, mock_console, mock_tool_helpers, mock_context_
     mock_configure = mocker.patch("src.cli_code.models.gemini.genai.configure")
     mock_model_constructor = mocker.patch("src.cli_code.models.gemini.genai.GenerativeModel")
     # Create a MagicMock without specifying the spec
-    mock_model_obj = mock.MagicMock()
+    mock_model_obj = MagicMock()
     mock_model_constructor.return_value = mock_model_obj
 
-    with mock.patch("src.cli_code.models.gemini.AVAILABLE_TOOLS", {}), \
-         mock.patch("src.cli_code.models.gemini.get_tool"):
+    with patch("src.cli_code.models.gemini.AVAILABLE_TOOLS", {}), \
+         patch("src.cli_code.models.gemini.get_tool"):
         model = GeminiModel(api_key=FAKE_API_KEY, console=mock_console, model_name=TEST_MODEL_NAME)
         assert model.model is mock_model_obj
         model.history = [] # Initialize history after patching _initialize_history
@@ -115,14 +122,14 @@ def test_gemini_model_initialization(gemini_model_instance):
     # Assert basic properties
     assert instance.api_key == FAKE_API_KEY
     assert instance.current_model_name == TEST_MODEL_NAME
-    assert isinstance(instance.model, mock.MagicMock)
+    assert isinstance(instance.model, MagicMock)
 
     # Assert against the mocks used during initialization by the fixture
     mock_configure.assert_called_once_with(api_key=FAKE_API_KEY)
     mock_model_constructor.assert_called_once_with(
         model_name=TEST_MODEL_NAME,
-        generation_config=mock.ANY,
-        safety_settings=mock.ANY,
+        generation_config=ANY,
+        safety_settings=ANY,
         system_instruction="Test System Prompt"
     )
     # Check history addition (the fixture itself adds history items)
@@ -141,17 +148,17 @@ def test_generate_simple_text_response(mocker, gemini_model_instance):
     mock_model = gemini_model_instance["mock_model_obj"]
 
     # Create mock response structure
-    mock_response_part = mock.MagicMock()
+    mock_response_part = MagicMock()
     mock_response_part.text = SIMPLE_RESPONSE_TEXT
     mock_response_part.function_call = None
-    mock_content = mock.MagicMock()
+    mock_content = MagicMock()
     mock_content.parts = [mock_response_part]
     mock_content.role = "model"
-    mock_candidate = mock.MagicMock()
+    mock_candidate = MagicMock()
     mock_candidate.content = mock_content
     mock_candidate.finish_reason = "STOP"
     mock_candidate.safety_ratings = []
-    mock_api_response = mock.MagicMock()
+    mock_api_response = MagicMock()
     mock_api_response.candidates = [mock_candidate]
     mock_api_response.prompt_feedback = None
 
@@ -318,17 +325,17 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
     mock_api_response.candidates = [mock_candidate]
 
     # --- Define the second response (after rejection) ---
-    mock_rejection_text_part = mock.MagicMock()
+    mock_rejection_text_part = mocker.MagicMock()
     # Let the model return the same message we expect as the final result
     mock_rejection_text_part.text = REJECTION_MESSAGE 
     mock_rejection_text_part.function_call = None
-    mock_rejection_content = mock.MagicMock()
+    mock_rejection_content = mocker.MagicMock()
     mock_rejection_content.parts = [mock_rejection_text_part]
     mock_rejection_content.role = "model"
-    mock_rejection_candidate = mock.MagicMock()
+    mock_rejection_candidate = mocker.MagicMock()
     mock_rejection_candidate.content = mock_rejection_content
     mock_rejection_candidate.finish_reason = 1 # STOP
-    mock_rejection_api_response = mock.MagicMock()
+    mock_rejection_api_response = mocker.MagicMock()
     mock_rejection_api_response.candidates = [mock_rejection_candidate]
     # ---
 

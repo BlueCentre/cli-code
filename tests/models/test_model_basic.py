@@ -3,11 +3,11 @@ Tests for basic model functionality that doesn't require API access.
 These tests focus on increasing coverage for the model classes.
 """
 
-from unittest import TestCase, skipIf, mock
-from unittest.mock import MagicMock, patch
+import json
 import os
 import sys
-import json
+from unittest import TestCase, skipIf, mock
+from unittest.mock import MagicMock, patch
 from rich.console import Console
 
 # Standard Imports - Assuming these are available in the environment
