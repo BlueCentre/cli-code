@@ -75,6 +75,9 @@ class TestOllamaModelCoverage:
         # Connect the response to the client
         self.openai_instance_mock.chat.completions.create.return_value = self.mock_response
         
+        # <<< Ensure 'models' attribute exists on the client mock >>>
+        self.openai_instance_mock.models = MagicMock()
+        
         # Connect the instance to the class
         self.openai_class_mock.return_value = self.openai_instance_mock
         
@@ -144,11 +147,11 @@ class TestOllamaModelCoverage:
         # Mock OpenAI models.list response
         mock_model = MagicMock()
         mock_model.id = "llama2"
-        # Create a mock response object with data attribute 
         mock_response = MagicMock()
         mock_response.data = [mock_model]
-        # Set up the client.models.list mock
-        self.model.client.models.list.return_value = mock_response
+        
+        # Configure the mock method created during setup
+        self.model.client.models.list.return_value = mock_response # Configure the existing mock
         
         result = self.model.list_models()
         
@@ -162,15 +165,15 @@ class TestOllamaModelCoverage:
     
     def test_list_models_with_error(self):
         """Test listing models when API returns error."""
-        # Set up mock to raise an exception
-        self.model.client.models.list.side_effect = Exception("API error")
+        # Configure the mock method to raise an exception
+        self.model.client.models.list.side_effect = Exception("API error") # Configure the existing mock
         
         result = self.model.list_models()
         
         # Verify error handling
         assert result is None
         # Verify console prints an error message
-        self.mock_console.print.assert_any_call(mock.ANY)  # Using ANY matcher as the exact message might vary
+        self.mock_console.print.assert_any_call(mock.ANY) # Using ANY matcher
     
     def test_get_initial_context_with_rules_dir(self):
         """Test getting initial context from .rules directory."""

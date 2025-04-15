@@ -63,29 +63,33 @@ class TestCliAdvancedErrors:
         self.mock_config.get_default_model.return_value = "gemini-pro"
         self.mock_config.get_credential.return_value = "fake-api-key"
 
-        # Patch sys.exit to prevent test from exiting
-        self.exit_patcher = patch('cli_code.main.sys.exit')
-        self.mock_exit = self.exit_patcher.start()
+        # Add patch for start_interactive_session
+        self.interactive_patcher = patch('cli_code.main.start_interactive_session')
+        self.mock_interactive = self.interactive_patcher.start()
+        self.mock_interactive.return_value = None # Ensure it doesn't block
     
     def teardown_method(self):
         """Teardown test fixtures."""
         self.config_patcher.stop()
         self.console_patcher.stop()
-        self.exit_patcher.stop()
+        self.interactive_patcher.stop()
     
     @pytest.mark.timeout(5)
     def test_cli_invalid_provider(self):
         """Test CLI behavior with invalid provider (should never happen due to click.Choice)."""
-        with patch('cli_code.main.config.get_default_provider') as mock_get_provider:
-            # Simulate an invalid provider somehow getting through
+        with patch('cli_code.main.config.get_default_provider') as mock_get_provider, \
+             patch('cli_code.main.sys.exit') as mock_exit: # Patch sys.exit specifically for this test
+            # Simulate an invalid provider
             mock_get_provider.return_value = "invalid-provider"
+            # Ensure get_default_model returns None for the invalid provider
+            self.mock_config.get_default_model.return_value = None 
             
-            # Since the code uses click's Choice validation and has error handling,
-            # we expect it to call exit with code 1
-            result = self.runner.invoke(cli, [])
+            # Invoke CLI - expect it to call sys.exit(1) internally
+            result = self.runner.invoke(cli, []) 
             
-            # Check error handling occurred
-            assert self.mock_exit.called, "Should call sys.exit for invalid provider"
+            # Check that sys.exit was called with 1 at least once
+            mock_exit.assert_any_call(1)
+            # Note: We don't check result.exit_code here as the patched exit prevents it.
 
     @pytest.mark.timeout(5)
     def test_cli_with_missing_default_model(self):
@@ -95,8 +99,8 @@ class TestCliAdvancedErrors:
         # This should trigger the error path that calls sys.exit(1)
         result = self.runner.invoke(cli, [])
         
-        # Should call exit with error
-        self.mock_exit.assert_called_once_with(1)
+        # Check exit code instead of mock call
+        assert result.exit_code == 1
         
         # Verify it printed an error message
         self.mock_console.print.assert_any_call(
@@ -110,8 +114,8 @@ class TestCliAdvancedErrors:
         with patch('cli_code.main.config', None):
             result = self.runner.invoke(cli, [])
             
-            # Should exit with error
-            self.mock_exit.assert_called_once_with(1)
+            # Check exit code instead of mock call
+            assert result.exit_code == 1
             
             # Should print error message
             self.mock_console.print.assert_called_once_with(
@@ -213,35 +217,33 @@ class TestShowHelpFunction:
     
     def setup_method(self):
         """Set up test fixtures."""
-        self.console_patcher = patch('cli_code.main.console')
-        self.mock_console = self.console_patcher.start()
-        
-        # Add patch for Panel to prevent errors
-        self.panel_patcher = patch('cli_code.main.Panel', return_value="Test panel")
-        self.mock_panel = self.panel_patcher.start()
-    
+        # Patch the print method of the *global console instance*
+        self.console_print_patcher = patch('cli_code.main.console.print') 
+        self.mock_console_print = self.console_print_patcher.start()
+
     def teardown_method(self):
         """Teardown test fixtures."""
-        self.console_patcher.stop()
-        self.panel_patcher.stop()
-    
+        self.console_print_patcher.stop()
+
     @pytest.mark.timeout(5)
     def test_show_help_function(self):
-        """Test show_help with different providers."""
+        """Test show_help prints help text."""
         # Test with gemini
         show_help("gemini")
-        
+
         # Test with ollama
         show_help("ollama")
-        
+
         # Test with unknown provider
         show_help("unknown_provider")
+
+        # Verify the patched console.print was called
+        assert self.mock_console_print.call_count >= 3, "Help text should be printed for each provider"
         
-        # Verify mock_panel was called properly
-        assert self.mock_panel.call_count >= 3, "Panel should be created for each help call"
-        
-        # Verify console.print was called for each help display
-        assert self.mock_console.print.call_count >= 3, "Help panel should be printed for each provider"
+        # Optional: More specific checks on the content printed
+        call_args_list = self.mock_console_print.call_args_list
+        help_text_found = sum(1 for args, kwargs in call_args_list if "Interactive Commands:" in str(args[0]))
+        assert help_text_found >= 3, "Expected help text marker not found in print calls"
 
 
 if __name__ == "__main__":

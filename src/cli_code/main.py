@@ -369,10 +369,9 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
                 break
             elif user_input.lower() == "/help":
                 show_help(provider)
-                continue  # Pass provider to help
+                continue
 
-            # Display initial "thinking" status - generate handles intermediate ones
-            response_text = model_agent.generate(user_input)  # Use the instantiated agent
+            response_text = model_agent.generate(user_input)
 
             if response_text is None and user_input.startswith("/"):
                 console.print(f"[yellow]Unknown command:[/yellow] {user_input}")
@@ -382,9 +381,8 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
                 log.warning("generate() returned None unexpectedly.")
                 continue
 
-            # --- Changed Prompt Name ---
-            console.print("[bold medium_purple]Assistant:[/bold medium_purple]")  # Changed from provider.capitalize()
-            console.print(Markdown(response_text), highlight=True)
+            console.print("[bold medium_purple]Assistant:[/bold medium_purple]")
+            console.print(Markdown(response_text))
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Session interrupted. Exiting.[/yellow]")
@@ -392,6 +390,7 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
         except Exception as e:
             console.print(f"\n[bold red]An error occurred during the session:[/bold red] {e}")
             log.error("Error during interactive loop", exc_info=True)
+            break
 
 
 def show_help(provider: str):
@@ -422,4 +421,5 @@ Available Tools:{tools_list}
 
 
 if __name__ == "__main__":
-    cli(obj={})
+    # Provide default None for linter satisfaction, Click handles actual values
+    cli(ctx=None, provider=None, model=None, obj={})

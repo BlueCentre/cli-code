@@ -135,7 +135,7 @@ class TestBashTool:
         tool = BashTool()
         
         # Generate a large output
-        result = tool.execute("python -c \"print('x' * 10000)\"")
+        result = tool.execute(".venv/bin/python3.13 -c \"print('x' * 10000)\"")
         
         # Verify the tool can handle large outputs
         if IMPORTS_AVAILABLE:

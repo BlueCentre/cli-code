@@ -247,6 +247,24 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                     response_candidate = llm_response.candidates[0]
                     log.debug(f"-- Processing Candidate {response_candidate.index} --") # DEBUG
 
+                    # <<< NEW: Prioritize STOP Reason Check >>>
+                    if response_candidate.finish_reason == 1: # STOP
+                        log.info("STOP finish reason received. Finalizing.")
+                        final_text = ""
+                        final_parts = []
+                        if response_candidate.content and response_candidate.content.parts:
+                            final_parts = response_candidate.content.parts
+                            for part in final_parts:
+                                if hasattr(part, "text") and part.text:
+                                    final_text += part.text + "\n"
+                        final_summary = final_text.strip() if final_text else "(Model stopped with no text)"
+                        # Add the stopping response to history BEFORE breaking
+                        self.add_to_history({"role": "model", "parts": final_parts})
+                        self._manage_context_window()
+                        task_completed = True
+                        break # Exit loop immediately on STOP
+                    # <<< END NEW STOP CHECK >>>
+
                     # --- Start Part Processing ---
                     function_call_part_to_execute = None
                     text_response_buffer = ""
@@ -297,9 +315,6 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                 self.add_to_history({"role": "model", "parts": [part]})
                                 self._manage_context_window()
 
-                    # Remove the added print statement
-                    log.debug(f"-- End Part Processing. function_call_part_to_execute: {function_call_part_to_execute}, text_response_buffer: '{text_response_buffer.strip()}' --") # DEBUG
-
                     # --- Start Decision Block ---
                     if function_call_part_to_execute:
                         # Extract name and args here + type check
@@ -339,6 +354,42 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                     break 
                                 else:
                                     # log.debug(f"[Tool Exec] Preparing to execute {tool_name_str} with args: {tool_args}") # REMOVE DEBUG
+                                    
+                                    # --- Confirmation Check ---
+                                    if tool_name_str in TOOLS_REQUIRING_CONFIRMATION:
+                                        log.info(f"Requesting confirmation for sensitive tool: {tool_name_str}")
+                                        confirm_msg = f"Allow the AI to execute the '{tool_name_str}' command with arguments: {tool_args}?"
+                                        try:
+                                            # Use ask() which returns True, False, or None (for cancel)
+                                            confirmation = questionary.confirm(
+                                                confirm_msg, 
+                                                auto_enter=False, # Require explicit confirmation
+                                                default=False # Default to no if user just hits enter
+                                            ).ask()
+                                            
+                                            if confirmation is not True: # Handles False and None (cancel)
+                                                log.warning(f"User rejected or cancelled execution of tool: {tool_name_str}")
+                                                rejection_message = f"User rejected execution of tool: {tool_name_str}"
+                                                # Add rejection message to history for the LLM
+                                                self.history.append({
+                                                    "role": "user", 
+                                                    "parts": [{"function_response": {"name": tool_name_str, "response": {"status": "rejected", "message": rejection_message}}}]
+                                                })
+                                                self._manage_context_window()
+                                                continue # Skip execution and proceed to next iteration
+                                        except Exception as confirm_err:
+                                            log.error(f"Error during confirmation prompt for {tool_name_str}: {confirm_err}", exc_info=True)
+                                            # Treat confirmation error as rejection for safety
+                                            self.history.append({
+                                                "role": "user", 
+                                                "parts": [{"function_response": {"name": tool_name_str, "response": {"status": "error", "message": f"Error during confirmation: {confirm_err}"}}}]
+                                            })
+                                            self._manage_context_window()
+                                            continue # Skip execution
+
+                                        log.info(f"User confirmed execution for tool: {tool_name_str}")
+                                    # --- End Confirmation Check ---
+
                                     tool_result = tool_instance.execute(**tool_args)
                                     # log.debug(f"[Tool Exec] Finished executing {tool_name_str}. Result: {tool_result}") # REMOVE DEBUG
                                     
@@ -359,18 +410,16 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                                     # log.debug("[Tool Exec] Appended tool result to history.") # REMOVE DEBUG
 
                         except Exception as e:
-                            error_message = f"Error executing tool {tool_name_str}: {e}"
+                            error_message = f"Error: Tool execution error with {tool_name_str}: {e}"
                             log.exception(f"[Tool Exec] Exception caught: {error_message}") # Keep exception log
-                            result_for_history = {"error": error_message}
-                            # Append error response using dict structure
-                            self.history.append({
-                                "role": "user", 
-                                "parts": [{"function_response": {"name": tool_name_str, "response": result_for_history}}]
-                            })
-                            # log.debug("[Tool Exec] Appended error result to history.") # REMOVE DEBUG
+                            # <<< NEW: Set summary and break loop >>>
+                            final_summary = error_message
+                            task_completed = True
+                            break # Exit loop to handle final output consistently
+                            # <<< END NEW >>>
                         
-                        function_call_part_to_execute = None # Clear the stored part
-                        continue # Continue loop after processing function call
+                        # function_call_part_to_execute = None # Clear the stored part - Now unreachable due to return
+                        # continue # Continue loop after processing function call - Now unreachable due to return
 
                     elif task_completed:
                         log.info("Task completed flag is set. Finalizing.")

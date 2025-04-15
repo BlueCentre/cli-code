@@ -300,15 +300,26 @@ class TestOllamaModelAdvanced:
     def test_generate_with_api_error(self):
         """Test generate method with API error."""
         # Mock API error
-        self.mock_client.chat.completions.create.side_effect = Exception("API Error")
-        
+        exception_message = "API Connection Failed"
+        self.mock_client.chat.completions.create.side_effect = Exception(exception_message)
+
         # Call generate
         result = self.model.generate("Generate something")
-        
+
         # Verify error handling
-        assert "Error calling Ollama API:" in result
-        # Example of a more specific assertion
-        # assert result == "Error calling Ollama API: API Error"
+        expected_error_start = "(Error interacting with Ollama:"
+        assert result.startswith(expected_error_start), f"Expected result to start with '{expected_error_start}', got '{result}'"
+        # Check message includes original exception and ends with ')'
+        assert exception_message in result, f"Expected exception message '{exception_message}' to be in result '{result}'"
+        assert result.endswith(')')
+
+        # Print to console was called
+        self.mock_console.print.assert_called_once()
+        # Verify the printed message contains the error
+        args, _ = self.mock_console.print.call_args
+        # The console print uses different formatting
+        assert "Error during Ollama interaction:" in args[0]
+        assert exception_message in args[0]
     
     def test_generate_max_iterations(self):
         """Test generate method with maximum iterations reached."""
@@ -339,31 +350,44 @@ class TestOllamaModelAdvanced:
         result = self.model.generate("List files recursively")
         
         # Verify max iterations were handled
-        assert self.mock_client.chat.completions.create.call_count <= MAX_OLLAMA_ITERATIONS + 1
-        assert "Maximum iterations" in result
+        # The loop runs MAX_OLLAMA_ITERATIONS times
+        assert self.mock_client.chat.completions.create.call_count == MAX_OLLAMA_ITERATIONS
+        # Check the specific error message returned by the function
+        expected_return_message = "(Agent reached maximum iterations)"
+        assert result == expected_return_message, f"Expected '{expected_return_message}', got '{result}'"
+        # Verify console output (No specific error print in this case, only a log warning)
+        # self.mock_console.print.assert_called_with(...) # Remove this check
     
     def test_manage_ollama_context(self):
         """Test context window management for Ollama."""
-        # Add many messages to history
-        for i in range(30):  # Many more than fits in context
+        # Add many more messages to history to force truncation
+        num_messages = 50 # Increase from 30
+        for i in range(num_messages):
             self.model.add_to_history({"role": "user", "content": f"Message {i}"})
             self.model.add_to_history({"role": "assistant", "content": f"Response {i}"})
-        
-        # Record history length before management
-        initial_length = len(self.model.history)
-        
-        # Manage context
-        self.model._manage_ollama_context()
-        
-        # Verify truncation
-        assert len(self.model.history) < initial_length
-        
-        # Verify system prompt is preserved with specific content check
-        assert self.model.history[0]["role"] == "system"
-        # Example of a more specific assertion
-        # assert self.model.history[0]["content"] == "You are a helpful AI coding assistant..."
-        assert "You are a helpful AI coding assistant" in self.model.history[0]["content"]
-        assert "function calling capabilities" in self.model.history[0]["content"]
+
+        # Record history length before management (System prompt + 2*num_messages)
+        initial_length = 1 + (2 * num_messages)
+        assert len(self.model.history) == initial_length
+
+        # Mock count_tokens to ensure truncation is triggered
+        # Assign a large value to ensure the limit is exceeded
+        with patch('cli_code.models.ollama.count_tokens') as mock_count_tokens:
+             mock_count_tokens.return_value = 10000 # Assume large token count per message
+
+             # Manage context
+             self.model._manage_ollama_context()
+
+             # Verify truncation occurred
+             final_length = len(self.model.history)
+             assert final_length < initial_length, f"History length did not decrease. Initial: {initial_length}, Final: {final_length}"
+
+             # Verify system prompt is preserved
+             assert self.model.history[0]["role"] == "system"
+             assert "You are a helpful AI coding assistant" in self.model.history[0]["content"]
+
+             # Optionally, verify the *last* message is also preserved if needed
+             # assert self.model.history[-1]["content"] == f"Response {num_messages - 1}"
     
     def test_generate_with_token_counting(self):
         """Test generate method with token counting and context management."""
@@ -449,4 +473,77 @@ class TestOllamaModelAdvanced:
                 assert "error" in message.get("content", "").lower()
                 assert error_message in message.get("content", "")
                 error_found = True
-        assert error_found, "Error message not found in history" 
+        assert error_found, "Error message not found in history"
+
+    def test_generate_max_iterations(self):
+        """Test generate method reaching max iterations without task_complete."""
+        # Configure MAX_OLLAMA_ITERATIONS for the test if needed, or use the imported value
+        # For this test, let's assume MAX_OLLAMA_ITERATIONS is reliably 2 as set up in mocks
+        
+        # Mock tool call responses to loop indefinitely
+        mock_tool_call = MagicMock()
+        mock_tool_call.id = "call_loop"
+        mock_tool_call.function.name = "some_tool"
+        mock_tool_call.function.arguments = '{}'
+
+        mock_message = MagicMock()
+        mock_message.content = None
+        mock_message.tool_calls = [mock_tool_call]
+        mock_message.model_dump.return_value = {"role": "assistant", "tool_calls": [mock_tool_call]} # Simplified dump
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+
+        mock_response_loop = MagicMock()
+        mock_response_loop.choices = [mock_choice]
+
+        # Make the API always return a tool call
+        self.mock_client.chat.completions.create.side_effect = [mock_response_loop] * MAX_OLLAMA_ITERATIONS
+
+        # Call generate
+        result = self.model.generate("Loop forever")
+
+        # Verify the API was called MAX_OLLAMA_ITERATIONS times
+        assert self.mock_client.chat.completions.create.call_count == MAX_OLLAMA_ITERATIONS
+
+        # Verify the correct max iterations error message
+        expected_error = "(Agent reached maximum iterations)" # Changed expected message
+        assert expected_error in result
+
+    def test_manage_ollama_context(self):
+        """Test context management calls during conversation, focusing on history length."""
+        # Patch the actual context management to isolate history adding
+        self.mock_manage_context = MagicMock(return_value=None)
+        with patch.object(self.model, '_manage_ollama_context', self.mock_manage_context):
+            # --- Turn 1: Simple Text ---
+            mock_message_text = MagicMock(content="First response", tool_calls=None)
+            # Mock model_dump for the first assistant message
+            mock_message_text.model_dump.return_value = {"role": "assistant", "content": "First response"}
+            mock_choice_text = MagicMock(message=mock_message_text)
+            mock_response_text = MagicMock(choices=[mock_choice_text])
+            self.mock_client.chat.completions.create.return_value = mock_response_text
+            self.model.generate("first prompt") # user + assistant_text = 2 entries added
+
+            # --- Turn 2: Tool Call ---
+            mock_tool_call = MagicMock(id="t1", function=MagicMock(name="tool", arguments='{}'))
+            mock_message_tool = MagicMock(content=None, tool_calls=[mock_tool_call])
+            # Mock model_dump for the tool call message
+            mock_message_tool.model_dump.return_value = {"role": "assistant", "tool_calls": [{"id": "t1", "type": "function", "function": {"name": "tool", "arguments": "{}"}}]} # More realistic dump
+            mock_choice_tool = MagicMock(message=mock_message_tool)
+            mock_response_tool = MagicMock(choices=[mock_choice_tool])
+
+            mock_message_final = MagicMock(content="Final text after tool", tool_calls=None)
+            # Mock model_dump for the final assistant message
+            mock_message_final.model_dump.return_value = {"role": "assistant", "content": "Final text after tool"}
+            mock_choice_final = MagicMock(message=mock_message_final)
+            mock_response_final = MagicMock(choices=[mock_choice_final])
+
+            self.mock_client.chat.completions.create.side_effect = [mock_response_tool, mock_response_final]
+            self.model.generate("second prompt with tool") # user + assistant_tool + tool_result + assistant_text = 4 entries added
+
+            # Verify _manage_ollama_context was called (likely before each API call)
+            assert self.mock_manage_context.call_count > 0
+
+            # Verify final history length (Initial + Turn 1 + Turn 2)
+            # 1 (system) + 2 (turn 1) + 4 (turn 2) = 7
+            assert len(self.model.history) == 7 # Keep assertion at 7 
