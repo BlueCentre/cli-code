@@ -266,17 +266,17 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                             self.add_to_history({"role": "model", "parts": final_parts})
                             self._manage_context_window()
 
-                            if final_text.strip(): # If there WAS text content with the STOP
+                            if final_text.strip():  # If there WAS text content with the STOP
                                 log.info("Model stopped with final text content.")
                                 final_summary = final_text.strip()
                                 task_completed = True
-                                break # Exit loop immediately on STOP with text
+                                break  # Exit loop immediately on STOP with text
                             else:
                                 # log.warning("Model stopped (finish_reason=STOP) but provided no text content. Letting loop continue or finish naturally.") # Removed warning
                                 # Do NOT set final_summary here
                                 # Do NOT set task_completed = True here
                                 # Do NOT break here - let the loop potentially timeout or handle unexpected exit later
-                                pass # Continue processing other parts or finish loop iteration
+                                pass  # Continue processing other parts or finish loop iteration
 
                         # <<< END NEW STOP CHECK >>>
 
@@ -538,7 +538,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
                     except google.api_core.exceptions.ResourceExhausted as quota_error:
                         # Log full details at debug level
-                        log.debug(f"Full quota error details: {quota_error}") # Log full details for debugging
+                        log.debug(f"Full quota error details: {quota_error}")  # Log full details for debugging
                         # Check if we are already using the fallback
                         if self.current_model_name == FALLBACK_MODEL:
                             log.error("Quota exceeded even for the fallback model. Cannot proceed.")
@@ -838,7 +838,7 @@ The user's first message will contain initial directory context and their reques
             # Keep system prompt (idx 0), initial model ack (idx 1)
             self.history = self.history[:2]
         else:
-            self.history = [] # Should not happen if initialized correctly
+            self.history = []  # Should not happen if initialized correctly
         log.info("Gemini history cleared.")
 
     # --- Help Text Generator ---

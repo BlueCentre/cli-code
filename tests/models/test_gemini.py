@@ -60,10 +60,10 @@ TOOL_EXEC_ERROR_MSG = "Something went wrong during tool execution!"
 def mock_console():
     """Provides a mocked Console object with a functional status context manager."""
     mock_console = MagicMock()
-    mock_status_obj = MagicMock() # Create a mock for the object returned by __enter__
-    mock_status_obj.update = MagicMock() # Add the update method to the status object
-    mock_console.status.return_value.__enter__.return_value = mock_status_obj # Make __enter__ return the mock status object
-    mock_console.status.return_value.__exit__.return_value = None # __exit__ can often return None
+    mock_status_obj = MagicMock()  # Create a mock for the object returned by __enter__
+    mock_status_obj.update = MagicMock()  # Add the update method to the status object
+    mock_console.status.return_value.__enter__.return_value = mock_status_obj  # Make __enter__ return the mock status object
+    mock_console.status.return_value.__exit__.return_value = None  # __exit__ can often return None
     return mock_console
 
 
@@ -358,17 +358,17 @@ def test_generate_user_rejects_edit(mocker, gemini_model_instance):
     # Fix: Assert against the calls to the mock object, not the instance's history list
     found_rejection_in_call = False
     for call_args, _call_kwargs in mock_add_to_history.call_args_list:
-        if call_args: # Ensure there are positional arguments
-            entry = call_args[0] # The history entry is the first positional arg
+        if call_args:  # Ensure there are positional arguments
+            entry = call_args[0]  # The history entry is the first positional arg
             if (
                 isinstance(entry, dict)
                 and entry.get("role") == "model"
                 and isinstance(entry.get("parts"), list)
                 and len(entry["parts"]) > 0
             ):
-                 # Fix: Check attribute access for potentially mocked part
-                 part = entry["parts"][0]
-                 if hasattr(part, "text") and part.text == REJECTION_MESSAGE:
+                # Fix: Check attribute access for potentially mocked part
+                part = entry["parts"][0]
+                if hasattr(part, "text") and part.text == REJECTION_MESSAGE:
                     found_rejection_in_call = True
                     break
     assert found_rejection_in_call, "Rejection message text not found in calls to add_to_history"
