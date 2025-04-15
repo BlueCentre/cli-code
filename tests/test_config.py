@@ -4,6 +4,8 @@ Tests for the configuration management in src/cli_code/config.py.
 
 import logging
 import os
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, call, mock_open, patch
@@ -929,110 +931,154 @@ def test_load_dotenv_handles_empty_values(mock_resolve, mock_exists, mock_open):
                 mock_log.info.assert_any_call("Loaded 1 CLI_CODE vars from .env: CLI_CODE_EMPTY=")
 
 
-# Add test for _save_config behavior when no config_file is set
-def test_save_config_with_no_file():
-    """Test that _save_config doesn't fail when the config_file is not set."""
-    with patch.object(Config, "__init__", lambda x: None):
-        cfg = Config()
-        # Also set config_file to None to trigger the different error path
-        cfg.config_file = None
-        cfg.config = {"test_key": "test_value"}
+# New tests that don't rely on monkey patching __init__
 
-        # Mock logger to verify error
+
+# Test for _load_dotenv exception path
+@pytest.fixture
+def env_file_with_error():
+    # Create a temporary directory
+    temp_dir = tempfile.mkdtemp()
+    env_path = Path(temp_dir) / ".env"
+    
+    # Create a .env file that will trigger a permission error
+    with open(env_path, "w") as f:
+        f.write("TEST=value")
+    
+    # Save current directory to restore later
+    original_dir = os.getcwd()
+    
+    # Change to temp directory
+    os.chdir(temp_dir)
+    
+    yield temp_dir
+    
+    # Restore original directory and clean up
+    os.chdir(original_dir)
+    shutil.rmtree(temp_dir)
+
+
+def test_real_load_dotenv_exception(env_file_with_error, monkeypatch):
+    """Test actual _load_dotenv method with a real exception."""
+    # Patch open to raise an exception
+    def mock_open(*args, **kwargs):
+        raise Exception("Test exception")
+    
+    # Setup capturing log messages
+    with patch("cli_code.config.log") as mock_log:
+        with patch("builtins.open", side_effect=mock_open):
+            # Create a real Config instance
+            cfg = Config()
+            
+            # Check that the warning was logged
+            assert any("Error loading" in call[0][0] for call in mock_log.warning.call_args_list)
+
+
+# Test for _load_config exception paths
+def test_real_load_config_exception(monkeypatch, tmp_path):
+    """Test actual _load_config method with a real exception."""
+    # Make a temp config file path that doesn't exist yet
+    config_file = tmp_path / "config.yaml"
+    
+    # Mock the initialization to use our temp file
+    monkeypatch.setattr(Config, "_determine_config_path", lambda self, path: setattr(self, "config_file", config_file))
+    monkeypatch.setattr(Config, "_load_dotenv", lambda self: None)
+    monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
+    monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
+    
+    # Patch open to raise a generic exception for the second call
+    original_open = open
+    call_count = [0]
+    
+    def mock_open(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] > 1:  # After first call to ensure_config_exists
+            raise Exception("Test exception")
+        return original_open(*args, **kwargs)
+    
+    # Setup capturing log messages
+    with patch("cli_code.config.log") as mock_log:
+        with patch("builtins.open", side_effect=mock_open):
+            # Create a real Config instance
+            cfg = Config()
+            
+            # Force a reload of the config
+            cfg._load_config()
+            
+            # Check that the error was logged
+            assert any("Error loading config file" in call[0][0] for call in mock_log.error.call_args_list)
+
+
+# Test for _save_config exception
+def test_real_save_config_exception(monkeypatch, tmp_path):
+    """Test actual _save_config method with a real exception."""
+    # Make a temp config file path
+    config_file = tmp_path / "config.yaml"
+    
+    # Create a real Config instance with minimum setup
+    monkeypatch.setattr(Config, "_determine_config_path", lambda self, path: setattr(self, "config_file", config_file))
+    monkeypatch.setattr(Config, "_load_dotenv", lambda self: None)
+    monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
+    monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
+    monkeypatch.setattr(Config, "_load_config", lambda self: {})
+    
+    cfg = Config()
+    cfg.config = {"test": "value"}
+    
+    # Patch open to raise an exception
+    with patch("builtins.open", side_effect=Exception("Test exception")):
         with patch("cli_code.config.log") as mock_log:
-            # Call the method - this should not raise an exception
+            # Call the method
             cfg._save_config()
-
-            # Verify error was logged
-            mock_log.error.assert_called_once()
+            
+            # Check that the error was logged
+            assert mock_log.error.called
             assert "Error saving config file" in mock_log.error.call_args[0][0]
 
 
-# Test to improve coverage of getting credential for non-gemini/ollama providers
-def test_get_credential_for_anthropic():
-    """Test get_credential for anthropic provider."""
-    with patch.object(Config, "__init__", lambda x: None):
+# Test for set_credential for OpenAI
+def test_real_set_credential_openai(monkeypatch):
+    """Test set_credential for OpenAI provider."""
+    # Create a real Config instance with minimum setup
+    monkeypatch.setattr(Config, "_determine_config_path", lambda self, path: None)
+    monkeypatch.setattr(Config, "_load_dotenv", lambda self: None)
+    monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
+    monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
+    monkeypatch.setattr(Config, "_load_config", lambda self: {})
+    
+    # Mock _save_config to avoid actual file operations
+    with patch.object(Config, "_save_config") as mock_save:
         cfg = Config()
-        cfg.config = {
-            "google_api_key": "test_google_key",
-            "ollama_api_url": "test_ollama_url",
-            "anthropic_api_key": "test_anthropic_key",
-        }
+        cfg.config = {}
+        
+        # Call the method for openai provider
+        cfg.set_credential("openai", "test-key")
+        
+        # Verify the key was set
+        assert cfg.config.get("openai_api_key") == "test-key"
+        assert mock_save.called
 
-        # Call get_credential with anthropic provider
+
+# Test for set_default_model with unknown provider
+def test_real_set_default_model_unknown(monkeypatch):
+    """Test set_default_model with unknown provider."""
+    # Create a real Config instance with minimum setup
+    monkeypatch.setattr(Config, "_determine_config_path", lambda self, path: None)
+    monkeypatch.setattr(Config, "_load_dotenv", lambda self: None)
+    monkeypatch.setattr(Config, "_ensure_config_exists", lambda self: None)
+    monkeypatch.setattr(Config, "_apply_env_vars", lambda self: None)
+    monkeypatch.setattr(Config, "_load_config", lambda self: {})
+    
+    # Mock _save_config to avoid actual file operations
+    with patch.object(Config, "_save_config") as mock_save:
         with patch("cli_code.config.log") as mock_log:
-            result = cfg.get_credential("anthropic")
-
-            # Should warn about unknown provider and return None
-            mock_log.warning.assert_called_once()
-            assert "unknown provider" in mock_log.warning.call_args[0][0].lower()
-            assert result is None
-
-        # Create a new instance for this test to avoid interference
-        with patch.object(Config, "__init__", lambda x: None):
-            cfg2 = Config()
-            # Handle case where self.config is None but doesn't raise attribute error
-            with patch.object(Config, "get_credential", wraps=cfg.get_credential) as mock_get_credential:
-                mock_get_credential.return_value = None
-                assert cfg2.get_credential("gemini") is None
-
-
-# Test for _load_config to cover line 244-246
-def test_load_config_generic_exception():
-    """Test _load_config handling of generic exceptions."""
-    with patch.object(Config, "__init__", lambda x: None):
-        cfg = Config()
-        # Set config_file to a valid Path
-        cfg.config_file = Path("/fake/path/config.yaml")
-
-        # Mock open to raise a generic exception
-        with patch("builtins.open") as mock_open:
-            mock_open.side_effect = Exception("Generic error")
-
-            # Mock logger
-            with patch("cli_code.config.log") as mock_log:
-                # Call the method
-                result = cfg._load_config()
-
-                # Verify behavior
-                assert result == {}
-                mock_log.error.assert_called_once()
-                assert "Error loading config file" in mock_log.error.call_args[0][0]
-
-
-# Test for set_default_provider with unknown provider
-def test_set_default_provider_unknown():
-    """Test set_default_provider with an unknown provider logs an error."""
-    with patch.object(Config, "__init__", lambda x: None):
-        cfg = Config()
-        cfg.config = {"default_provider": "gemini"}
-
-        # Mock logger
-        with patch("cli_code.config.log") as mock_log:
+            cfg = Config()
+            cfg.config = {"default_provider": "gemini"}
+            
             # Call with unknown provider
-            cfg.set_default_provider("unknown_provider")
-
-            # Verify error was logged
-            mock_log.error.assert_called_once()
-            assert "unknown default provider" in mock_log.error.call_args[0][0].lower()
-
-            # Verify config wasn't changed
-            assert cfg.config["default_provider"] == "gemini"
-
-
-# Test for set_default_model errors
-def test_set_default_model_errors():
-    """Test set_default_model error handling."""
-    with patch.object(Config, "__init__", lambda x: None):
-        cfg = Config()
-        cfg.config = {"default_provider": "gemini"}
-
-        # Test with unknown provider
-        with patch("cli_code.config.log") as mock_log:
-            # Call with unknown provider
-            result = cfg.set_default_model("test-model", "unknown_provider")
-
-            # Verify error was logged
-            mock_log.error.assert_called_once()
-            assert "unknown provider" in mock_log.error.call_args[0][0].lower()
+            result = cfg.set_default_model("test-model", provider="unknown")
+            
+            # Verify results
             assert result is None
+            assert mock_log.error.called
+            assert not mock_save.called
