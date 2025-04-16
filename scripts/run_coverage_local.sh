@@ -16,7 +16,7 @@ echo -e "${YELLOW}Starting coverage check (using same configuration as CI)...${N
 mkdir -p coverage_html test_logs
 
 # Install toml if not available
-python -c "import toml" 2>/dev/null || pip install toml >/dev/null
+python -c "import toml" 2>/dev/null || uv pip install toml >/dev/null
 
 # Extract the coverage threshold from pyproject.toml
 MIN_COVERAGE=$(python -c "import toml; data = toml.load('pyproject.toml'); print(data.get('tool', {}).get('coverage', {}).get('report', {}).get('fail_under', 60))")
@@ -91,4 +91,4 @@ else
     echo -e "${YELLOW}See detailed report in coverage_html/index.html${NC}"
     exit 1
   fi
-fi 
+fi
