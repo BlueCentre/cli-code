@@ -13,6 +13,9 @@ After making changes to Mermaid diagrams in the documentation, follow these step
    - Simplify complex diagrams that may exceed GitHub's rendering capabilities.
    - Remove special styling, if present.
    - Ensure proper indentation and avoid special characters.
+   - **Check for extraneous characters:** Ensure lines don't have unintended trailing characters, especially after semicolons.
+   - **Quote complex labels:** Enclose node labels in double quotes (`""`) if they contain HTML (like `<br>`), markdown, punctuation (like `()`, `,`, `/`), or other non-alphanumeric characters (excluding underscores). When in doubt, quote the label. (e.g., `NodeId["Label line 1<br>Label line 2"]`, `AnotherId["My Label (New)"]`).
+   - **Use specific types:** Prefer explicitly listed types (like `flowchart TD`) over more general ones (`graph TD`) if encountering issues.
 
 ## Mermaid Version Check
 
