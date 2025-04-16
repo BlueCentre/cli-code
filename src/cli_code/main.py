@@ -4,12 +4,21 @@ Targets Gemini 2.5 Pro Experimental. Includes ASCII Art welcome.
 Passes console object to model.
 """
 
+import asyncio
 import logging
 import os
 import sys
 import time
+import uuid
 
 import click
+from chuk_mcp import (
+    MCPClientProtocol,
+    MCPError,
+    MCPMessage,
+    decode_mcp_message,
+    encode_mcp_message,
+)
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -22,8 +31,9 @@ from .models.base import AbstractModelAgent  # Keep base import
 
 # Import the specific model classes (adjust path if needed)
 # We will dynamically import/instantiate later based on provider
-from .models.gemini import GeminiModel  # Keep GeminiModel import
-from .models.ollama import OllamaModel  # Import the new Ollama agent
+# NO LONGER NEEDED HERE - Remove direct model imports
+# from .models.gemini import GeminiModel
+# from .models.ollama import OllamaModel
 from .tools import AVAILABLE_TOOLS
 
 # Setup console and config
@@ -226,198 +236,182 @@ def list_models(provider):
 
     console.print(f"[yellow]Fetching models for provider '{target_provider}'...[/yellow]")
 
-    agent_instance: AbstractModelAgent | None = None
-    models_list: list[dict] | None = None
+    # --- REFACTOR MCP: Client cannot directly list models anymore --- #
+    # agent_instance: AbstractModelAgent | None = None
+    # models_list: list[dict] | None = None
 
-    try:
-        # --- Instantiate the correct agent ---
-        if target_provider == "gemini":
-            agent_instance = GeminiModel(api_key=credential, console=console, model_name=None)
-        elif target_provider == "ollama":
-            # Instantiate OllamaModel
-            agent_instance = OllamaModel(api_url=credential, console=console, model_name=None)
-        else:
-            console.print(f"[bold red]Error:[/bold red] Unknown provider '{target_provider}'.")
-            return
+    # try:
+    #     # --- Instantiate the correct agent ---
+    #     if target_provider == "gemini":
+    #         # F821 Error Here - commenting out
+    #         # agent_instance = GeminiModel(api_key=credential, console=console, model_name=None)
+    #         pass
+    #     elif target_provider == "ollama":
+    #         # Instantiate OllamaModel
+    #         # F821 Error Here - commenting out
+    #         # agent_instance = OllamaModel(api_url=credential, console=console, model_name=None)
+    #         pass
+    #     else:
+    #         console.print(f"[bold red]Error:[/bold red] Unknown provider '{target_provider}'.")
+    #         return
+    #
+    #     # --- Call the agent's list_models method ---
+    #     models_list = agent_instance.list_models()
+    #
+    #     # --- Process and display results ---
+    #     if models_list is None:
+    #         log.warning(f"Agent's list_models returned None for provider {target_provider}.")
+    #
+    #     elif not models_list: # Handle empty list explicitly
+    #         console.print(f"[yellow]No models found for {target_provider}.[/yellow]")
+    #
+    #     else:
+    #         console.print(f"[bold]Available models for {target_provider}:[/bold]")
+    #         for model_info in models_list:
+    #             model_id = model_info.get("id", "N/A")
+    #             model_name = model_info.get("name", "Unknown") # Use name if available
+    #             console.print(f"  - {model_id} ({model_name})")
+    #
+    # except Exception as e:
+    #     console.print(f"\n[bold red]Error listing models for {target_provider}:[/bold red] {e}")
+    #     log.error(f"List models command failed for {target_provider}", exc_info=True)
 
-        # --- Call the agent's list_models method ---
-        models_list = agent_instance.list_models()
+    console.print("[bold yellow]MCP Refactor:[/bold yellow] Model listing must now be requested from the MCP server.")
+    console.print("(Functionality temporarily disabled in client)")
 
-        # --- Process and display results ---
-        if models_list is None:
-            # Error message should have been printed by the agent's list_models method
-            log.warning(f"Agent's list_models returned None for provider {target_provider}.")
-            # console.print(f"[red]Failed to list models for {target_provider}. Check logs.")
-            return  # Exit if listing failed
 
-        if not models_list:
-            console.print(f"[yellow]No models found or reported by provider '{target_provider}'.[/yellow]")
-            return
-
-        console.print(f"\n[bold cyan]Available {target_provider.capitalize()} Models:[/bold cyan]")
-        for model_data in models_list:
-            # Assuming model_data is a dict with at least 'id' and 'name'
-            model_id = model_data.get("id", "N/A")
-            display_name = model_data.get("name", model_id)  # Use name, fallback to id
-            console.print(f"- [bold green]{model_id}[/bold green] (Name: {display_name})")
-
-        # Display current default for this provider
-        current_default = config.get_default_model(provider=target_provider)
-        if current_default:
-            console.print(f"\nCurrent default {target_provider.capitalize()} model: {current_default}")
-        else:
-            console.print(f"\nNo default model set for {target_provider.capitalize()}.")
-
-        console.print(
-            f"\nUse 'cli-code --provider={target_provider} --model MODEL' or 'cli-code set-default-model --provider={target_provider} MODEL'."
-        )
-
-    except Exception as e:
-        console.print(f"[bold red]Error listing models for {target_provider}:[/bold red] {e}")
-        log.error(f"List models command failed for {target_provider}", exc_info=True)
+# --- MCP Configuration
+MCP_SERVER_HOST = "127.0.0.1"
+MCP_SERVER_PORT = 8999
+# --- End MCP Configuration ---
 
 
 # --- MODIFIED start_interactive_session ---
 def start_interactive_session(provider: str, model_name: str, console: Console):
-    """Start an interactive chat session with the selected provider and model."""
-    if not config:
-        console.print("[bold red]Config error.[/bold red]")
-        return
-
-    # --- Display Welcome Art ---
-    console.clear()
-    console.print(CLI_CODE_ART)  # Use updated art name
+    """Starts an interactive chat session using the MCP protocol."""
+    console.print(Panel(CLI_CODE_ART, border_style="medium_blue", title="cli-code"))
     console.print(
-        Panel(
-            f"[b]Welcome to CLI Code AI Assistant! (Provider: {provider.capitalize()})[/b]",
-            border_style="blue",
-            expand=False,
-        )
+        f"[dim]Provider: '{provider}', Model: '{model_name}' (Note: MCP Stub Server ignores these for now)[/dim]"
     )
-    time.sleep(0.1)
-    # --- End Welcome Art ---
+    console.print("[dim]Type '/exit' to quit, '/help' for commands.[/dim]")
 
-    credential = config.get_credential(provider)
-    # Check if credential exists and log its source (env var or config file)
-    if credential:
-        cred_type = "API Key" if provider == "gemini" else "API URL"
-        env_var = "CLI_CODE_GOOGLE_API_KEY" if provider == "gemini" else "CLI_CODE_OLLAMA_API_URL"
-        if env_var in os.environ:
-            log.info(f"Using {provider} {cred_type} from environment variable {env_var}")
-        else:
-            log.info(f"Using {provider} {cred_type} from config file")
-    else:
-        credential_type = "API Key" if provider == "gemini" else "API URL"
-        console.print(f"\n[bold red]Error:[/bold red] {provider.capitalize()} {credential_type} not found.")
+    agent_id = f"cli-code-client-{uuid.uuid4()!s:.8}"
+    session_id = f"session-{uuid.uuid4()!s:.8}"
+
+    log.info(f"Starting MCP interactive session. AgentID: {agent_id}, SessionID: {session_id}")
+
+    # Run the async session handler
+    try:
+        asyncio.run(run_mcp_session(agent_id, session_id, console))
+    except ConnectionRefusedError:
         console.print(
-            f"Please run [bold]'cli-code setup --provider={provider} YOUR_{credential_type.upper().replace(' ', '_')}'[/bold] first."
+            f"[bold red]Connection Error:[/bold red] Could not connect to MCP Server at {MCP_SERVER_HOST}:{MCP_SERVER_PORT}."
         )
-        console.print(
-            f"Or set the environment variable [bold]CLI_CODE_{provider.upper()}_API_{'KEY' if provider == 'gemini' else 'URL'}[/bold]"
-        )
-        return
+        console.print("[yellow]Is the stub server (mcp_stub_server.py) running?[/yellow]")
+    except MCPError as e:
+        console.print(f"[bold red]MCP Protocol Error:[/bold red] {e}")
+    except Exception as e:
+        console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
+        log.error("Unexpected error in MCP session", exc_info=True)
+
+
+# --- NEW ASYNC FUNCTION ---
+async def run_mcp_session(agent_id: str, session_id: str, console: Console):
+    """Handles the asynchronous MCP client connection and interaction loop."""
+
+    reader, writer = await asyncio.open_connection(MCP_SERVER_HOST, MCP_SERVER_PORT)
+    mcp_protocol = MCPClientProtocol(reader, writer)
+    log.info(f"Connected to MCP Server at {MCP_SERVER_HOST}:{MCP_SERVER_PORT}")
 
     try:
-        console.print(f"\nInitializing provider [bold]{provider}[/bold] with model [bold]{model_name}[/bold]...")
+        while True:
+            try:
+                # Use prompt_toolkit or similar for better input handling if needed
+                # For now, using basic input()
+                user_input = await asyncio.to_thread(console.input, "[bold cyan]You:[/bold cyan] ")
+                user_input = user_input.strip()
 
-        model_agent: AbstractModelAgent | None = None  # Define agent variable
+                if not user_input:
+                    continue
 
-        # --- Instantiate the correct agent ---
-        if provider == "gemini":
-            model_agent = GeminiModel(api_key=credential, console=console, model_name=model_name)
-            console.print("[green]Gemini model initialized successfully.[/green]")
-        elif provider == "ollama":
-            # Instantiate OllamaModel agent
-            model_agent = OllamaModel(api_url=credential, console=console, model_name=model_name)
-            console.print("[green]Ollama provider initialized successfully.[/green]")
-        else:
-            console.print(f"[bold red]Error:[/bold red] Unknown provider '{provider}'. Cannot initialize.")
-            log.error(f"Attempted to start session with unknown provider: {provider}")
-            return
+                if user_input.lower() == "/exit":
+                    console.print("[yellow]Exiting session.[/yellow]")
+                    break
+                elif user_input.lower() == "/help":
+                    # TODO: Implement more detailed help if needed
+                    console.print("[bold]Available commands:[/bold]")
+                    console.print("  /exit - Quit the session")
+                    console.print("  /help - Show this help message")
+                    continue
 
-        # Add information about context initialization (for all successful provider initializations)
-        if os.path.isdir(".rules"):
-            md_files = [f for f in os.listdir(".rules") if f.endswith(".md")]
-            file_count = len(md_files)
-            if file_count > 0:
-                file_str = "file" if file_count == 1 else "files"
-                console.print(f"[dim]Context will be initialized from {file_count} .rules/*.md {file_str}.[/dim]")
-            else:
-                console.print(
-                    "[dim]Context will be initialized from directory listing (ls) - .rules directory exists but contains no .md files.[/dim]"
+                # Send user message via MCP
+                user_msg = MCPMessage(
+                    message_type="user_message",
+                    agent_id=agent_id,
+                    session_id=session_id,
+                    payload={"text": user_input},
                 )
-        elif os.path.isfile("README.md"):
-            console.print("[dim]Context will be initialized from README.md.[/dim]")
-        else:
-            console.print("[dim]Context will be initialized from directory listing (ls).[/dim]")
-        console.print()  # Empty line for spacing
+                await mcp_protocol.send_message(user_msg)
+                log.info(f"Sent User Message: {user_msg.payload.get('text', '')[:50]}...")
+
+                # --- Receive and process server responses --- M1: Basic Text Only ---
+                with console.status("[dim]Waiting for response...[/dim]", spinner="dots"):
+                    while True:  # Loop to potentially handle multiple messages (e.g., status, then final)
+                        try:
+                            response_msg = await mcp_protocol.receive_message()
+                            if not response_msg:
+                                console.print("[bold red]Connection closed by server.[/bold red]")
+                                return  # Exit session
+
+                            log.info(f"Received MCP Message: {response_msg.model_dump_json(indent=1)}")
+
+                            if response_msg.message_type == "assistant_message":
+                                text_payload = response_msg.payload.get("text", "")
+                                if text_payload:
+                                    console.print(Markdown(text_payload))  # Display assistant text
+                                # For M1, we assume one assistant message ends the turn
+                                break  # Exit receive loop, wait for next user input
+                            elif response_msg.message_type == "error_message":
+                                error_payload = response_msg.payload.get("message", "Unknown error from server.")
+                                console.print(f"[bold red]Server Error:[/bold red] {error_payload}")
+                                break  # Exit receive loop
+                            elif response_msg.message_type == "status_update":  # Example future handling
+                                status_payload = response_msg.payload.get("status", "Server is working...")
+                                console.print(f"[dim]Status:[/dim] {status_payload}")
+                                # Continue waiting for the final message in this turn
+                            else:
+                                # Handle other message types (tool calls, etc.) in later milestones
+                                console.print(
+                                    f"[dim]Received unhandled message type: {response_msg.message_type}[/dim]"
+                                )
+                                # Decide if we break or continue waiting based on protocol design
+                                break  # For M1, break on anything unexpected
+
+                        except asyncio.TimeoutError:
+                            console.print("[yellow]Timeout waiting for server response. Try again?[/yellow]")
+                            break  # Exit receive loop, let user retry
+                        except MCPError as e:
+                            console.print(f"[bold red]MCP Protocol Error during receive:[/bold red] {e}")
+                            log.error("MCP Error receiving", exc_info=True)
+                            break  # Exit receive loop
+                        except Exception as e:
+                            console.print(f"[bold red]Error receiving message:[/bold red] {e}")
+                            log.error("Error receiving message", exc_info=True)
+                            break  # Exit receive loop
+            except EOFError:
+                console.print("[yellow]Input stream closed. Exiting.[/yellow]")
+                break
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Interrupted. Type /exit to quit.[/yellow]")
+                continue  # Allow user to type /exit
 
     except Exception as e:
-        console.print(f"\n[bold red]Error initializing model '{model_name}':[/bold red] {e}")
-        log.error(f"Failed to initialize model {model_name}", exc_info=True)
-        console.print("Please check model name, API key permissions, network. Use 'cli-code list-models'.")
-        return
-
-    # --- Session Start Message ---
-    console.print("Type '/help' for commands, '/exit' or Ctrl+C to quit.")
-
-    while True:
-        try:
-            user_input = console.input("[bold blue]You:[/bold blue] ")
-
-            if user_input.lower() == "/exit":
-                break
-            elif user_input.lower() == "/help":
-                show_help(provider)
-                continue
-
-            response_text = model_agent.generate(user_input)
-
-            if response_text is None and user_input.startswith("/"):
-                console.print(f"[yellow]Unknown command:[/yellow] {user_input}")
-                continue
-            elif response_text is None:
-                console.print("[red]Received an empty response from the model.[/red]")
-                log.warning("generate() returned None unexpectedly.")
-                continue
-
-            console.print("[bold medium_purple]Assistant:[/bold medium_purple]")
-            console.print(Markdown(response_text))
-
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Session interrupted. Exiting.[/yellow]")
-            break
-        except Exception as e:
-            console.print(f"\n[bold red]An error occurred during the session:[/bold red] {e}")
-            log.error("Error during interactive loop", exc_info=True)
-            break
-
-
-def show_help(provider: str):
-    """Show available commands for the interactive mode."""
-    # Get tool names for the help text
-    tool_names = sorted(AVAILABLE_TOOLS.keys())
-    tools_list = "\n  • " + "\n  • ".join(tool_names)
-
-    # Simple style matching the left screenshot
-    help_text = f"""
-Help
-
-Interactive Commands:
-  /exit
-  /help
-
-CLI Commands:
-  cli-code setup API_KEY
-  cli-code list-models
-  cli-code set-default-model NAME
-  cli-code --model NAME
-
-Workflow Hint: Analyze → Plan → Execute → Verify → Summarize
-
-Available Tools:{tools_list}
-"""
-    console.print(help_text)
+        console.print(f"[bold red]Session Error:[/bold red] {e}")
+        log.error("Error in MCP session outer loop", exc_info=True)
+    finally:
+        log.info("Closing MCP connection.")
+        writer.close()
+        await writer.wait_closed()
 
 
 if __name__ == "__main__":
