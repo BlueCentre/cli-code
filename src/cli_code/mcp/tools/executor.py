@@ -51,7 +51,7 @@ class ToolExecutor:
         # Validate the parameters against the schema
         try:
             # The tool.schema contains a nested 'parameters' field that holds the actual schema
-            validation_schema = tool.schema.get('parameters', tool.schema)
+            validation_schema = tool.schema.get("parameters", tool.schema)
             jsonschema.validate(instance=parameters, schema=validation_schema)
             return True
         except jsonschema.ValidationError as e:
@@ -87,7 +87,7 @@ class ToolExecutor:
                     parameters=parameters,
                     result=None,
                     success=False,
-                    error=f"Tool not found: {tool_name}"
+                    error=f"Tool not found: {tool_name}",
                 )
 
             # Validate parameters
@@ -98,27 +98,16 @@ class ToolExecutor:
                     parameters=parameters,
                     result=None,
                     success=False,
-                    error="Parameter validation failed"
+                    error="Parameter validation failed",
                 )
 
             # Execute the tool
             logger.info(f"Executing tool: {tool_name}")
             result = await tool.execute(parameters)
             logger.info(f"Tool execution completed: {tool_name}")
-            
-            return ToolResult(
-                tool_name=tool_name,
-                parameters=parameters,
-                result=result,
-                success=True
-            )
-            
+
+            return ToolResult(tool_name=tool_name, parameters=parameters, result=result, success=True)
+
         except Exception as e:
             logger.error(f"Error executing tool {tool_name}: {str(e)}")
-            return ToolResult(
-                tool_name=tool_name,
-                parameters=parameters,
-                result=None,
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(tool_name=tool_name, parameters=parameters, result=None, success=False, error=str(e))

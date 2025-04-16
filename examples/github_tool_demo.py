@@ -15,16 +15,13 @@ import sys
 # Add the src directory to the path so we can import the package
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Now import from src directly 
+# Now import from src directly
 from src.cli_code.mcp.tools.examples.github import GitHubTool
 from src.cli_code.mcp.tools.registry import ToolRegistry
 from src.cli_code.mcp.tools.service import ToolService
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 

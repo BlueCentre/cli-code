@@ -1,14 +1,125 @@
 """
 Tests for the tools models module.
 
-This module provides comprehensive tests for the Tool and ToolRegistry classes.
+This module provides comprehensive tests for the ToolParameter, Tool, and ToolResult classes.
 """
 
+import asyncio
 import json
 import unittest
-from unittest.mock import MagicMock, patch
+from dataclasses import fields
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.cli_code.mcp.tools.models import Tool, ToolRegistry
+from src.cli_code.mcp.tools.models import Tool, ToolParameter, ToolResult
+
+
+# Dummy async function for testing
+async def dummy_async_handler(params):
+    return {"processed": True, "params": params}
+
+
+class TestToolParameter(unittest.TestCase):
+    """Test case for the ToolParameter class."""
+
+    def test_init_minimal(self):
+        """Test minimal initialization."""
+        param = ToolParameter(name="test_param", description="A test param", type="string")
+        self.assertEqual(param.name, "test_param")
+        self.assertEqual(param.description, "A test param")
+        self.assertEqual(param.type, "string")
+        self.assertFalse(param.required)
+        self.assertIsNone(param.default)
+        self.assertIsNone(param.enum)
+        self.assertIsNone(param.properties)
+        self.assertIsNone(param.items)
+
+    def test_init_full(self):
+        """Test full initialization with all optional fields."""
+        param = ToolParameter(
+            name="full_param",
+            description="Another test param",
+            type="array",
+            required=True,
+            default=[1],
+            enum=[[1], [2]],
+            properties=None,  # Not applicable for array
+            items={"type": "integer"},
+        )
+        self.assertTrue(param.required)
+        self.assertEqual(param.default, [1])
+        self.assertEqual(param.enum, [[1], [2]])
+        self.assertEqual(param.items, {"type": "integer"})
+        self.assertIsNone(param.properties)  # Ensure properties wasn't set incorrectly
+
+    def test_to_dict(self):
+        """Test converting ToolParameter to dictionary."""
+        param = ToolParameter(
+            name="dict_param",
+            description="For dict test",
+            type="object",
+            required=True,
+            enum=None,
+            properties={"key": {"type": "string"}},
+            items=None,
+        )
+        expected_dict = {
+            "name": "dict_param",
+            "description": "For dict test",
+            "type": "object",
+            "required": True,
+            "properties": {"key": {"type": "string"}},
+        }
+        self.assertEqual(param.to_dict(), expected_dict)
+
+        # Test minimal conversion
+        param_min = ToolParameter(name="min_param", description="Min", type="boolean")
+        expected_min_dict = {
+            "name": "min_param",
+            "description": "Min",
+            "type": "boolean",
+        }
+        self.assertEqual(param_min.to_dict(), expected_min_dict)
+
+        # Test with enum and items
+        param_enum_items = ToolParameter(
+            name="ei_param", description="EnumItems", type="array", enum=[[1], [2]], items={"type": "integer"}
+        )
+        expected_ei_dict = {
+            "name": "ei_param",
+            "description": "EnumItems",
+            "type": "array",
+            "enum": [[1], [2]],
+            "items": {"type": "integer"},
+        }
+        self.assertEqual(param_enum_items.to_dict(), expected_ei_dict)
+
+    def test_to_schema(self):
+        """Test converting ToolParameter to JSON Schema fragment."""
+        param_obj = ToolParameter(
+            name="obj_param", description="Obj", type="object", properties={"prop": {"type": "string"}}, required=True
+        )
+        expected_obj_schema = {"type": "object", "description": "Obj", "properties": {"prop": {"type": "string"}}}
+        self.assertEqual(param_obj.to_schema(), expected_obj_schema)
+
+        param_arr = ToolParameter(
+            name="arr_param", description="Arr", type="array", items={"type": "number"}, enum=[[1.0], [2.0]]
+        )
+        expected_arr_schema = {
+            "type": "array",
+            "description": "Arr",
+            "items": {"type": "number"},
+            "enum": [[1.0], [2.0]],
+        }
+        self.assertEqual(param_arr.to_schema(), expected_arr_schema)
+
+        param_simple = ToolParameter(name="simple", description="Simple", type="string", enum=["a", "b"])
+        expected_simple_schema = {"type": "string", "description": "Simple", "enum": ["a", "b"]}
+        self.assertEqual(param_simple.to_schema(), expected_simple_schema)
+
+        # Ensure properties/items only added for correct types
+        param_wrong_type = ToolParameter(name="wrong", description="Wrong", type="string", properties={}, items={})
+        expected_wrong_schema = {"type": "string", "description": "Wrong"}
+        self.assertEqual(param_wrong_type.to_schema(), expected_wrong_schema)
 
 
 class TestTool(unittest.TestCase):
@@ -16,250 +127,209 @@ class TestTool(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create a sample parameter schema
-        self.parameter_schema = {
-            "type": "object",
-            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
-            "required": ["name"],
-        }
-
-        # Create a sample function
-        self.func = MagicMock(return_value={"result": "Success"})
-
-        # Create a tool for testing
+        self.param1 = ToolParameter(name="p1", description="Param 1", type="string", required=True)
+        self.param2 = ToolParameter(name="p2", description="Param 2", type="integer")
+        self.handler_mock = AsyncMock(return_value={"result": "Success"})
         self.tool = Tool(
             name="test_tool",
             description="A test tool for testing",
-            parameter_schema=self.parameter_schema,
-            func=self.func,
+            parameters=[self.param1, self.param2],
+            handler=self.handler_mock,
         )
 
     def test_init(self):
         """Test initializing a Tool."""
-        # Check that the attributes were set correctly
         self.assertEqual(self.tool.name, "test_tool")
         self.assertEqual(self.tool.description, "A test tool for testing")
-        self.assertEqual(self.tool.parameter_schema, self.parameter_schema)
-        self.assertEqual(self.tool.func, self.func)
+        self.assertEqual(self.tool.parameters, [self.param1, self.param2])
+        self.assertEqual(self.tool.handler, self.handler_mock)
+        # Check if schema was generated in __post_init__
+        self.assertIsNotNone(self.tool.schema)
 
-    def test_get_definition(self):
-        """Test getting the tool definition."""
-        # Get the definition
-        definition = self.tool.get_definition()
-
-        # Check the definition
-        self.assertEqual(definition["name"], "test_tool")
-        self.assertEqual(definition["description"], "A test tool for testing")
-        self.assertEqual(definition["parameters"], self.parameter_schema)
-
-    def test_execute_sync(self):
-        """Test executing a synchronous tool function."""
-        # Configure the function to return a synchronous result
-        self.func.return_value = {"result": "Sync success"}
-
-        # Execute the tool with parameters
-        result = self.tool.execute({"name": "John", "age": 30})
-
-        # Verify the function was called with the correct parameters
-        self.func.assert_called_once_with({"name": "John", "age": 30})
-
-        # Check the result
-        self.assertEqual(result, {"result": "Sync success"})
-
-    @patch("asyncio.iscoroutinefunction")
-    @patch("asyncio.run")
-    def test_execute_async(self, mock_asyncio_run, mock_iscoroutinefunction):
-        """Test executing an asynchronous tool function."""
-        # Configure the mocks for async execution
-        mock_iscoroutinefunction.return_value = True
-        mock_asyncio_run.return_value = {"result": "Async success"}
-
-        # Execute the tool with parameters
-        result = self.tool.execute({"name": "Jane", "age": 25})
-
-        # Verify the mocks were called correctly
-        mock_iscoroutinefunction.assert_called_once_with(self.func)
-        mock_asyncio_run.assert_called_once()
-
-        # Check the result
-        self.assertEqual(result, {"result": "Async success"})
-
-    def test_str_representation(self):
-        """Test the string representation of a Tool."""
-        # Check the string representation
-        self.assertEqual(str(self.tool), "Tool(name='test_tool')")
-
-    def test_repr_representation(self):
-        """Test the repr representation of a Tool."""
-        # Check the repr representation
-        self.assertEqual(repr(self.tool), "Tool(name='test_tool', description='A test tool for testing')")
-
-
-class TestToolRegistry(unittest.TestCase):
-    """Test case for the ToolRegistry class."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        # Create a registry for testing
-        self.registry = ToolRegistry()
-
-        # Create a sample tool
-        self.tool = MagicMock(spec=Tool)
-        self.tool.name = "test_tool"
-        self.tool.description = "A test tool for testing"
-        self.tool.get_definition.return_value = {
+    def test_schema_generation(self):
+        """Test the generated JSON schema."""
+        schema = self.tool.schema
+        expected_schema = {
             "name": "test_tool",
             "description": "A test tool for testing",
-            "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "p1": {"type": "string", "description": "Param 1"},
+                    "p2": {"type": "integer", "description": "Param 2"},
+                },
+                "required": ["p1"],
+            },
         }
+        self.assertEqual(schema, expected_schema)
 
-    def test_init(self):
-        """Test initializing a ToolRegistry."""
-        # Check that the registry starts empty
-        self.assertEqual(len(self.registry.tools), 0)
+    def test_schema_property(self):
+        """Test accessing the schema property multiple times."""
+        schema1 = self.tool.schema
+        schema2 = self.tool.schema
+        self.assertIs(schema1, schema2)  # Should return the same generated schema object
+        self.assertIsNotNone(schema1)
 
-    def test_add_tool(self):
-        """Test adding a tool to the registry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
+    async def test_execute(self):
+        """Test executing the tool's handler."""
+        test_params = {"p1": "value1", "p2": 123}
+        result = await self.tool.execute(test_params)
+        self.handler_mock.assert_awaited_once_with(test_params)
+        self.assertEqual(result, {"result": "Success"})
 
-        # Check that the tool was added
-        self.assertEqual(len(self.registry.tools), 1)
-        self.assertIn("test_tool", self.registry.tools)
-        self.assertEqual(self.registry.tools["test_tool"], self.tool)
+        # Test execution with different params
+        await self.tool.execute({"p1": "another"})
+        self.handler_mock.assert_awaited_with({"p1": "another"})
 
-    def test_add_duplicate_tool(self):
-        """Test adding a tool with a duplicate name."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
 
-        # Create another tool with the same name
-        duplicate_tool = MagicMock(spec=Tool)
-        duplicate_tool.name = "test_tool"
+class TestToolResult(unittest.TestCase):
+    """Test case for the ToolResult class."""
 
-        # Add the duplicate tool
-        with self.assertRaises(ValueError):
-            self.registry.add_tool(duplicate_tool)
+    def test_init_success_tool_name(self):
+        """Test successful initialization using tool_name."""
+        result = ToolResult(tool_name="calc", parameters={"a": 1}, result=1)
+        self.assertEqual(result.tool_name, "calc")
+        self.assertEqual(result.name, "calc")  # Check backward compatibility property
+        self.assertEqual(result.parameters, {"a": 1})
+        self.assertEqual(result.result, 1)
+        self.assertTrue(result.success)
+        self.assertIsNone(result.error)
 
-    def test_get_tool(self):
-        """Test getting a tool from the registry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
+    def test_init_success_name(self):
+        """Test successful initialization using deprecated name."""
+        result = ToolResult(name="calc", parameters={"b": 2}, result=4)
+        self.assertEqual(result.tool_name, "calc")
+        self.assertEqual(result.name, "calc")
+        self.assertEqual(result.parameters, {"b": 2})
+        self.assertEqual(result.result, 4)
+        self.assertTrue(result.success)
+        self.assertIsNone(result.error)
 
-        # Get the tool
-        retrieved_tool = self.registry.get_tool("test_tool")
+    def test_init_failure(self):
+        """Test initialization for a failed execution."""
+        result = ToolResult(
+            tool_name="fail_tool", parameters={}, result=None, success=False, error="Something went wrong"
+        )
+        self.assertEqual(result.tool_name, "fail_tool")
+        self.assertIsNone(result.result)
+        self.assertFalse(result.success)
+        self.assertEqual(result.error, "Something went wrong")
 
-        # Check the result
-        self.assertEqual(retrieved_tool, self.tool)
+    def test_init_no_name(self):
+        """Test initialization fails if neither tool_name nor name is provided."""
+        with self.assertRaisesRegex(ValueError, "Either tool_name or name must be provided"):
+            ToolResult(parameters={}, result=None)
 
-    def test_get_nonexistent_tool(self):
-        """Test getting a nonexistent tool from the registry."""
-        # Get a nonexistent tool
-        retrieved_tool = self.registry.get_tool("nonexistent_tool")
+    def test_init_default_params(self):
+        """Test initialization uses default empty dict for parameters."""
+        result = ToolResult(tool_name="default_params")
+        self.assertEqual(result.parameters, {})
 
-        # Check the result
-        self.assertIsNone(retrieved_tool)
+    def test_to_dict_success(self):
+        """Test converting a successful result to dict."""
+        result = ToolResult(tool_name="calc", parameters={"a": 1}, result=1)
+        expected = {"name": "calc", "parameters": {"a": 1}, "result": 1, "success": True}
+        self.assertEqual(result.to_dict(), expected)
 
-    def test_get_tool_definitions(self):
-        """Test getting tool definitions from the registry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
+    def test_to_dict_failure(self):
+        """Test converting a failed result to dict."""
+        result = ToolResult(tool_name="fail", parameters={}, success=False, error="Bad times")
+        expected = {"name": "fail", "parameters": {}, "result": None, "success": False, "error": "Bad times"}
+        self.assertEqual(result.to_dict(), expected)
 
-        # Get the tool definitions
-        definitions = self.registry.get_tool_definitions()
+    def test_from_dict_success_tool_name(self):
+        """Test creating a successful result from dict using tool_name."""
+        data = {"tool_name": "dict_tool", "parameters": {"x": "y"}, "result": {"status": "ok"}, "success": True}
+        result = ToolResult.from_dict(data)
+        self.assertEqual(result.tool_name, "dict_tool")
+        self.assertEqual(result.parameters, {"x": "y"})
+        self.assertEqual(result.result, {"status": "ok"})
+        self.assertTrue(result.success)
+        self.assertIsNone(result.error)
 
-        # Check the result
-        self.assertEqual(len(definitions), 1)
-        self.assertEqual(definitions[0]["name"], "test_tool")
-        self.assertEqual(definitions[0]["description"], "A test tool for testing")
-        self.assertIn("parameters", definitions[0])
+    def test_from_dict_success_name(self):
+        """Test creating a successful result from dict using name."""
+        data = {
+            "name": "dict_tool2",  # Using deprecated name field
+            "parameters": {"z": 1},
+            "result": [1, 2],
+            # success defaults to True if omitted
+        }
+        result = ToolResult.from_dict(data)
+        self.assertEqual(result.tool_name, "dict_tool2")
+        self.assertEqual(result.parameters, {"z": 1})
+        self.assertEqual(result.result, [1, 2])
+        self.assertTrue(result.success)
+        self.assertIsNone(result.error)
 
-    def test_get_tool_definitions_empty(self):
-        """Test getting tool definitions from an empty registry."""
-        # Get the tool definitions
-        definitions = self.registry.get_tool_definitions()
+    def test_from_dict_failure(self):
+        """Test creating a failed result from dict."""
+        data = {"tool_name": "fail_dict", "parameters": {}, "result": None, "success": False, "error": "Load failed"}
+        result = ToolResult.from_dict(data)
+        self.assertEqual(result.tool_name, "fail_dict")
+        self.assertFalse(result.success)
+        self.assertEqual(result.error, "Load failed")
 
-        # Check the result
-        self.assertEqual(len(definitions), 0)
+    def test_from_dict_missing_name(self):
+        """Test from_dict raises KeyError if name is missing."""
+        data = {"parameters": {}, "result": None}
+        with self.assertRaisesRegex(KeyError, "Neither 'tool_name' nor 'name' found in data"):
+            ToolResult.from_dict(data)
 
-    def test_remove_tool(self):
-        """Test removing a tool from the registry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
+    def test_to_json(self):
+        """Test converting result to JSON string."""
+        result = ToolResult(tool_name="json_tool", parameters={"p": True}, result="json_res")
+        json_str = result.to_json()
+        # Check if it's a valid JSON string and contains expected data
+        data = json.loads(json_str)
+        self.assertEqual(data["name"], "json_tool")
+        self.assertEqual(data["parameters"], {"p": True})
+        self.assertEqual(data["result"], "json_res")
+        self.assertTrue(data["success"])
+        self.assertNotIn("error", data)
 
-        # Verify the tool is in the registry
-        self.assertIn("test_tool", self.registry.tools)
+    def test_from_json_success(self):
+        """Test creating result from JSON string."""
+        json_str = '{"name": "json_tool", "parameters": {"p": true}, "result": "json_res", "success": true}'
+        result = ToolResult.from_json(json_str)
+        self.assertEqual(result.tool_name, "json_tool")
+        self.assertEqual(result.parameters, {"p": True})
+        self.assertEqual(result.result, "json_res")
+        self.assertTrue(result.success)
+        self.assertIsNone(result.error)
 
-        # Remove the tool
-        self.registry.remove_tool("test_tool")
+    def test_from_json_failure(self):
+        """Test creating failed result from JSON string."""
+        json_str = (
+            '{"tool_name": "json_fail", "parameters": {}, "result": null, "success": false, "error": "json error"}'
+        )
+        result = ToolResult.from_json(json_str)
+        self.assertEqual(result.tool_name, "json_fail")
+        self.assertFalse(result.success)
+        self.assertEqual(result.error, "json error")
 
-        # Check that the tool was removed
-        self.assertNotIn("test_tool", self.registry.tools)
+    def test_from_json_invalid(self):
+        """Test from_json raises error for invalid JSON."""
+        with self.assertRaises(json.JSONDecodeError):
+            ToolResult.from_json("this is not json")
 
-    def test_remove_nonexistent_tool(self):
-        """Test removing a nonexistent tool from the registry."""
-        # Remove a nonexistent tool
-        with self.assertRaises(KeyError):
-            self.registry.remove_tool("nonexistent_tool")
 
-    def test_contains(self):
-        """Test checking if a tool is in the registry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
+# Use unittest's async capabilities for TestTool
+class TestToolAsync(unittest.IsolatedAsyncioTestCase):
+    async def test_tool_execute_async(self):
+        param1 = ToolParameter(name="p1", description="Param 1", type="string", required=True)
+        handler_mock = AsyncMock(return_value={"processed": True})
+        tool = Tool(
+            name="async_test_tool",
+            description="An async test tool",
+            parameters=[param1],
+            handler=handler_mock,
+        )
+        test_params = {"p1": "async_value"}
+        result = await tool.execute(test_params)
+        handler_mock.assert_awaited_once_with(test_params)
+        self.assertEqual(result, {"processed": True})
 
-        # Check that the tool is in the registry
-        self.assertTrue("test_tool" in self.registry)
-        self.assertFalse("nonexistent_tool" in self.registry)
 
-    def test_len(self):
-        """Test getting the number of tools in the registry."""
-        # Check the initial length
-        self.assertEqual(len(self.registry), 0)
-
-        # Add a tool
-        self.registry.add_tool(self.tool)
-
-        # Check the length after adding a tool
-        self.assertEqual(len(self.registry), 1)
-
-    def test_iter(self):
-        """Test iterating over the registry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
-
-        # Iterate over the registry
-        tools = list(self.registry)
-
-        # Check the result
-        self.assertEqual(len(tools), 1)
-        self.assertEqual(tools[0], self.tool)
-
-    def test_clear(self):
-        """Test clearing the registry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
-
-        # Verify the tool is in the registry
-        self.assertIn("test_tool", self.registry.tools)
-
-        # Clear the registry
-        self.registry.clear()
-
-        # Check that the registry is empty
-        self.assertEqual(len(self.registry.tools), 0)
-
-    def test_str_representation(self):
-        """Test the string representation of a ToolRegistry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
-
-        # Check the string representation
-        self.assertEqual(str(self.registry), "ToolRegistry(tools=['test_tool'])")
-
-    def test_repr_representation(self):
-        """Test the repr representation of a ToolRegistry."""
-        # Add a tool
-        self.registry.add_tool(self.tool)
-
-        # Check the repr representation
-        self.assertEqual(repr(self.registry), "ToolRegistry(tools=['test_tool'])")
+if __name__ == "__main__":
+    unittest.main()

@@ -11,6 +11,7 @@ import subprocess
 from typing import Any, Dict, List, Optional
 
 import aiohttp
+
 from src.cli_code.mcp.tools.models import Tool, ToolParameter
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ async def github_list_repos_handler(parameters: Dict[str, Any]) -> Dict[str, Any
     try:
         # Extract parameters
         username = parameters.get("username")
-        
+
         # Use GitHub CLI if available (preferred for authentication handling)
         if _is_gh_cli_available():
             return await _list_repos_using_gh_cli(username)
@@ -66,10 +67,10 @@ async def github_search_repos_handler(parameters: Dict[str, Any]) -> Dict[str, A
         # Extract parameters
         query = parameters.get("query")
         limit = parameters.get("limit", 10)
-        
+
         if not query:
             raise ValueError("Query parameter is required")
-        
+
         # Use GitHub CLI if available (preferred for authentication handling)
         if _is_gh_cli_available():
             return await _search_repos_using_gh_cli(query, limit)
@@ -85,32 +86,32 @@ async def github_search_repos_handler(parameters: Dict[str, Any]) -> Dict[str, A
 async def github_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main handler for GitHub operations.
-    
+
     Args:
         parameters: Dictionary containing:
             operation: The operation to perform (search_repositories, get_repository)
             Additional parameters depending on the operation
-            
+
     Returns:
         Dictionary containing operation results
-        
+
     Raises:
         ValueError: If an invalid operation is specified or if required parameters are missing
     """
     # Check for required operation parameter
     if "operation" not in parameters:
         raise ValueError("Missing required parameter: operation")
-    
+
     operation = parameters["operation"]
-    
+
     # Handle different operations
     if operation == "search_repositories":
         if "query" not in parameters:
             raise ValueError("Missing required parameter: query")
-        
+
         query = parameters["query"]
         limit = parameters.get("limit", 10)
-        
+
         # Use GitHub API to search repositories
         token = os.environ.get("GITHUB_TOKEN")
         headers = {
@@ -118,9 +119,9 @@ async def github_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
             "Authorization": f"Bearer {token}" if token else "",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        
+
         url = f"https://api.github.com/search/repositories?q={query}&per_page={limit}"
-        
+
         session = aiohttp.ClientSession()
         try:
             async with session as client:
@@ -128,27 +129,27 @@ async def github_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
                     if response.status != 200:
                         error_text = await response.json()
                         raise Exception(f"GitHub API error: {error_text.get('message', 'Unknown error')}")
-                    
+
                     data = await response.json()
-                    
+
                     return {
                         "operation": "search_repositories",
                         "repositories": data.get("items", []),
-                        "total_count": data.get("total_count", 0)
+                        "total_count": data.get("total_count", 0),
                     }
         finally:
             await session.close()
-    
+
     elif operation == "get_repository":
         # Check for required parameters
         if "owner" not in parameters:
             raise ValueError("Missing required parameter: owner")
         if "repo" not in parameters:
             raise ValueError("Missing required parameter: repo")
-        
+
         owner = parameters["owner"]
         repo = parameters["repo"]
-        
+
         # Use GitHub API to get repository details
         token = os.environ.get("GITHUB_TOKEN")
         headers = {
@@ -156,9 +157,9 @@ async def github_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
             "Authorization": f"Bearer {token}" if token else "",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        
+
         url = f"https://api.github.com/repos/{owner}/{repo}"
-        
+
         session = aiohttp.ClientSession()
         try:
             async with session as client:
@@ -166,9 +167,9 @@ async def github_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
                     if response.status != 200:
                         error_text = await response.json()
                         raise Exception(f"GitHub API error: {error_text.get('message', 'Unknown error')}")
-                    
+
                     repo_data = await response.json()
-                    
+
                     # Format the repository data
                     formatted_repo = {
                         "name": repo_data.get("name"),
@@ -180,16 +181,13 @@ async def github_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
                         "language": repo_data.get("language"),
                         "is_private": repo_data.get("private"),
                         "created_at": repo_data.get("created_at"),
-                        "updated_at": repo_data.get("updated_at")
+                        "updated_at": repo_data.get("updated_at"),
                     }
-                    
-                    return {
-                        "operation": "get_repository",
-                        "repository": formatted_repo
-                    }
+
+                    return {"operation": "get_repository", "repository": formatted_repo}
         finally:
             await session.close()
-    
+
     else:
         raise ValueError(f"Invalid operation: {operation}")
 
@@ -352,46 +350,43 @@ class GitHubTool:
         self.description = "Search and retrieve information from GitHub repositories."
         self.parameters = [
             ToolParameter(
-                name="operation", 
-                description="The GitHub operation to perform", 
-                type="string", 
+                name="operation",
+                description="The GitHub operation to perform",
+                type="string",
                 required=True,
-                enum=["search_repositories", "get_repository"]
+                enum=["search_repositories", "get_repository"],
             ),
             ToolParameter(
-                name="query", 
-                description="Search query for repositories (required for search_repositories)", 
-                type="string", 
-                required=False
+                name="query",
+                description="Search query for repositories (required for search_repositories)",
+                type="string",
+                required=False,
             ),
             ToolParameter(
-                name="limit", 
-                description="Maximum number of search results (default: 10)", 
-                type="integer", 
-                required=False
+                name="limit",
+                description="Maximum number of search results (default: 10)",
+                type="integer",
+                required=False,
             ),
             ToolParameter(
-                name="owner", 
-                description="Repository owner (required for get_repository)", 
-                type="string", 
-                required=False
+                name="owner",
+                description="Repository owner (required for get_repository)",
+                type="string",
+                required=False,
             ),
             ToolParameter(
-                name="repo", 
-                description="Repository name (required for get_repository)", 
-                type="string", 
-                required=False
-            )
+                name="repo", description="Repository name (required for get_repository)", type="string", required=False
+            ),
         ]
         self.handler = github_handler
 
     async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute the GitHub tool with the given parameters.
-        
+
         Args:
             parameters: The parameters for the GitHub operation
-        
+
         Returns:
             The result of the operation
         """

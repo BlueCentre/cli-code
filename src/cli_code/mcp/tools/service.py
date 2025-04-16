@@ -49,13 +49,7 @@ class ToolService:
             return await self.executor.execute(tool_name, parameters)
         except Exception as e:
             # Create a failed result
-            return ToolResult(
-                tool_name=tool_name,
-                parameters=parameters,
-                success=False,
-                result=None,
-                error=str(e)
-            )
+            return ToolResult(tool_name=tool_name, parameters=parameters, success=False, result=None, error=str(e))
 
     async def execute_tool_call(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -81,7 +75,7 @@ class ToolService:
                     "tool_call_id": tool_call_id,
                     "name": tool_name,
                     "status": "error",
-                    "content": f"Invalid JSON in tool call arguments: {str(e)}"
+                    "content": f"Invalid JSON in tool call arguments: {str(e)}",
                 }
         else:
             parameters = arguments
@@ -94,7 +88,7 @@ class ToolService:
             "tool_call_id": tool_call_id,
             "name": tool_name,
             "status": "success" if result.success else "error",
-            "content": json.dumps(result.result) if result.success else result.error
+            "content": json.dumps(result.result) if result.success else result.error,
         }
 
     async def execute_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -128,11 +122,7 @@ class ToolService:
         for tool in tools:
             # Format the schema to match the expected structure
             params = tool.schema.get("parameters", {})
-            definitions.append({
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": params
-            })
+            definitions.append({"name": tool.name, "description": tool.description, "parameters": params})
 
         return definitions
 

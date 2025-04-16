@@ -8,6 +8,7 @@ import json
 from typing import Any, Dict
 
 import aiohttp
+
 from src.cli_code.mcp.tools.models import Tool, ToolParameter
 
 
@@ -27,11 +28,11 @@ async def weather_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """
     # Extract parameters
     location = parameters.get("location")
-    
+
     # Validate required parameters
     if not location:
         raise ValueError("Location parameter is required")
-    
+
     # In a real implementation, you would use an actual weather API
     # This is a mock implementation that returns fake data
     try:

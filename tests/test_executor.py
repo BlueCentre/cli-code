@@ -123,6 +123,19 @@ class TestToolExecutor(unittest.TestCase):
         self.registry.get_tool.assert_called_once_with("unknown_tool")
         self.logger.error.assert_called_once_with("Tool 'unknown_tool' not found")
 
+    def test_validate_parameters_with_tool_object(self):
+        """Test validating parameters by passing the Tool object directly."""
+        # Define valid parameters
+        params = {"name": "John", "age": 30}
+
+        # Validate the parameters using the tool object
+        result = self.executor.validate_parameters(self.tool, params)
+
+        # Check the result
+        self.assertTrue(result)
+        # registry.get_tool should NOT be called in this case
+        self.registry.get_tool.assert_not_called()
+
     @patch("asyncio.run")
     def test_execute_success(self, mock_asyncio_run):
         """Test executing a tool successfully."""
@@ -257,6 +270,38 @@ class TestToolExecutor(unittest.TestCase):
         # Verify logging
         self.logger.info.assert_any_call(f"Attempting to execute tool: test_tool")
         self.logger.error.assert_called_once_with(f"Error executing tool test_tool: {error_message}")
+
+    @patch("asyncio.run")
+    def test_execute_registry_error(self, mock_asyncio_run):
+        """Test executing when the registry raises an error finding the tool."""
+        # Configure the registry to raise an error
+        error_message = "Registry internal error"
+        self.registry.get_tool.side_effect = ValueError(error_message)
+
+        # Define parameters
+        params = {"name": "John"}
+
+        # Execute the tool
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(self.executor.execute("error_tool", params))
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+        # Check the result
+        self.assertEqual(result.tool_name, "error_tool")
+        self.assertEqual(result.parameters, params)
+        self.assertIsNone(result.result)
+        self.assertFalse(result.success)
+        self.assertEqual(result.error, error_message)  # Error should be propagated
+
+        # Check that the registry was called
+        self.registry.get_tool.assert_called_once_with("error_tool")
+
+        # Verify logging
+        self.logger.error.assert_called_once_with(f"Error executing tool error_tool: {error_message}")
 
 
 if __name__ == "__main__":

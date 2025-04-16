@@ -62,7 +62,9 @@ def mock_console():
     mock_console = MagicMock()
     mock_status_obj = MagicMock()  # Create a mock for the object returned by __enter__
     mock_status_obj.update = MagicMock()  # Add the update method to the status object
-    mock_console.status.return_value.__enter__.return_value = mock_status_obj  # Make __enter__ return the mock status object
+    mock_console.status.return_value.__enter__.return_value = (
+        mock_status_obj  # Make __enter__ return the mock status object
+    )
     mock_console.status.return_value.__exit__.return_value = None  # __exit__ can often return None
     return mock_console
 
@@ -71,7 +73,9 @@ def mock_console():
 def mock_tool_helpers(monkeypatch):
     """Mocks helper functions related to tool creation."""
     monkeypatch.setattr("src.cli_code.models.gemini.GeminiModel._create_tool_definitions", lambda self: None)
-    monkeypatch.setattr("src.cli_code.models.gemini.GeminiModel._create_system_prompt", lambda self: "Test System Prompt")
+    monkeypatch.setattr(
+        "src.cli_code.models.gemini.GeminiModel._create_system_prompt", lambda self: "Test System Prompt"
+    )
 
 
 @pytest.fixture
@@ -91,7 +95,7 @@ def gemini_model_instance(monkeypatch, mock_console, mock_tool_helpers, mock_con
 
     mock_configure = Mock()
     monkeypatch.setattr("src.cli_code.models.gemini.genai.configure", mock_configure)
-    
+
     mock_model_obj = Mock()
     mock_model_constructor = Mock(return_value=mock_model_obj)
     monkeypatch.setattr("src.cli_code.models.gemini.genai.GenerativeModel", mock_model_constructor)

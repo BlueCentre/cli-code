@@ -144,7 +144,7 @@ class TestToolExecutor(unittest.TestCase):
     async def test_execute_tool_not_found(self):
         """Test executing a nonexistent tool returns a failed result."""
         result = await self.executor.execute("nonexistent_tool", {})
-        
+
         # Verify the result
         self.assertEqual(result.tool_name, "nonexistent_tool")
         self.assertEqual(result.parameters, {})
@@ -158,7 +158,7 @@ class TestToolExecutor(unittest.TestCase):
         # Missing required parameter
         parameters = {}
         result = await self.executor.execute("test_tool", parameters)
-        
+
         # Verify the result
         self.assertEqual(result.tool_name, "test_tool")
         self.assertEqual(result.parameters, parameters)

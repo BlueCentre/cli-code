@@ -7,12 +7,22 @@ This module provides a client for interacting with MCP servers.
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import aiohttp
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MCPConfig:
+    """Configuration for the MCPClient."""
+
+    server_url: str
+    api_key: Optional[str] = None
+    default_model: Optional[str] = None
 
 
 class MCPMessage:
@@ -63,10 +73,21 @@ class MCPMessage:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MCPMessage":
         """Create a message from dictionary data."""
+        tool_calls_data = data.get("tool_calls")
+        tool_calls_objects = None
+        if tool_calls_data:
+            try:
+                # Attempt to convert each item into an MCPToolCall object
+                tool_calls_objects = [MCPToolCall.from_dict(tc) for tc in tool_calls_data]
+            except (TypeError, KeyError) as e:
+                logger.warning(f"Failed to parse tool_calls in message data: {e} - Data: {tool_calls_data}")
+                # Keep raw data if parsing fails?
+                tool_calls_objects = tool_calls_data  # Fallback to raw data if conversion fails
+
         return cls(
             role=data["role"],
             content=data.get("content"),
-            tool_calls=data.get("tool_calls"),
+            tool_calls=tool_calls_objects,  # Use converted objects or original data
             tool_call_id=data.get("tool_call_id"),
             name=data.get("name"),
         )
@@ -148,10 +169,14 @@ class MCPClient:
             return MCPMessage.from_dict(response["message"])
         elif "choices" in response and response["choices"]:
             # Handle OpenAI-style responses
-            message_data = response["choices"][0]["message"]
-            return MCPMessage.from_dict(message_data)
+            try:
+                message_data = response["choices"][0]["message"]
+                return MCPMessage.from_dict(message_data)
+            except (KeyError, IndexError) as e:
+                self.logger.error(f"Error processing OpenAI-style response: {e} - Response: {response}")
+                return MCPMessage(role="assistant", content="Error processing response")
         else:
-            # Handle unexpected response format
+            # If neither format matches, log error and return a default error message
             self.logger.error(f"Unexpected response format: {response}")
             return MCPMessage(role="assistant", content="Error processing response")
 
@@ -200,16 +225,12 @@ class MCPClient:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.endpoint,
-                    headers=headers,
-                    json=payload
-                ) as response:
+                async with session.post(self.endpoint, headers=headers, json=payload) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         self.logger.error(f"Error from MCP server: {error_text}")
                         raise Exception(f"Error from MCP server: {response.status} {error_text}")
-                    
+
                     result = await response.json()
                     return result
         except aiohttp.ClientError as e:

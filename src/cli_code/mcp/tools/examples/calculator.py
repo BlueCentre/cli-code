@@ -3,6 +3,7 @@ Calculator tool for MCP protocol.
 
 This module provides a calculator tool for performing basic arithmetic operations.
 """
+
 from typing import Any, Dict, List, Union
 
 from src.cli_code.mcp.tools.models import Tool, ToolParameter
@@ -28,7 +29,7 @@ async def calculator_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     operation = parameters.get("operation")
     a = parameters.get("a")
     b = parameters.get("b")
-    
+
     # Validate required parameters
     if not operation:
         raise ValueError("Operation parameter is required")
@@ -36,7 +37,7 @@ async def calculator_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("Parameter 'a' is required")
     if b is None:
         raise ValueError("Parameter 'b' is required")
-    
+
     # Perform the calculation
     if operation == "add":
         result = a + b
