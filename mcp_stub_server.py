@@ -52,6 +52,7 @@ class StubMCPServerProtocol(MCPServerProtocol):
 
 
 async def main():
+    """Starts the Stub MCP Server."""
     log.info(f"Starting Stub MCP Server on {HOST}:{PORT}...")
     server = await asyncio.start_server(lambda: StubMCPServerProtocol(), HOST, PORT)
 
