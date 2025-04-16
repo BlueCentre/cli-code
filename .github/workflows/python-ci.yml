@@ -10,7 +10,7 @@ name: Python CI
 
 on:
   push:
-    branches: 
+    branches:
       - "main"
     tags: [ "v*" ]  # Trigger on tags starting with v
   pull_request:
@@ -33,7 +33,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         # SonarCloud needs the full history to assign issues properly
-        fetch-depth: 0 
+        fetch-depth: 0
         # For PRs, fetch the base branch for comparison
         ref: ${{ github.event.pull_request.head.sha }}
 
@@ -42,13 +42,16 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Install uv
+      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      shell: bash
+
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install build pytest pytest-cov pytest-timeout ruff
-        pip install -e .
+        uv pip install --system build pytest pytest-cov pytest-timeout ruff
+        uv pip install --system -e .
         # Show installed packages
-        pip list
+        uv pip list --system
 
     - name: Check test directory structure
       run: |
@@ -89,10 +92,10 @@ jobs:
         # Set CI variables
         export CI_TEST_TIMEOUT=120
         export CI_EXIT_ON_TEST_FAILURE=1
-        
+
         # Run directly without using bash to make error handling clearer
         bash -ex ./scripts/run_coverage_ci.sh || echo "Coverage generation had errors but we'll continue"
-        
+
         # Extract actual coverage percentage from XML file
         if [ -f "coverage.xml" ]; then
           COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); line_rate = float(root.attrib['line-rate'])*100; print('{:.2f}%'.format(line_rate))")
@@ -109,17 +112,17 @@ jobs:
         script: |
           const coverage = process.env.COVERAGE_PERCENTAGE;
           const pullRequestNumber = context.issue.number;
-          
+
           github.rest.issues.createComment({
             issue_number: pullRequestNumber,
             owner: context.repo.owner,
             repo: context.repo.repo,
             body: `## Code Coverage Report
-            
+
             📊 **Current Coverage:** ${coverage}
-            
+
             Detailed coverage analysis is available in [SonarCloud](https://sonarcloud.io/project/overview?id=BlueCentre_cli-code)
-            
+
             ### Coverage Change Details
             This shows code coverage for changes in this PR. To improve coverage, consider adding tests for new or modified code.`
           });
@@ -173,14 +176,14 @@ jobs:
 
     - name: Build package
       run: python -m build
-      
+
     - name: Store built packages
       uses: actions/upload-artifact@v4
       with:
         name: dist
         path: dist/
         retention-days: 7
-        
+
     - name: Upload coverage reports as artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -191,7 +194,7 @@ jobs:
           test_logs/
         retention-days: 7
         if-no-files-found: warn
-        
+
   publish:
     name: Publish to PyPI
     needs: build-and-test
@@ -202,14 +205,14 @@ jobs:
     permissions:
       id-token: write  # Required for PyPI trusted publishing
       contents: read   # Required for actions/checkout
-      
+
     steps:
     - name: Download built packages
       uses: actions/download-artifact@v4
       with:
         name: dist
         path: dist/
-        
+
     - name: Display packages to be published
       run: |
         echo "Packages to be published:"
@@ -230,4 +233,4 @@ jobs:
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
         verbose: true
-        print-hash: true 
+        print-hash: true

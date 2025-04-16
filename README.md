@@ -36,14 +36,21 @@ For detailed installation instructions, please see the [Installation Guide](docs
 
 **Recommended (PyPI):**
 ```bash
-pip install cli-code-agent
+uv pip install cli-code-agent
 ```
 
 **From Source:**
 ```bash
 git clone https://github.com/BlueCentre/cli-code.git
 cd cli-code
-pip install -e .
+# Create a virtual environment (optional but recommended)
+# uv venv
+# source .venv/bin/activate 
+
+# Install in editable mode
+uv pip install -e .
+# For development including test dependencies, use:
+# uv pip install -e '.[dev]' 
 ```
 
 ## Setup
