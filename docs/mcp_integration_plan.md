@@ -167,12 +167,18 @@ This roadmap breaks the implementation into manageable milestones. Each mileston
 
 For *each* milestone:
 
-1.  **Feature Branch:** All work will be done on a dedicated feature branch (e.g., `feature/mcp-client-setup`).
-2.  **Small Commits:** Use small, logical commits with clear messages.
-3.  **Code Coverage:** Maintain >80% unit test coverage for all *new* and *modified* code in both `cli-code` and the new `MCP Server` application. Coverage checks must pass in CI.
-4.  **Linting:** All code must pass configured linter checks (e.g., Ruff, MyPy) in CI.
-5.  **Pull Request:** Submit a Pull Request to `main` upon completion of the milestone.
-6.  **CI Pipeline:** The PR must pass all checks in the CI pipeline (tests, linting, coverage) before merging.
+1.  **Feature Branch:** All work for the milestone will be done on a dedicated feature branch (e.g., `feature/mcp-milestone-name`), created from the *latest* `main` branch.
+2.  **Small Commits:** Use small, logical commits with clear, conventional messages.
+3.  **Development:** Implement the features for the milestone.
+4.  **Local Testing:** Ensure code functions as expected locally.
+5.  **Unit Tests & Coverage:** Write unit tests for new/modified code. Maintain >80% coverage. Run tests locally (`pytest`).
+6.  **Linting:** Run linters locally (`ruff check .`, `ruff format .`). Fix issues.
+7.  **Commit & Push:** Commit the changes to the feature branch and push to the remote.
+8.  **Pull Request:** Create a Pull Request targeting the `main` branch.
+9.  **CI Pipeline (PR):** Verify that all CI checks (tests, linting, coverage) pass on the Pull Request.
+10. **Merge:** Once CI passes and any required reviews are complete, merge the Pull Request into `main` (using squash-and-merge is recommended).
+11. **CI Pipeline (Main):** Verify that the CI pipeline runs successfully on the `main` branch after the merge.
+12. **Repeat:** For the next milestone, start again at step 1, ensuring the new feature branch is created from the updated `main` branch.
 
 ## 5. Additional Considerations
 
@@ -192,4 +198,4 @@ For *each* milestone:
 *   **Dependency (`chuk-mcp`):** Ensure compatibility and understand the maintenance status of the chosen MCP library.
 *   **Future Protocol Implementation:** While using `chuk-mcp` initially accelerates development, consider potentially developing an in-house MCP protocol handler in the future. This could offer more control and faster adaptation if the MCP standard evolves significantly or if `chuk-mcp` development lags behind desired features.
 *   **Performance:** Monitor for any noticeable latency introduced by the client-server hop, although it's expected to be minor for this use case.
-``` 
+```
