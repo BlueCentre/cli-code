@@ -7,7 +7,7 @@ This guide explains how to install, configure, and use CLI-Code.
 ### Option 1: Install from PyPI (Recommended)
 
 ```bash
-pip install cli-code-agent
+uv pip install cli-code-agent
 ```
 
 ### Option 2: Install from Source
@@ -15,7 +15,14 @@ pip install cli-code-agent
 ```bash
 git clone https://github.com/BlueCentre/cli-code.git
 cd cli-code
-pip install -e .
+# Create a virtual environment (optional but recommended)
+# uv venv
+# source .venv/bin/activate 
+
+# Install in editable mode
+uv pip install -e .
+# For development including test dependencies, use:
+# uv pip install -e '.[dev]'
 ```
 
 ## Setting Up Provider Credentials
@@ -92,7 +99,7 @@ During an interactive session, you can use these commands:
 Configuration is stored in `~/.config/cli-code/config.yaml` with this structure:
 
 ```yaml
-google_api_key: YOUR_GEMINI_API_KEY_HERE
+google_api_key: YOUR_GEMINI_API_KEY
 ollama_api_url: http://localhost:11434/v1
 
 default_provider: gemini
