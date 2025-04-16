@@ -16,6 +16,17 @@ from src.cli_code.mcp.tools.models import Tool, ToolParameter
 
 logger = logging.getLogger(__name__)
 
+# Default limits
+DEFAULT_GH_LIST_LIMIT = 100
+DEFAULT_GH_SEARCH_LIMIT = 10
+
+# GitHub API constants
+GITHUB_API_BASE_URL = "https://api.github.com"
+GITHUB_API_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
+
 
 async def github_list_repos_handler(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -55,7 +66,7 @@ async def github_search_repos_handler(parameters: Dict[str, Any]) -> Dict[str, A
     Args:
         parameters: Dictionary containing:
             query: Search query string
-            limit: Maximum number of results to return (default: 10)
+            limit: Maximum number of results to return (default: DEFAULT_GH_SEARCH_LIMIT)
 
     Returns:
         Dictionary containing search results
@@ -66,7 +77,7 @@ async def github_search_repos_handler(parameters: Dict[str, Any]) -> Dict[str, A
     try:
         # Extract parameters
         query = parameters.get("query")
-        limit = parameters.get("limit", 10)
+        limit = parameters.get("limit", DEFAULT_GH_SEARCH_LIMIT)
 
         if not query:
             raise ValueError("Query parameter is required")
@@ -206,12 +217,15 @@ def _is_gh_cli_available() -> bool:
         return False
 
 
-async def _list_repos_using_gh_cli(username: Optional[str] = None) -> Dict[str, Any]:
+async def _list_repos_using_gh_cli(
+    username: Optional[str] = None, limit: int = DEFAULT_GH_LIST_LIMIT
+) -> Dict[str, Any]:
     """
     List repositories using GitHub CLI.
 
     Args:
         username: Optional username to list repositories for
+        limit: Maximum number of results to return
 
     Returns:
         Dictionary containing repository information
@@ -224,7 +238,7 @@ async def _list_repos_using_gh_cli(username: Optional[str] = None) -> Dict[str, 
 
     # Add format as JSON
     cmd.extend(["--json", "name,description,url,visibility,isPrivate,updatedAt"])
-    cmd.extend(["--limit", "100"])
+    cmd.extend(["--limit", str(limit)])
 
     # Use the workaround for GitHub CLI authentication issues
     env = os.environ.copy()
@@ -237,7 +251,7 @@ async def _list_repos_using_gh_cli(username: Optional[str] = None) -> Dict[str, 
     return {"repositories": repos, "count": len(repos)}
 
 
-async def _search_repos_using_gh_cli(query: str, limit: int = 10) -> Dict[str, Any]:
+async def _search_repos_using_gh_cli(query: str, limit: int = DEFAULT_GH_SEARCH_LIMIT) -> Dict[str, Any]:
     """
     Search repositories using GitHub CLI.
 
@@ -248,13 +262,8 @@ async def _search_repos_using_gh_cli(query: str, limit: int = 10) -> Dict[str, A
     Returns:
         Dictionary containing search results
     """
-    cmd = ["gh", "search", "repos"]
-
-    # Add query
-    cmd.append(query)
-
-    # Add format as JSON and limit
-    cmd.extend(["--json", "name,description,url,owner,stars,updatedAt"])
+    cmd = ["gh", "search", "repos", query]
+    cmd.extend(["--json", "fullName,description"])
     cmd.extend(["--limit", str(limit)])
 
     # Use the workaround for GitHub CLI authentication issues
@@ -339,6 +348,88 @@ async def _search_repos_using_api(query: str, limit: int = 10) -> Dict[str, Any]
                 "results": search_results.get("items", []),
                 "count": len(search_results.get("items", [])),
             }
+
+
+def _get_github_token() -> str:
+    """Helper function to get the GitHub token, raising an error if not found."""
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise ValueError("GITHUB_API_TOKEN environment variable not set. Cannot use REST API features.")
+    return token
+
+
+async def _create_issue_using_rest(
+    owner: str,
+    repo: str,
+    title: str,
+    body: Optional[str] = None,
+    labels: Optional[List[str]] = None,
+    assignees: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Create an issue using the GitHub REST API.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        title: Issue title.
+        body: Issue body.
+        labels: List of labels to add.
+        assignees: List of assignees.
+
+    Returns:
+        The JSON response from the GitHub API.
+    """
+    token = _get_github_token()
+    headers = GITHUB_API_HEADERS.copy()
+    headers["Authorization"] = f"Bearer {token}"
+
+    url = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/issues"
+    data: Dict[str, Any] = {"title": title}
+    if body:
+        data["body"] = body
+    if labels:
+        data["labels"] = labels
+    if assignees:
+        data["assignees"] = assignees
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=data) as response:
+            response.raise_for_status()  # Raise exception for bad status codes
+            return await response.json()
+
+
+async def _search_issues_using_rest(
+    query: str, limit: int = DEFAULT_GH_SEARCH_LIMIT, sort: Optional[str] = None, order: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Search for issues using the GitHub REST API.
+
+    Args:
+        query: The search query string.
+        limit: Maximum number of results per page.
+        sort: The field to sort by (e.g., 'created', 'updated').
+        order: The direction to sort ('asc' or 'desc').
+
+    Returns:
+        The JSON response from the GitHub API.
+    """
+    token = _get_github_token()
+    headers = GITHUB_API_HEADERS.copy()
+    headers["Authorization"] = f"Bearer {token}"
+
+    params: Dict[str, Any] = {"q": query, "per_page": limit}
+    if sort:
+        params["sort"] = sort
+    if order:
+        params["order"] = order
+
+    url = f"{GITHUB_API_BASE_URL}/search/issues"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            response.raise_for_status()  # Raise exception for bad status codes
+            return await response.json()
 
 
 class GitHubTool:
