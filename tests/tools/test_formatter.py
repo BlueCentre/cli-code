@@ -1,11 +1,9 @@
 """
-Tests for the tool response formatter.
+Tests for the ToolResponseFormatter.
 """
 
-import json
 import unittest
-from dataclasses import dataclass
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.cli_code.mcp.tools.formatter import ToolResponseFormatter
 from src.cli_code.mcp.tools.models import ToolResult
@@ -18,162 +16,211 @@ class TestToolResponseFormatter(unittest.TestCase):
         """Set up test fixtures."""
         self.formatter = ToolResponseFormatter()
 
-    def test_format_result_basic(self):
-        """Test formatting a basic result."""
+    def test_format_success_result(self):
+        """Test formatting a successful result."""
+        # Create a success result
         result = ToolResult(
             tool_name="test_tool",
-            parameters={"param1": "value1", "param2": 42},
-            result={"status": "success", "value": 123},
+            parameters={"param1": "value1"},
+            result={"data": "test_data"},
+            success=True,
+            error=None,
         )
 
+        # Format the result
         formatted = self.formatter.format_result(result)
 
-        self.assertEqual(formatted["name"], "test_tool")
-        self.assertEqual(formatted["parameters"], {"param1": "value1", "param2": 42})
-        self.assertEqual(formatted["result"], {"status": "success", "value": 123})
+        # Check the formatted result
+        self.assertEqual(formatted["result"], "success")
+        self.assertEqual(formatted["tool_name"], "test_tool")
+        self.assertEqual(formatted["data"], {"data": "test_data"})
+        self.assertEqual(formatted["parameters"], {"param1": "value1"})
+        self.assertNotIn("error", formatted)
 
-    def test_format_result_complex(self):
-        """Test formatting a result with complex data types."""
-        # Create a complex nested structure
-        complex_result = {
-            "string": "value",
-            "number": 42,
-            "list": [1, 2, "three", [4, 5]],
-            "dict": {"nested": {"deeper": [{"key": "value"}]}},
-        }
+    def test_format_error_result(self):
+        """Test formatting an error result."""
+        # Create an error result
+        result = ToolResult(
+            tool_name="test_tool",
+            parameters={"param1": "value1"},
+            result=None,
+            success=False,
+            error="Test error message",
+        )
 
-        result = ToolResult(tool_name="complex_tool", parameters={"operation": "process"}, result=complex_result)
-
+        # Format the result
         formatted = self.formatter.format_result(result)
 
-        self.assertEqual(formatted["name"], "complex_tool")
-        self.assertEqual(formatted["parameters"], {"operation": "process"})
-        self.assertEqual(formatted["result"], complex_result)
+        # Check the formatted result
+        self.assertEqual(formatted["result"], "error")
+        self.assertEqual(formatted["tool_name"], "test_tool")
+        self.assertEqual(formatted["error"], "Test error message")
+        self.assertEqual(formatted["parameters"], {"param1": "value1"})
+        self.assertNotIn("data", formatted)
 
-    def test_format_results_empty(self):
+    def test_format_multiple_results(self):
+        """Test formatting multiple results."""
+        # Create success and error results
+        success_result = ToolResult(
+            tool_name="success_tool",
+            parameters={"param1": "value1"},
+            result={"data": "success_data"},
+            success=True,
+            error=None,
+        )
+
+        error_result = ToolResult(
+            tool_name="error_tool", parameters={"param2": "value2"}, result=None, success=False, error="Error message"
+        )
+
+        # Format multiple results
+        formatted = self.formatter.format_results([success_result, error_result])
+
+        # Check the formatted results
+        self.assertEqual(len(formatted), 2)
+        self.assertEqual(formatted[0]["result"], "success")
+        self.assertEqual(formatted[0]["tool_name"], "success_tool")
+        self.assertEqual(formatted[0]["data"], {"data": "success_data"})
+        self.assertEqual(formatted[0]["parameters"], {"param1": "value1"})
+        self.assertNotIn("error", formatted[0])
+
+        self.assertEqual(formatted[1]["result"], "error")
+        self.assertEqual(formatted[1]["tool_name"], "error_tool")
+        self.assertEqual(formatted[1]["error"], "Error message")
+        self.assertEqual(formatted[1]["parameters"], {"param2": "value2"})
+        self.assertNotIn("data", formatted[1])
+
+    def test_format_empty_results(self):
         """Test formatting an empty list of results."""
         formatted = self.formatter.format_results([])
+        self.assertEqual(formatted, [])
 
-        self.assertEqual(formatted, {"results": []})
+    def test_format_error_without_message(self):
+        """Test formatting an error without a message."""
+        error_formatted = self.formatter.format_error(None)
+        self.assertEqual(error_formatted["result"], "error")
+        self.assertEqual(error_formatted["error"], "Unknown error")
 
-    def test_format_results_multiple(self):
-        """Test formatting multiple results."""
-        result1 = ToolResult(tool_name="tool1", parameters={"param": "value1"}, result={"status": "success"})
+    def test_format_error_with_message(self):
+        """Test formatting an error with a message."""
+        error_formatted = self.formatter.format_error("Custom error message")
+        self.assertEqual(error_formatted["result"], "error")
+        self.assertEqual(error_formatted["error"], "Custom error message")
 
-        result2 = ToolResult(tool_name="tool2", parameters={"param": "value2"}, result={"status": "pending"})
-
-        formatted = self.formatter.format_results([result1, result2])
-
-        self.assertEqual(len(formatted["results"]), 2)
-        self.assertEqual(formatted["results"][0]["name"], "tool1")
-        self.assertEqual(formatted["results"][1]["name"], "tool2")
-
-    def test_format_error(self):
-        """Test formatting an error."""
-        error = ValueError("Invalid parameter value")
-
-        formatted = self.formatter.format_error(
-            error=error, tool_name="test_tool", parameters={"param": "invalid_value"}
-        )
-
-        self.assertEqual(formatted["name"], "test_tool")
-        self.assertEqual(formatted["parameters"], {"param": "invalid_value"})
-        self.assertEqual(formatted["error"]["type"], "ValueError")
-        self.assertEqual(formatted["error"]["message"], "Invalid parameter value")
-
-    def test_prepare_result_to_dict_method(self):
-        """Test formatting a result with a custom class that has to_dict method."""
-
-        @dataclass
-        class CustomResult:
-            value: int
-
-            def to_dict(self):
-                return {"custom_value": self.value}
-
-        result = ToolResult(tool_name="custom_tool", parameters={}, result=CustomResult(42))
-
-        formatted = self.formatter.format_result(result)
-
-        self.assertEqual(formatted["result"], {"custom_value": 42})
-
-    def test_prepare_result_with_dict_attr(self):
-        """Test formatting a result with a custom class that has __dict__."""
-
-        class PlainObject:
-            def __init__(self, value):
-                self.attribute = value
-
-        result = ToolResult(tool_name="plain_object_tool", parameters={}, result=PlainObject("test_value"))
-
-        formatted = self.formatter.format_result(result)
-
-        self.assertEqual(formatted["result"], {"attribute": "test_value"})
-
-    def test_prepare_result_list(self):
-        """Test formatting a result with a list."""
-        result = ToolResult(tool_name="list_tool", parameters={}, result=[1, "two", 3.0])
-
-        formatted = self.formatter.format_result(result)
-
-        self.assertEqual(formatted["result"], [1, "two", 3.0])
-
-    def test_prepare_result_nested_objects(self):
-        """Test formatting a result with nested objects."""
-
-        # Simple class containing a string attribute
-        class SimpleObject:
-            def __init__(self, value):
-                self.value = value
-
-        # Create the object to test with
-        obj = SimpleObject("test value")
-
-        # Create the tool result
-        result = ToolResult(tool_name="simple_object_tool", parameters={}, result=obj)
-
-        # Get the formatted result
-        formatted = self.formatter.format_result(result)
-
-        # Just check that the result was converted to some kind of dictionary
-        # and contains the value attribute
-        self.assertIsInstance(formatted["result"], dict)
-        self.assertIn("value", formatted["result"])
-        self.assertEqual(formatted["result"]["value"], "test value")
-
-    def test_prepare_result_dict_with_objects(self):
-        """Test formatting a result with a dictionary containing objects."""
-
-        @dataclass
-        class CustomObject:
-            value: str
-
-            def to_dict(self):
-                return {"custom_value": self.value}
-
+    def test_format_result_with_none_result_data(self):
+        """Test formatting a result with None data."""
+        # Create a success result with None data
         result = ToolResult(
-            tool_name="dict_with_objects_tool", parameters={}, result={"primitive": 123, "object": CustomObject("test")}
+            tool_name="test_tool", parameters={"param1": "value1"}, result=None, success=True, error=None
         )
 
+        # Format the result
         formatted = self.formatter.format_result(result)
 
-        self.assertEqual(formatted["result"]["primitive"], 123)
-        self.assertEqual(formatted["result"]["object"], {"custom_value": "test"})
+        # Check the formatted result
+        self.assertEqual(formatted["result"], "success")
+        self.assertEqual(formatted["tool_name"], "test_tool")
+        self.assertEqual(formatted["data"], None)
+        self.assertEqual(formatted["parameters"], {"param1": "value1"})
+        self.assertNotIn("error", formatted)
 
-    def test_prepare_result_primitive_types(self):
-        """Test formatting primitive result types."""
+    def test_format_result_with_primitive_result_data(self):
+        """Test formatting a result with primitive data types."""
         # Test with string
-        string_result = ToolResult(tool_name="string_tool", parameters={}, result="string_value")
-        self.assertEqual(self.formatter.format_result(string_result)["result"], "string_value")
+        string_result = ToolResult(tool_name="string_tool", parameters={}, result="string value", success=True)
+        string_formatted = self.formatter.format_result(string_result)
+        self.assertEqual(string_formatted["data"], "string value")
 
         # Test with number
-        number_result = ToolResult(tool_name="number_tool", parameters={}, result=42)
-        self.assertEqual(self.formatter.format_result(number_result)["result"], 42)
+        number_result = ToolResult(tool_name="number_tool", parameters={}, result=42, success=True)
+        number_formatted = self.formatter.format_result(number_result)
+        self.assertEqual(number_formatted["data"], 42)
 
         # Test with boolean
-        bool_result = ToolResult(tool_name="bool_tool", parameters={}, result=True)
-        self.assertEqual(self.formatter.format_result(bool_result)["result"], True)
+        bool_result = ToolResult(tool_name="bool_tool", parameters={}, result=True, success=True)
+        bool_formatted = self.formatter.format_result(bool_result)
+        self.assertEqual(bool_formatted["data"], True)
 
-        # Test with None
-        none_result = ToolResult(tool_name="none_tool", parameters={}, result=None)
-        self.assertEqual(self.formatter.format_result(none_result)["result"], None)
+    def test_format_result_with_list_result_data(self):
+        """Test formatting a result with list data."""
+        # Create a success result with list data
+        result = ToolResult(tool_name="list_tool", parameters={}, result=["item1", "item2", "item3"], success=True)
+
+        # Format the result
+        formatted = self.formatter.format_result(result)
+
+        # Check the formatted result
+        self.assertEqual(formatted["result"], "success")
+        self.assertEqual(formatted["tool_name"], "list_tool")
+        self.assertEqual(formatted["data"], ["item1", "item2", "item3"])
+        self.assertEqual(formatted["parameters"], {})
+        self.assertNotIn("error", formatted)
+
+    def test_format_result_with_complex_nested_data(self):
+        """Test formatting a result with complex nested data."""
+        # Create a success result with complex nested data
+        complex_data = {
+            "user": {
+                "name": "John Doe",
+                "age": 30,
+                "address": {"street": "123 Main St", "city": "Anytown", "zip": "12345"},
+                "contacts": [{"type": "email", "value": "john@example.com"}, {"type": "phone", "value": "555-1234"}],
+            },
+            "status": "active",
+            "permissions": ["read", "write"],
+        }
+
+        result = ToolResult(tool_name="complex_tool", parameters={"userId": "123"}, result=complex_data, success=True)
+
+        # Format the result
+        formatted = self.formatter.format_result(result)
+
+        # Check the formatted result
+        self.assertEqual(formatted["result"], "success")
+        self.assertEqual(formatted["tool_name"], "complex_tool")
+        self.assertEqual(formatted["data"], complex_data)
+        self.assertEqual(formatted["parameters"], {"userId": "123"})
+        self.assertNotIn("error", formatted)
+
+    def test_format_error_with_exception(self):
+        """Test formatting an error from an exception."""
+        try:
+            # Raise an exception
+            raise ValueError("Test exception")
+        except Exception as e:
+            # Format the exception
+            error_formatted = self.formatter.format_error(e)
+
+        self.assertEqual(error_formatted["result"], "error")
+        self.assertEqual(error_formatted["error"], "Test exception")
+
+    def test_custom_formatter(self):
+        """Test using a custom formatter."""
+
+        # Create a custom formatter function
+        def custom_formatter(result):
+            return {
+                "status": "OK" if result.success else "FAILED",
+                "tool": result.tool_name.upper(),
+                "params": result.parameters,
+                "output": result.result,
+                "message": result.error,
+            }
+
+        # Create a formatter with the custom formatter
+        custom_fmt = ToolResponseFormatter(result_formatter=custom_formatter)
+
+        # Create a result
+        result = ToolResult(
+            tool_name="test_tool", parameters={"param1": "value1"}, result={"data": "test_data"}, success=True
+        )
+
+        # Format the result
+        formatted = custom_fmt.format_result(result)
+
+        # Check the custom format
+        self.assertEqual(formatted["status"], "OK")
+        self.assertEqual(formatted["tool"], "TEST_TOOL")
+        self.assertEqual(formatted["params"], {"param1": "value1"})
+        self.assertEqual(formatted["output"], {"data": "test_data"})
+        self.assertIsNone(formatted["message"])

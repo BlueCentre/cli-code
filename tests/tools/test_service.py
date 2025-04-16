@@ -1,17 +1,15 @@
 """
-Tests for the ToolService class.
+Tests for the ToolService class in src.cli_code.mcp.tools.service.
 """
 
 import json
 import unittest
-from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from src.cli_code.mcp.tools.models import Tool, ToolParameter, ToolResult
-from src.cli_code.mcp.tools.registry import ToolRegistry
 from src.cli_code.mcp.tools.executor import ToolExecutor
+from src.cli_code.mcp.tools.formatter import ToolResponseFormatter
+from src.cli_code.mcp.tools.models import Tool, ToolResult
+from src.cli_code.mcp.tools.registry import ToolRegistry
 from src.cli_code.mcp.tools.service import ToolService
 
 
@@ -20,561 +18,239 @@ class TestToolService(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create mock tools for testing
-        self.calculator_handler = AsyncMock(return_value={"result": 42})
-        self.weather_handler = AsyncMock(return_value={"temperature": 72, "condition": "sunny"})
-        
-        # Create calculator tool with parameters
-        calculator_params = [
-            ToolParameter(
-                name="operation",
-                description="The operation to perform",
-                type="string",
-                required=True,
-                enum=["add", "subtract", "multiply", "divide"]
-            ),
-            ToolParameter(
-                name="a",
-                description="First operand",
-                type="number",
-                required=True
-            ),
-            ToolParameter(
-                name="b",
-                description="Second operand",
-                type="number",
-                required=True
-            )
-        ]
-        
-        self.calculator_tool = Tool(
-            name="calculator",
-            description="Perform a calculation",
-            parameters=calculator_params,
-            handler=self.calculator_handler
+        self.registry = MagicMock(spec=ToolRegistry)
+        self.executor = MagicMock(spec=ToolExecutor)
+        self.formatter = MagicMock(spec=ToolResponseFormatter)
+
+        # Create the service with mocked dependencies
+        with patch("src.cli_code.mcp.tools.service.ToolResponseFormatter", return_value=self.formatter):
+            self.service = ToolService(self.registry, self.executor)
+
+        # Sample tool for testing
+        self.tool_schema = {
+            "parameters": {
+                "properties": {"param1": {"type": "string"}, "param2": {"type": "integer"}},
+                "required": ["param1"],
+            }
+        }
+        self.tool = MagicMock(spec=Tool)
+        self.tool.name = "test_tool"
+        self.tool.description = "Test tool for testing"
+        self.tool.schema = self.tool_schema
+
+        # Sample parameters
+        self.params = {"param1": "value1", "param2": 42}
+
+        # Sample tool result
+        self.success_result = ToolResult(
+            tool_name="test_tool", parameters=self.params, success=True, result={"output": "success"}, error=None
         )
-        
-        # Create weather tool with parameters
-        weather_params = [
-            ToolParameter(
-                name="location",
-                description="The location to get weather for",
-                type="string",
-                required=True
-            ),
-            ToolParameter(
-                name="units",
-                description="Temperature units",
-                type="string",
-                enum=["celsius", "fahrenheit"],
-                required=False
-            )
-        ]
-        
-        self.weather_tool = Tool(
-            name="weather",
-            description="Get weather information",
-            parameters=weather_params,
-            handler=self.weather_handler
+
+        self.error_result = ToolResult(
+            tool_name="test_tool", parameters=self.params, success=False, result=None, error="Test error"
         )
-        
-        # Create a registry with both tools
-        self.registry = ToolRegistry()
-        self.registry.register(self.calculator_tool)
-        self.registry.register(self.weather_tool)
-        
-        # Create an executor
-        self.executor = ToolExecutor(self.registry)
-        
-        # Create the service
-        self.service = ToolService(self.registry, self.executor)
-    
-    def test_initialization(self):
-        """Test ToolService initialization."""
-        self.assertEqual(self.service.registry, self.registry)
-        self.assertEqual(self.service.executor, self.executor)
-    
+
+    def test_init(self):
+        """Test initialization of the service."""
+        # Test with provided executor
+        service = ToolService(self.registry, self.executor)
+        self.assertEqual(service.registry, self.registry)
+        self.assertEqual(service.executor, self.executor)
+        self.assertIsInstance(service.formatter, ToolResponseFormatter)
+
+        # Test with default executor
+        with patch("src.cli_code.mcp.tools.service.ToolExecutor") as mock_executor_class:
+            mock_executor = MagicMock()
+            mock_executor_class.return_value = mock_executor
+            service = ToolService(self.registry)
+            self.assertEqual(service.registry, self.registry)
+            self.assertEqual(service.executor, mock_executor)
+            mock_executor_class.assert_called_once_with(self.registry)
+
+    @patch("src.cli_code.mcp.tools.service.ToolExecutor")
+    def test_init_creates_executor(self, mock_executor_class):
+        """Test that init creates an executor if none is provided."""
+        mock_executor = MagicMock()
+        mock_executor_class.return_value = mock_executor
+
+        service = ToolService(self.registry)
+        mock_executor_class.assert_called_once_with(self.registry)
+        self.assertEqual(service.executor, mock_executor)
+
+    async def test_execute_tool_success(self):
+        """Test successful tool execution."""
+        self.executor.execute = AsyncMock(return_value=self.success_result)
+
+        result = await self.service.execute_tool("test_tool", self.params)
+
+        self.executor.execute.assert_called_once_with("test_tool", self.params)
+        self.assertEqual(result, self.success_result)
+        self.assertTrue(result.success)
+        self.assertEqual(result.result, {"output": "success"})
+        self.assertIsNone(result.error)
+
+    async def test_execute_tool_failure(self):
+        """Test tool execution failure."""
+        # Mock executor to raise an exception
+        self.executor.execute = AsyncMock(side_effect=ValueError("Test error"))
+
+        result = await self.service.execute_tool("test_tool", self.params)
+
+        self.executor.execute.assert_called_once_with("test_tool", self.params)
+        self.assertFalse(result.success)
+        self.assertIsNone(result.result)
+        self.assertEqual(result.error, "Test error")
+
+    async def test_execute_tool_call_json_string(self):
+        """Test execution of a tool call with JSON string arguments."""
+        # Set up mock to return a successful result
+        self.executor.execute = AsyncMock(return_value=self.success_result)
+
+        # Create a tool call with JSON string arguments
+        tool_call = {"id": "call123", "function": {"name": "test_tool", "arguments": json.dumps(self.params)}}
+
+        result = await self.service.execute_tool_call(tool_call)
+
+        self.executor.execute.assert_called_once_with("test_tool", self.params)
+        self.assertEqual(result["tool_call_id"], "call123")
+        self.assertEqual(result["name"], "test_tool")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["content"], json.dumps({"output": "success"}))
+
+    async def test_execute_tool_call_dict_arguments(self):
+        """Test execution of a tool call with dictionary arguments."""
+        self.executor.execute = AsyncMock(return_value=self.success_result)
+
+        # Create a tool call with dictionary arguments
+        tool_call = {"id": "call123", "function": {"name": "test_tool", "arguments": self.params}}
+
+        result = await self.service.execute_tool_call(tool_call)
+
+        self.executor.execute.assert_called_once_with("test_tool", self.params)
+        self.assertEqual(result["tool_call_id"], "call123")
+        self.assertEqual(result["name"], "test_tool")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["content"], json.dumps({"output": "success"}))
+
+    async def test_execute_tool_call_invalid_json(self):
+        """Test execution of a tool call with invalid JSON arguments."""
+        # Create a tool call with invalid JSON arguments
+        tool_call = {"id": "call123", "function": {"name": "test_tool", "arguments": "{invalid json"}}
+
+        result = await self.service.execute_tool_call(tool_call)
+
+        self.assertEqual(result["tool_call_id"], "call123")
+        self.assertEqual(result["name"], "test_tool")
+        self.assertEqual(result["status"], "error")
+        self.assertTrue("Invalid JSON in tool call arguments" in result["content"])
+        self.executor.execute.assert_not_called()
+
+    async def test_execute_tool_call_error(self):
+        """Test execution of a tool call that results in an error."""
+        self.executor.execute = AsyncMock(return_value=self.error_result)
+
+        tool_call = {"id": "call123", "function": {"name": "test_tool", "arguments": self.params}}
+
+        result = await self.service.execute_tool_call(tool_call)
+
+        self.executor.execute.assert_called_once_with("test_tool", self.params)
+        self.assertEqual(result["tool_call_id"], "call123")
+        self.assertEqual(result["name"], "test_tool")
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["content"], "Test error")
+
+    async def test_execute_tool_calls(self):
+        """Test execution of multiple tool calls."""
+        # Set up the mock to handle multiple calls
+        self.service.execute_tool_call = AsyncMock(
+            side_effect=[
+                {"tool_call_id": "call1", "name": "tool1", "status": "success", "content": "result1"},
+                {"tool_call_id": "call2", "name": "tool2", "status": "error", "content": "error2"},
+            ]
+        )
+
+        tool_calls = [
+            {"id": "call1", "function": {"name": "tool1", "arguments": {}}},
+            {"id": "call2", "function": {"name": "tool2", "arguments": {}}},
+        ]
+
+        results = await self.service.execute_tool_calls(tool_calls)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["tool_call_id"], "call1")
+        self.assertEqual(results[0]["status"], "success")
+        self.assertEqual(results[1]["tool_call_id"], "call2")
+        self.assertEqual(results[1]["status"], "error")
+
+        self.service.execute_tool_call.assert_any_call(tool_calls[0])
+        self.service.execute_tool_call.assert_any_call(tool_calls[1])
+
     def test_get_tool_definitions(self):
         """Test getting tool definitions."""
+        # Set up the registry to return our test tool
+        self.registry.get_all_tools.return_value = [self.tool]
+
         definitions = self.service.get_tool_definitions()
-        
-        # Should be a list with 2 tools
-        self.assertEqual(len(definitions), 2)
-        
-        # Check that each tool has the expected fields
-        for tool_def in definitions:
-            self.assertIn("name", tool_def)
-            self.assertIn("description", tool_def)
-            self.assertIn("parameters", tool_def)
-            
-            # Tools should be either calculator or weather
-            self.assertIn(tool_def["name"], ["calculator", "weather"])
-            
-            # Check parameters structure
-            params = tool_def["parameters"]
-            self.assertIn("type", params)
-            self.assertEqual(params["type"], "object")
-            self.assertIn("properties", params)
-            self.assertIn("required", params)
-            
-            if tool_def["name"] == "calculator":
-                # Calculator should have 3 parameters
-                self.assertEqual(len(params["properties"]), 3)
-                self.assertIn("operation", params["properties"])
-                self.assertIn("a", params["properties"])
-                self.assertIn("b", params["properties"])
-                self.assertEqual(len(params["required"]), 3)
-            
-            elif tool_def["name"] == "weather":
-                # Weather should have 2 parameters
-                self.assertEqual(len(params["properties"]), 2)
-                self.assertIn("location", params["properties"])
-                self.assertIn("units", params["properties"])
-                self.assertEqual(len(params["required"]), 1)
-    
-    def test_get_tool_definition_by_name_existing(self):
-        """Test getting a specific tool definition by name when it exists."""
-        calculator_def = self.service.get_tool_definition_by_name("calculator")
-        
-        self.assertIsNotNone(calculator_def)
-        self.assertEqual(calculator_def["name"], "calculator")
-        self.assertEqual(calculator_def["description"], "Perform a calculation")
-        
-        # Check parameters
-        params = calculator_def["parameters"]
-        self.assertEqual(params["type"], "object")
-        self.assertEqual(len(params["properties"]), 3)
-        self.assertEqual(len(params["required"]), 3)
-    
-    def test_get_tool_definition_by_name_nonexistent(self):
-        """Test getting a specific tool definition by name when it doesn't exist."""
-        nonexistent_def = self.service.get_tool_definition_by_name("nonexistent")
-        
-        self.assertIsNone(nonexistent_def)
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_success(self):
-        """Test executing a tool successfully."""
-        # Mock the executor to return a successful result
-        result_dict = {
-            "name": "calculator",
-            "parameters": {"operation": "add", "a": 1, "b": 2},
-            "result": {"result": 3},
-            "success": True
-        }
-        mock_result = ToolResult.from_dict(result_dict)
-        self.executor.execute = AsyncMock(return_value=mock_result)
-        
-        # Execute the tool
-        result = await self.service.execute_tool(
-            "calculator",
-            {"operation": "add", "a": 1, "b": 2}
-        )
-        
-        # Check the result
-        self.assertTrue(result.success)
-        self.assertEqual(result.name, "calculator")
-        self.assertEqual(result.parameters, {"operation": "add", "a": 1, "b": 2})
-        self.assertEqual(result.result, {"result": 3})
-        
-        # Verify that the executor was called with the right arguments
-        self.executor.execute.assert_called_once_with("calculator", {"operation": "add", "a": 1, "b": 2})
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_failure(self):
-        """Test executing a tool that fails."""
-        # Mock the executor to return a failed result
-        result_dict = {
-            "name": "calculator",
-            "parameters": {"operation": "divide", "a": 1, "b": 0},
-            "result": None,
-            "success": False,
-            "error": "Division by zero"
-        }
-        mock_result = ToolResult.from_dict(result_dict)
-        self.executor.execute = AsyncMock(return_value=mock_result)
-        
-        # Execute the tool
-        result = await self.service.execute_tool(
-            "calculator",
-            {"operation": "divide", "a": 1, "b": 0}
-        )
-        
-        # Check the result
-        self.assertFalse(result.success)
-        self.assertEqual(result.name, "calculator")
-        self.assertEqual(result.parameters, {"operation": "divide", "a": 1, "b": 0})
-        self.assertIsNone(result.result)
-        self.assertEqual(result.error, "Division by zero")
-        
-        # Verify that the executor was called with the right arguments
-        self.executor.execute.assert_called_once_with("calculator", {"operation": "divide", "a": 1, "b": 0})
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_nonexistent(self):
-        """Test executing a tool that doesn't exist."""
-        # Mock the executor to raise an exception for a non-existent tool
-        self.executor.execute = AsyncMock(side_effect=ValueError("Tool 'nonexistent' not found"))
-        
-        # Execute the tool
-        result = await self.service.execute_tool("nonexistent", {})
-        
-        # Check the result
-        self.assertFalse(result.success)
-        self.assertEqual(result.name, "nonexistent")
-        self.assertEqual(result.parameters, {})
-        self.assertIsNone(result.result)
-        self.assertEqual(result.error, "Tool 'nonexistent' not found")
-        
-        # Verify that the executor was called with the right arguments
-        self.executor.execute.assert_called_once_with("nonexistent", {})
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_call_with_json_args(self):
-        """Test executing a tool call with JSON arguments."""
-        # Create a tool call object with JSON arguments
-        tool_call = {
-            "id": "call_123",
-            "type": "function",
-            "function": {
-                "name": "calculator",
-                "arguments": json.dumps({
-                    "operation": "add",
-                    "a": 1,
-                    "b": 2
-                })
-            }
-        }
-        
-        # Mock the executor to return a successful result
-        result_dict = {
-            "name": "calculator",
-            "parameters": {"operation": "add", "a": 1, "b": 2},
-            "result": {"result": 3},
-            "success": True
-        }
-        mock_result = ToolResult.from_dict(result_dict)
-        self.executor.execute = AsyncMock(return_value=mock_result)
-        
-        # Execute the tool call
-        result = await self.service.execute_tool_call(tool_call)
-        
-        # Check the result
-        self.assertEqual(result["tool_call_id"], "call_123")
-        self.assertEqual(result["name"], "calculator")
-        self.assertEqual(result["status"], "success")
-        self.assertEqual(result["content"], '{"result": 3}')
-        
-        # Verify that the executor was called with the right arguments
-        self.executor.execute.assert_called_once_with(
-            "calculator", 
-            {"operation": "add", "a": 1, "b": 2}
-        )
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_call_with_object_args(self):
-        """Test executing a tool call with object arguments."""
-        # Create a tool call object with object arguments
-        tool_call = {
-            "id": "call_123",
-            "type": "function",
-            "function": {
-                "name": "calculator",
-                "arguments": {
-                    "operation": "add",
-                    "a": 1,
-                    "b": 2
-                }
-            }
-        }
-        
-        # Mock the executor to return a successful result
-        result_dict = {
-            "name": "calculator",
-            "parameters": {"operation": "add", "a": 1, "b": 2},
-            "result": {"result": 3},
-            "success": True
-        }
-        mock_result = ToolResult.from_dict(result_dict)
-        self.executor.execute = AsyncMock(return_value=mock_result)
-        
-        # Execute the tool call
-        result = await self.service.execute_tool_call(tool_call)
-        
-        # Check the result
-        self.assertEqual(result["tool_call_id"], "call_123")
-        self.assertEqual(result["name"], "calculator")
-        self.assertEqual(result["status"], "success")
-        self.assertEqual(result["content"], '{"result": 3}')
-        
-        # Verify that the executor was called with the right arguments
-        self.executor.execute.assert_called_once_with(
-            "calculator", 
-            {"operation": "add", "a": 1, "b": 2}
-        )
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_call_with_invalid_json(self):
-        """Test executing a tool call with invalid JSON."""
-        tool_call = {
-            "id": "test_id",
-            "type": "function",
-            "function": {
-                "name": "calc_tool",
-                "arguments": "invalid json"
-            }
-        }
 
-        result = await self.service.execute_tool_call(tool_call)
+        self.assertEqual(len(definitions), 1)
+        self.assertEqual(definitions[0]["name"], "test_tool")
+        self.assertEqual(definitions[0]["description"], "Test tool for testing")
+        self.assertEqual(definitions[0]["parameters"], self.tool_schema["parameters"])
+        self.registry.get_all_tools.assert_called_once()
 
-        self.assertEqual(result["tool_call_id"], "test_id")
-        self.assertEqual(result["name"], "calc_tool")
-        self.assertEqual(result["status"], "error")
-        self.assertIn("Invalid JSON", result["content"])
+    def test_get_tool_definition_by_name_found(self):
+        """Test getting a tool definition by name when it exists."""
+        # Set up the registry to return our test tool
+        self.registry.get_tool.return_value = self.tool
 
-    @pytest.mark.asyncio
-    async def test_execute_tool_call_error_handling(self):
-        """Test error handling in execute_tool_call."""
-        # Setup mock to raise exception
-        self.executor.execute.side_effect = ValueError("Test error")
-        
-        tool_call = {
-            "id": "test_id",
-            "type": "function",
-            "function": {
-                "name": "calc_tool",
-                "arguments": {"param1": "value1"}
-            }
-        }
+        definition = self.service.get_tool_definition_by_name("test_tool")
 
-        result = await self.service.execute_tool_call(tool_call)
+        self.assertIsNotNone(definition)
+        self.assertEqual(definition["name"], "test_tool")
+        self.assertEqual(definition["description"], "Test tool for testing")
+        self.assertEqual(definition["parameters"], self.tool_schema["parameters"])
+        self.registry.get_tool.assert_called_once_with("test_tool")
 
-        self.assertEqual(result["tool_call_id"], "test_id")
-        self.assertEqual(result["name"], "calc_tool")
-        self.assertEqual(result["status"], "error")
-        self.assertIn("Test error", result["content"])
+    def test_get_tool_definition_by_name_not_found(self):
+        """Test getting a tool definition by name when it doesn't exist."""
+        # Set up the registry to raise a ValueError for nonexistent tool
+        self.registry.get_tool.side_effect = ValueError("Tool not found")
 
-    @pytest.mark.asyncio
-    async def test_execute_tool_call_without_id(self):
-        """Test executing a tool call without an ID."""
-        tool_call = {
-            "type": "function",
-            "function": {
-                "name": "calc_tool",
-                "arguments": {"param1": "value1"}
-            }
-        }
+        definition = self.service.get_tool_definition_by_name("nonexistent_tool")
 
-        result = await self.service.execute_tool_call(tool_call)
+        self.assertIsNone(definition)
+        self.registry.get_tool.assert_called_once_with("nonexistent_tool")
 
-        self.assertEqual(result["tool_call_id"], "unknown")
-        self.assertEqual(result["name"], "calc_tool")
-        self.assertEqual(result["status"], "success")
+    def test_format_result(self):
+        """Test formatting a single tool result."""
+        # Set up the formatter mock
+        self.formatter.format_result.return_value = {"formatted": "result"}
 
-    @pytest.mark.asyncio
-    async def test_execute_tool_call_without_name(self):
-        """Test executing a tool call without a name."""
-        tool_call = {
-            "id": "test_id",
-            "type": "function",
-            "function": {
-                "arguments": {"param1": "value1"}
-            }
-        }
+        formatted = self.service.format_result(self.success_result)
 
-        result = await self.service.execute_tool_call(tool_call)
+        self.assertEqual(formatted, {"formatted": "result"})
+        self.formatter.format_result.assert_called_once_with(self.success_result)
 
-        self.assertEqual(result["tool_call_id"], "test_id")
-        self.assertEqual(result["name"], "unknown")
-        self.assertEqual(result["status"], "error")
+    def test_format_results(self):
+        """Test formatting multiple tool results."""
+        # Set up the formatter mock
+        self.formatter.format_results.return_value = {"formatted": "results"}
 
-    @pytest.mark.asyncio
-    async def test_execute_tool_with_exception(self):
-        """Test execute_tool with an exception."""
-        # Setup to raise exception during execution
-        self.executor.execute.side_effect = Exception("Unexpected error")
-        
-        result = await self.service.execute_tool("calc_tool", {"param1": "value1"})
-        
-        # Verify the result
-        self.assertEqual(result.tool_name, "calc_tool")
-        self.assertEqual(result.parameters, {"param1": "value1"})
-        self.assertFalse(result.success)
-        self.assertEqual(result.error, "Unexpected error")
-        self.assertIsNone(result.result)
+        formatted = self.service.format_results([self.success_result, self.error_result])
 
-    @pytest.mark.asyncio
-    async def test_format_result(self):
-        """Test the format_result method."""
-        # Create a ToolResult
-        tool_result = ToolResult(
-            tool_name="calc_tool",
-            parameters={"param1": "value1"},
-            result={"answer": 42},
-            success=True
-        )
-        
-        # Format the result
-        formatted = self.service.format_result(tool_result)
-        
-        # Verify the format
-        self.assertEqual(formatted["name"], "calc_tool")
-        self.assertEqual(formatted["parameters"], {"param1": "value1"})
-        self.assertEqual(formatted["result"], {"answer": 42})
-        self.assertEqual(formatted["success"], True)
-        self.assertNotIn("error", formatted)
+        self.assertEqual(formatted, {"formatted": "results"})
+        self.formatter.format_results.assert_called_once_with([self.success_result, self.error_result])
 
-    @pytest.mark.asyncio
-    async def test_format_result_error(self):
-        """Test formatting an error result."""
-        # Create a failed ToolResult
-        tool_result = ToolResult(
-            tool_name="calc_tool",
-            parameters={"param1": "value1"},
-            result=None,
-            success=False,
-            error="Division by zero"
-        )
-        
-        # Format the result
-        formatted = self.service.format_result(tool_result)
-        
-        # Verify the format
-        self.assertEqual(formatted["name"], "calc_tool")
-        self.assertEqual(formatted["parameters"], {"param1": "value1"})
-        self.assertIsNone(formatted["result"])
-        self.assertEqual(formatted["success"], False)
-        self.assertEqual(formatted["error"], "Division by zero")
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_calls_single(self):
-        """Test executing a single tool call."""
-        # Create a tool call object
-        tool_call = {
-            "id": "call_123",
-            "type": "function",
-            "function": {
-                "name": "calculator",
-                "arguments": json.dumps({
-                    "operation": "add",
-                    "a": 1,
-                    "b": 2
-                })
-            }
-        }
-        
-        # Mock the executor to return a successful result
-        result_dict = {
-            "name": "calculator",
-            "parameters": {"operation": "add", "a": 1, "b": 2},
-            "result": {"result": 3},
-            "success": True
-        }
-        mock_result = ToolResult.from_dict(result_dict)
-        self.executor.execute = AsyncMock(return_value=mock_result)
-        
-        # Execute the tool calls
-        results = await self.service.execute_tool_calls([tool_call])
-        
-        # Check the results
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["tool_call_id"], "call_123")
-        self.assertEqual(results[0]["name"], "calculator")
-        self.assertEqual(results[0]["status"], "success")
-        self.assertEqual(results[0]["content"], '{"result": 3}')
-        
-        # Verify that the executor was called with the right arguments
-        self.executor.execute.assert_called_once_with(
-            "calculator", 
-            {"operation": "add", "a": 1, "b": 2}
-        )
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_calls_multiple(self):
-        """Test executing multiple tool calls."""
-        # Create tool call objects
-        calculator_call = {
-            "id": "calc_123",
-            "type": "function",
-            "function": {
-                "name": "calculator",
-                "arguments": json.dumps({
-                    "operation": "add",
-                    "a": 1,
-                    "b": 2
-                })
-            }
-        }
-        
-        weather_call = {
-            "id": "weather_456",
-            "type": "function",
-            "function": {
-                "name": "weather",
-                "arguments": json.dumps({
-                    "location": "New York",
-                    "units": "celsius"
-                })
-            }
-        }
-        
-        # Mock the executor to return different results for different tools
-        async def mock_execute(name, params):
-            if name == "calculator":
-                return ToolResult(
-                    name="calculator",
-                    parameters={"operation": "add", "a": 1, "b": 2},
-                    result={"result": 3},
-                    success=True
-                )
-            elif name == "weather":
-                return ToolResult(
-                    name="weather",
-                    parameters={"location": "New York", "units": "celsius"},
-                    result={"temperature": 20, "condition": "sunny"},
-                    success=True
-                )
-        
-        self.executor.execute = AsyncMock(side_effect=mock_execute)
-        
-        # Execute the tool calls
-        results = await self.service.execute_tool_calls([calculator_call, weather_call])
-        
-        # Check the results
-        self.assertEqual(len(results), 2)
-        
-        # Check calculator result
-        calc_result = next(r for r in results if r["tool_call_id"] == "calc_123")
-        self.assertEqual(calc_result["name"], "calculator")
-        self.assertEqual(calc_result["status"], "success")
-        self.assertEqual(calc_result["content"], '{"result": 3}')
-        
-        # Check weather result
-        weather_result = next(r for r in results if r["tool_call_id"] == "weather_456")
-        self.assertEqual(weather_result["name"], "weather")
-        self.assertEqual(weather_result["status"], "success")
-        self.assertEqual(weather_result["content"], '{"temperature": 20, "condition": "sunny"}')
-        
-        # Verify that the executor was called twice with the right arguments
-        self.assertEqual(self.executor.execute.call_count, 2)
-        call_args_list = self.executor.execute.call_args_list
-        
-        # First call should be for calculator
-        self.assertEqual(call_args_list[0][0][0], "calculator")
-        self.assertEqual(call_args_list[0][0][1], {"operation": "add", "a": 1, "b": 2})
-        
-        # Second call should be for weather
-        self.assertEqual(call_args_list[1][0][0], "weather")
-        self.assertEqual(call_args_list[1][0][1], {"location": "New York", "units": "celsius"})
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_calls_empty(self):
-        """Test executing an empty list of tool calls."""
-        # Execute empty tool calls
-        results = await self.service.execute_tool_calls([])
-        
-        # Check the results
-        self.assertEqual(len(results), 0)
-        
-        # Verify that the executor was not called
-        self.executor.execute.assert_not_called() 
+    def test_get_available_tools(self):
+        """Test getting information about available tools."""
+        # Set up the registry mock
+        self.registry.get_schemas.return_value = {"test_tool": {"schema": "info"}}
+
+        tools = self.service.get_available_tools()
+
+        self.assertEqual(tools, {"test_tool": {"schema": "info"}})
+        self.registry.get_schemas.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -13,6 +13,7 @@ import pytest
 
 from src.cli_code.mcp.tools.executor import ToolExecutor
 from src.cli_code.mcp.tools.models import Tool, ToolParameter, ToolResult
+from src.cli_code.mcp.tools.registry import ToolRegistry
 
 
 @pytest.fixture
@@ -248,60 +249,176 @@ async def test_execute_with_complex_result(executor, mock_tool):
     result = await executor.execute("test_tool", {"param1": "value"})
 
     assert isinstance(result, ToolResult)
+    assert result.tool_name == "test_tool"
+    assert result.parameters == {"param1": "value"}
     assert result.result == complex_result
     assert result.success is True
+    assert result.error is None
 
 
 @pytest.mark.asyncio
 async def test_execute_with_none_result(executor, mock_tool):
-    """Test execution with None as the result."""
+    """Test execution with a None result."""
     # Set up the mock to return None
     mock_tool.execute.return_value = None
 
     result = await executor.execute("test_tool", {"param1": "value"})
 
     assert isinstance(result, ToolResult)
+    assert result.tool_name == "test_tool"
+    assert result.parameters == {"param1": "value"}
     assert result.result is None
-    assert result.success is True
+    assert result.success is True  # Still successful even with None result
+    assert result.error is None
 
 
-def test_logging():
-    """Test that appropriate logging happens during tool execution."""
-    # Create a mock Logger
-    mock_logger = MagicMock()
+@pytest.mark.asyncio
+async def test_execute_with_timeout_simulation(executor, mock_tool):
+    """Test execution with timeout simulation."""
+    import asyncio
 
-    # Create a mock tool and registry
-    mock_tool = MagicMock(spec=Tool)
-    mock_tool.name = "test_tool"
+    # Create a slow handler that would time out
+    async def slow_handler(params):
+        await asyncio.sleep(0.1)  # Sleep briefly to simulate delay
+        return {"result": "slow"}
+
+    # Replace the mock handler with our slow handler
+    mock_tool.execute = slow_handler
+
+    # Mock asyncio.wait_for to raise TimeoutError
+    with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+        result = await executor.execute("test_tool", {"param1": "value"})
+
+        # Should return a failure result with timeout error
+        assert result.success is False
+        assert result.result is None
+        assert "timeout" in result.error.lower()
+
+
+@patch("logging.Logger")
+def test_logging(mock_logger, executor, mock_tool):
+    """Test that logging is used appropriately."""
+    # Replace the logger in the executor
+    with patch("logging.getLogger", return_value=mock_logger):
+        # Create a new executor to trigger the getLogger call
+        new_executor = ToolExecutor(mock_registry())
+
+        # Test validation logging
+        new_executor.validate_parameters("unknown_tool", {})
+        mock_logger.error.assert_called()
+
+        # Reset the mock
+        mock_logger.reset_mock()
+
+        # Test successful validation logging
+        new_executor.validate_parameters(mock_tool, {"param1": "value"})
+        # Success doesn't log anything
+        mock_logger.error.assert_not_called()
+
+
+# Test validation with different schema types
+def test_validate_parameters_with_array_schema(executor, mock_tool):
+    """Test validation with an array schema."""
+    mock_tool.schema = {
+        "parameters": {
+            "type": "object",
+            "properties": {"items": {"type": "array", "items": {"type": "string"}}},
+            "required": ["items"],
+        }
+    }
+
+    # Valid array
+    assert executor.validate_parameters(mock_tool, {"items": ["a", "b", "c"]}) is True
+
+    # Invalid array (contains a non-string)
+    assert executor.validate_parameters(mock_tool, {"items": ["a", 1, "c"]}) is False
+
+    # Missing required array
+    assert executor.validate_parameters(mock_tool, {}) is False
+
+
+def test_validate_parameters_with_nested_object_schema(executor, mock_tool):
+    """Test validation with a nested object schema."""
     mock_tool.schema = {
         "parameters": {
             "type": "object",
             "properties": {
-                "param1": {"type": "string"},
+                "user": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "age": {"type": "integer"},
+                        "address": {
+                            "type": "object",
+                            "properties": {"city": {"type": "string"}, "zip": {"type": "string"}},
+                            "required": ["city"],
+                        },
+                    },
+                    "required": ["name", "address"],
+                }
             },
-            "required": ["param1"],
-        },
+            "required": ["user"],
+        }
     }
 
-    mock_registry = MagicMock()
-    mock_registry.get_tool.return_value = mock_tool
+    # Valid nested object
+    assert (
+        executor.validate_parameters(
+            mock_tool, {"user": {"name": "John", "age": 30, "address": {"city": "New York", "zip": "10001"}}}
+        )
+        is True
+    )
 
-    # Create executor with our mock registry
-    executor = ToolExecutor(mock_registry)
+    # Missing required nested field
+    assert (
+        executor.validate_parameters(
+            mock_tool,
+            {
+                "user": {
+                    "name": "John",
+                    "address": {
+                        "zip": "10001"
+                        # Missing required city
+                    },
+                }
+            },
+        )
+        is False
+    )
 
-    # Replace the executor's logger with our mock
-    executor.logger = mock_logger
 
-    # Test with valid parameters
-    executor.validate_parameters(mock_tool, {"param1": "value"})
+@pytest.mark.asyncio
+async def test_execute_with_different_parameter_types(executor, mock_tool):
+    """Test execution with different parameter types."""
+    mock_tool.schema = {
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "string_param": {"type": "string"},
+                "number_param": {"type": "number"},
+                "boolean_param": {"type": "boolean"},
+                "null_param": {"type": "null"},
+                "array_param": {"type": "array", "items": {"type": "string"}},
+                "object_param": {"type": "object"},
+            },
+            "required": ["string_param"],
+        }
+    }
 
-    # Test with invalid parameters
-    executor.validate_parameters(mock_tool, {})
+    params = {
+        "string_param": "string value",
+        "number_param": 42.5,
+        "boolean_param": True,
+        "null_param": None,
+        "array_param": ["item1", "item2"],
+        "object_param": {"key": "value"},
+    }
 
-    # Check that warning was called with a message about validation
-    mock_logger.error.assert_not_called()
-    mock_logger.warning.assert_called()
+    await executor.execute("test_tool", params)
 
-    # Get the warning args
-    warning_args = mock_logger.warning.call_args[0][0]
-    assert "validation failed" in warning_args.lower()
+    # Verify that the execute method was called with all parameters
+    mock_tool.execute.assert_called_once_with(params)
+
+
+if __name__ == "__main__":
+    pytest.main()
