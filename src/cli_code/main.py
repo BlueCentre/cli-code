@@ -10,15 +10,23 @@ import os
 import sys
 import time
 import uuid
+import json
 
 import click
-from chuk_mcp import (
-    MCPClientProtocol,
-    MCPError,
-    MCPMessage,
-    decode_mcp_message,
-    encode_mcp_message,
-)
+# # Revert to original imports for most, try submodule for Protocol
+# from chuk_mcp import (
+#     # MCPClientProtocol, # <-- Still not here
+#     MCPError,
+#     MCPMessage,
+#     decode_mcp_message,
+#     encode_mcp_message,
+# )
+# from chuk_mcp.mcp_client.protocol import MCPClientProtocol # <-- Trying this path again
+# # Import classes from their likely submodules - Attempt 2
+# from chuk_mcp.mcp_client.exceptions import MCPError
+# from chuk_mcp.mcp_client.protocol.base_protocol import MCPClientProtocol # Guessing base_protocol
+# from chuk_mcp.mcp_client.messages.message_base import MCPMessage # Guessing message_base
+# from chuk_mcp.mcp_client.messages.codec import decode_mcp_message, encode_mcp_message # Assuming codec module
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -308,8 +316,6 @@ def start_interactive_session(provider: str, model_name: str, console: Console):
             f"[bold red]Connection Error:[/bold red] Could not connect to MCP Server at {MCP_SERVER_HOST}:{MCP_SERVER_PORT}."
         )
         console.print("[yellow]Is the stub server (mcp_stub_server.py) running?[/yellow]")
-    except MCPError as e:
-        console.print(f"[bold red]MCP Protocol Error:[/bold red] {e}")
     except Exception as e:
         console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
         log.error("Unexpected error in MCP session", exc_info=True)
@@ -320,16 +326,18 @@ async def run_mcp_session(agent_id: str, session_id: str, console: Console):
     """Handles the asynchronous MCP client connection and interaction loop."""
 
     reader, writer = await asyncio.open_connection(MCP_SERVER_HOST, MCP_SERVER_PORT)
-    mcp_protocol = MCPClientProtocol(reader, writer)
+    # mcp_protocol = MCPClientProtocol(reader, writer) # Removed protocol instance
     log.info(f"Connected to MCP Server at {MCP_SERVER_HOST}:{MCP_SERVER_PORT}")
 
     try:
         while True:
+            # Initialize message_type and text_payload for this turn
+            message_type = None
+            text_payload = None
             try:
-                # Use prompt_toolkit or similar for better input handling if needed
-                # For now, using basic input()
-                user_input = await asyncio.to_thread(console.input, "[bold cyan]You:[/bold cyan] ")
-                user_input = user_input.strip()
+                # Correctly await the result of console.input run in a thread
+                user_input_str = await asyncio.to_thread(console.input, "[bold cyan]You:[/bold cyan] ")
+                user_input = user_input_str.strip()
 
                 if not user_input:
                     continue
@@ -345,59 +353,83 @@ async def run_mcp_session(agent_id: str, session_id: str, console: Console):
                     continue
 
                 # Send user message via MCP
-                user_msg = MCPMessage(
-                    message_type="user_message",
-                    agent_id=agent_id,
-                    session_id=session_id,
-                    payload={"text": user_input},
-                )
-                await mcp_protocol.send_message(user_msg)
-                log.info(f"Sent User Message: {user_msg.payload.get('text', '')[:50]}...")
+                # Construct the message payload manually
+                user_payload = {
+                    "message_type": "user_message",
+                    "agent_id": agent_id,
+                    "session_id": session_id,
+                    "payload": {"text": user_input},
+                }
+                # Encode and send
+                encoded_message = json.dumps(user_payload).encode('utf-8') + b'\n'
+                writer.write(encoded_message)
+                await writer.drain()
+                # await mcp_protocol.send_message(user_msg) # Removed old send
+                log.info(f"Sent User Message: {user_input[:50]}...")
 
                 # --- Receive and process server responses --- M1: Basic Text Only ---
-                with console.status("[dim]Waiting for response...[/dim]", spinner="dots"):
-                    while True:  # Loop to potentially handle multiple messages (e.g., status, then final)
+                # Move status outside the inner processing loop if it causes issues
+                # with console.status("[dim]Waiting for response...[/dim]", spinner="dots"):
+                while True:  # Loop to potentially handle multiple messages (e.g., status, then final)
+                    try:
+                        # Read line by line
+                        line = await reader.readline()
+                        if not line:
+                            console.print("[bold red]Connection closed by server.[/bold red]")
+                            return # Exit session
+
+                        # Decode JSON
                         try:
-                            response_msg = await mcp_protocol.receive_message()
-                            if not response_msg:
-                                console.print("[bold red]Connection closed by server.[/bold red]")
-                                return  # Exit session
+                            response_data = json.loads(line.decode('utf-8'))
+                        except json.JSONDecodeError as json_err:
+                            log.error(f"Failed to decode JSON from server: {line.decode('utf-8', errors='ignore')}", exc_info=json_err)
+                            console.print("[bold red]Error:[/bold red] Received invalid data from server.")
+                            break # Exit inner receive loop on decode error
 
-                            log.info(f"Received MCP Message: {response_msg.model_dump_json(indent=1)}")
+                        log.info(f"Received MCP Data: {response_data}") # Log raw data
 
-                            if response_msg.message_type == "assistant_message":
-                                text_payload = response_msg.payload.get("text", "")
-                                if text_payload:
-                                    console.print(Markdown(text_payload))  # Display assistant text
-                                # For M1, we assume one assistant message ends the turn
-                                break  # Exit receive loop, wait for next user input
-                            elif response_msg.message_type == "error_message":
-                                error_payload = response_msg.payload.get("message", "Unknown error from server.")
-                                console.print(f"[bold red]Server Error:[/bold red] {error_payload}")
-                                break  # Exit receive loop
-                            elif response_msg.message_type == "status_update":  # Example future handling
-                                status_payload = response_msg.payload.get("status", "Server is working...")
-                                console.print(f"[dim]Status:[/dim] {status_payload}")
-                                # Continue waiting for the final message in this turn
-                            else:
-                                # Handle other message types (tool calls, etc.) in later milestones
-                                console.print(
-                                    f"[dim]Received unhandled message type: {response_msg.message_type}[/dim]"
-                                )
-                                # Decide if we break or continue waiting based on protocol design
-                                break  # For M1, break on anything unexpected
+                        # Process based on type
+                        message_type = response_data.get("message_type")
+                        payload = response_data.get("payload", {})
 
-                        except asyncio.TimeoutError:
-                            console.print("[yellow]Timeout waiting for server response. Try again?[/yellow]")
-                            break  # Exit receive loop, let user retry
-                        except MCPError as e:
-                            console.print(f"[bold red]MCP Protocol Error during receive:[/bold red] {e}")
-                            log.error("MCP Error receiving", exc_info=True)
+                        if message_type == "assistant_message":
+                            text_payload = payload.get("text", "")
+                            if text_payload:
+                                log.debug(f"Printing assistant message payload: {text_payload!r}")
+                                # Print message *after* potential status spinner is implicitly exited by break
+                                # console.print(Markdown(text_payload))
+                            # For M1, assume one assistant message ends the turn
+                            break  # Exit receive loop, wait for next user input
+                        elif message_type == "error_message":
+                            error_payload = payload.get("message", "Unknown error from server.")
+                            console.print(f"[bold red]Server Error:[/bold red] {error_payload}")
                             break  # Exit receive loop
-                        except Exception as e:
-                            console.print(f"[bold red]Error receiving message:[/bold red] {e}")
-                            log.error("Error receiving message", exc_info=True)
-                            break  # Exit receive loop
+                        elif message_type == "status_update":  # Example future handling
+                            status_payload = payload.get("status", "Server is working...")
+                            # Display status update within the loop
+                            with console.status(f"[dim]{status_payload}...[/dim]", spinner="dots"):
+                                await asyncio.sleep(0.1) # Keep status visible briefly
+                            # console.print(f"[dim]Status:[/dim] {status_payload}") # Old way
+                            # Continue waiting for the final message in this turn
+                        else:
+                            # Handle other message types (tool calls, etc.) in later milestones
+                            console.print(
+                                f"[dim]Received unhandled message type: {message_type}[/dim]"
+                            )
+                            break  # For M1, break on anything unexpected
+
+                    except asyncio.TimeoutError:
+                        console.print("[yellow]Timeout waiting for server response. Try again?[/yellow]")
+                        break  # Exit receive loop, let user retry
+                    except Exception as e:
+                        console.print(f"[bold red]Error processing server message:[/bold red] {e}")
+                        log.error("Error receiving/processing message", exc_info=True)
+                        break  # Exit receive loop
+
+                # --- Print final message outside the receive loop ---
+                if message_type == "assistant_message" and text_payload:
+                    console.print(Markdown(text_payload))
+
             except EOFError:
                 console.print("[yellow]Input stream closed. Exiting.[/yellow]")
                 break
