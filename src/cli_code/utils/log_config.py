@@ -10,10 +10,7 @@ def get_logger(name):
     logger = logging.getLogger(name)
     # Basic configuration if not already configured
     if not logger.hasHandlers():
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.DEBUG)
         logger.setLevel(logging.DEBUG)  # Set a default level (e.g., DEBUG)
         logger.propagate = False  # Prevent duplicate logging if root logger is configured
     print(f"[Debug] Logger '{name}' requested/configured.")  # Debug print

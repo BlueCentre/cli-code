@@ -399,10 +399,25 @@ class OllamaModel(AbstractModelAgent):
                         return content
                     else:
                         log.warning("Received empty content from model response with no tool calls")
-                        return "The model provided an empty response. Please try again with a more specific question."
+                        return self._handle_empty_response()
 
             except Exception as e:
                 log.error(f"Error during Ollama agent iteration {iteration_count}: {e}", exc_info=True)
+
+                # Handle specific error types
+                error_msg = str(e).lower()
+
+                # Check for context length exceeded
+                if "maximum context length" in error_msg or "context length" in error_msg or "token limit" in error_msg:
+                    log.warning("Context length exceeded error detected")
+                    return self._handle_max_tokens_error(e)
+
+                # Check for recitation error
+                elif "recitation" in error_msg:
+                    log.warning("Recitation error detected")
+                    return self._handle_recitation_error(e)
+
+                # Handle other errors
                 self.console.print(f"[bold red]Error during Ollama interaction:[/bold red] {e}")
                 # Clean history? Pop last user message?
                 if self.history and self.history[-1].get("role") == "user":
@@ -412,6 +427,22 @@ class OllamaModel(AbstractModelAgent):
         # If loop finishes without returning text (e.g., max iterations)
         log.warning(f"Ollama agent loop reached max iterations ({MAX_OLLAMA_ITERATIONS}).")
         return "(Agent reached maximum iterations)"
+
+    def _handle_max_tokens_error(self, exception) -> str:
+        """Handle errors related to maximum token/context length being exceeded."""
+        log.warning(f"Context length exceeded: {exception}")
+        # Clean history
+        if self.history and self.history[-1].get("role") == "user":
+            self.history.pop()
+        return "Error: The request exceeded the model's context length. Please try with a simpler request or clear the conversation history."
+
+    def _handle_recitation_error(self, exception) -> str:
+        """Handle errors related to recitation."""
+        log.warning(f"Recitation error: {exception}")
+        # Clean history
+        if self.history and self.history[-1].get("role") == "user":
+            self.history.pop()
+        return "Error: The model's response was classified as recitation. Please try rephrasing your request."
 
     def list_models(self) -> List[Dict] | None:
         """
@@ -612,3 +643,8 @@ class OllamaModel(AbstractModelAgent):
 
         log.debug(f"Prepared {len(openai_tools)} tools for Ollama API call.")
         return openai_tools if openai_tools else []
+
+    def _handle_empty_response(self) -> str:
+        """Handle empty responses from the model."""
+        log.warning("Received empty response from model")
+        return "The model provided an empty response. Please try again or rephrase your request."
