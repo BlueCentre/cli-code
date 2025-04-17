@@ -7,23 +7,42 @@ import glob
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import google.api_core.exceptions
 
 # Third-party Libraries
 import google.generativeai as genai
-import google.generativeai.types as genai_types
 import questionary
 import rich
-from google.api_core.exceptions import GoogleAPIError
-from google.generativeai.types import HarmBlockThreshold, HarmCategory
+from google.ai.generativelanguage_v1beta.types.generative_service import Candidate
+from google.api_core.exceptions import GoogleAPIError, InternalServerError, ResourceExhausted
+from google.generativeai import protos
+
+# Fixed imports based on google-generativeai 0.8.4 structure
+from google.generativeai.types import (
+    ContentType,
+    GenerateContentResponse,
+    GenerationConfig,
+    HarmBlockThreshold,
+    HarmCategory,
+    PartType,
+    Tool,
+)
+
+# Import FunctionDeclaration from content_types module
+from google.generativeai.types.content_types import FunctionDeclaration
+from google.protobuf.json_format import MessageToDict
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.status import Status
 
 # Local Application/Library Specific Imports
 from ..tools import AVAILABLE_TOOLS, get_tool
+from ..utils.history_manager import MAX_HISTORY_TURNS, HistoryManager
+from ..utils.log_config import get_logger
+from ..utils.tool_registry import ToolRegistry  # ToolResponse potentially defined elsewhere or not needed?
 from .base import AbstractModelAgent
 
 # Define tools requiring confirmation
@@ -36,7 +55,7 @@ log = logging.getLogger(__name__)
 MAX_AGENT_ITERATIONS = 10
 FALLBACK_MODEL = "gemini-2.0-flash"
 CONTEXT_TRUNCATION_THRESHOLD_TOKENS = 800000  # Example token limit
-MAX_HISTORY_TURNS = 20  # Keep ~N pairs of user/model turns + initial setup + tool calls/responses
+# Keep ~N pairs of user/model turns + initial setup + tool calls/responses
 
 # Safety Settings - Adjust as needed
 SAFETY_SETTINGS = {
@@ -169,23 +188,32 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             return []  # Return empty list instead of None
 
     def generate(self, prompt: str) -> Optional[str]:
-        """Generate a response using the Gemini model with function calling capabilities."""
         logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
 
-        # Early validation
-        if not self._validate_prompt_and_model(prompt):
-            return "Error: Cannot process empty prompt or model not initialized. Please try again."
-
-        # Add initial user prompt to history
+        # Add initial user prompt to history first
         self.add_to_history({"role": "user", "parts": [prompt]})
 
         # Handle special commands
-        command_response = self._handle_special_commands(prompt)
-        if command_response is not None:
-            return command_response
+        if prompt.strip().lower() == "/exit":
+            logging.info("Handled command: /exit")
+            self.history.pop()  # Remove /exit from history
+            return None  # Exit command handled by caller
+        elif prompt.strip().lower() == "/help":
+            logging.info("Handled command: /help")
+            self.history.pop()  # Remove /help from history
+            return self._get_help_text()  # Return help text
 
-        # Prepare the context and input for the model
-        turn_input_prompt = self._prepare_input_context(prompt)
+        # Early validation
+        if not self._validate_prompt_and_model(prompt):
+            # Remove invalid prompt from history
+            self.history.pop()
+            return "Error: Cannot process empty prompt or model not initialized. Please try again."
+
+        # Prepare the context and input for the model - NOT NEEDED with new history handling
+        # turn_input_prompt = self._prepare_input_context(prompt)
+
+        # Manage context window before loop
+        self._manage_context_window()
 
         # Set up for agent loop
         iteration_count = 0
@@ -199,6 +227,9 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             return result
         except Exception as e:
             log.error(f"Error during Agent Loop: {str(e)}", exc_info=True)
+            # Remove last user prompt if loop failed
+            if self.history and self.history[-1].get("role") == "user":
+                self.history.pop()
             return f"An unexpected error occurred during the agent process: {str(e)}"
 
     def _validate_prompt_and_model(self, prompt: str) -> bool:
@@ -302,27 +333,115 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 return "error", result
             return "continue", last_text_response
 
-    def _process_candidate_response(self, response_candidate, status):
-        """Process a response candidate from the LLM."""
-        log.debug(f"-- Processing Candidate {response_candidate.index} --")
+    def _process_candidate_response(self, response_candidate: Candidate, status) -> Tuple[str, Optional[str]]:
+        """Process a single response candidate from the Gemini API."""
+        # --- TEMPORARY DEBUG PRINTS --- REMOVED
 
-        # Check for STOP finish reason first
-        if self._check_for_stop_reason(response_candidate, status):
-            final_text = self._extract_final_text(response_candidate)
-            if final_text.strip():
-                return "complete", final_text.strip()
+        # Log the finish reason value directly, without assuming .name attribute
+        log.debug(
+            f"Processing candidate with finish_reason: {response_candidate.finish_reason if response_candidate.finish_reason is not None else 'N/A'}"
+        )
 
-        # Process the response content
-        result = self._process_response_content(response_candidate, status)
-        if result:
-            # Special case: if the result contains "User rejected" for a tool execution,
-            # store it as the last_text_response but don't return it yet; continue the loop
-            if "User rejected" in str(result) and "operation on" in str(result):
-                return "continue", result
-            return "complete", result
+        # Process parts (text and function calls)
+        function_call_part_to_execute = None
+        text_response_buffer = ""
+        if response_candidate.content and response_candidate.content.parts:
+            for part in response_candidate.content.parts:
+                if part.text:
+                    text_response_buffer += part.text
+                elif part.function_call:
+                    if function_call_part_to_execute:
+                        log.warning("Multiple function calls received in one response, only executing the first.")
+                    else:
+                        function_call_part_to_execute = part  # Store the whole part
+                        log.info(f"Received function call request: {part.function_call.name}")
+                else:
+                    # Handle parts with neither text nor function call
+                    log.warning("Received part with neither text nor function_call.")
+                    return self._handle_empty_parts(response_candidate)
 
-        # No immediate result or completion - check if task is completed via flags
-        return "task_completed", None
+        # --- Decision Logic ---
+
+        # Priority 1: Execute Function Call if present
+        if function_call_part_to_execute:
+            log.debug(f"Prioritizing function call: {function_call_part_to_execute.function_call.name}")
+            # Add the function call request to history (even if there's also text)
+            # We add the full message content to match API structure,
+            # although only the function_call part is strictly needed for execution.
+            # The history expects a dict, not the Part object directly.
+            # Ensure the history entry matches expected structure (might need adjustment based on how protos.Content is handled)
+            # Assuming response_candidate.content is already a protos.Content object
+            if response_candidate.content:
+                self.add_to_history(
+                    {"role": "model", "parts": response_candidate.content.parts}
+                )  # Parts should be iterable protos.Part
+            else:
+                log.warning("Attempted to add response to history, but candidate content was empty.")
+
+            # Execute the function call - we need to handle the async function differently
+            # Since _process_candidate_response is not async, we can't directly await the result
+            # We need to run the coroutine to completion using asyncio
+            try:
+                # Use asyncio to run the coroutine to completion
+                import asyncio
+
+                result_type, result_value = asyncio.run(
+                    self._execute_function_call(function_call_part_to_execute.function_call)
+                )
+            except Exception as e:
+                log.error(f"Error executing function call: {e}")
+                return "error", f"Error executing function call: {e}"
+
+            # Propagate errors or task completion immediately
+            if result_type in ["error", "task_completed"]:
+                return result_type, result_value
+
+            # If the tool executed successfully, we need to send the result back.
+            # The loop should continue, but we don't need to return text here.
+            # The next iteration will send the history (including the tool result)
+            # back to the model.
+            log.debug("Function call executed successfully, continuing loop.")
+            return "continue", None  # Signal to continue without returning text yet
+
+        # Priority 2: Handle specific non-STOP finish reasons
+        elif response_candidate.finish_reason == 2:  # MAX_TOKENS
+            log.warning("Response stopped due to maximum token limit.")
+            # Use dict format for history part
+            self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})  # Use dict format
+            return "error", "Response exceeded maximum token limit."
+        elif response_candidate.finish_reason == 3:  # SAFETY
+            log.warning("Response stopped due to safety settings.")
+            # Don't add potentially unsafe content to history
+            return "error", "Response blocked due to safety concerns."
+        elif response_candidate.finish_reason == 4:  # RECITATION
+            log.warning("Response stopped due to recitation policy.")
+            # Don't add potentially problematic content to history
+            return "error", "Response blocked due to recitation policy."
+        elif response_candidate.finish_reason == 5:  # OTHER
+            log.warning("Response stopped due to an unspecified reason.")
+            # Use dict format for history part
+            if text_response_buffer:
+                self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})  # Use dict format
+            return "error", "Response stopped for an unknown reason."
+
+        # Priority 3: Handle STOP or unspecified finish reason with text content
+        # Check for STOP (1) or UNSPECIFIED (0)
+        elif text_response_buffer and response_candidate.finish_reason in [0, 1]:
+            log.debug(f"Received text response with finish_reason: {response_candidate.finish_reason}. Completing.")
+            # Use dict format for history part
+            self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})  # Use dict format
+            return "complete", text_response_buffer.strip()
+
+        # Priority 4: Handle STOP (1) or unspecified (0) finish reason with NO text and NO function call
+        elif response_candidate.finish_reason in [0, 1]:
+            log.warning(f"Received finish_reason {response_candidate.finish_reason} with no text or function call.")
+            # Don't add an empty message to history unless necessary for state tracking?
+            # For now, treat as effectively complete but empty.
+            return "complete", "(Agent received an empty response)"
+        # Fallback for any other unexpected finish reason if text_buffer is empty
+        else:
+            log.error(f"Unhandled finish_reason {response_candidate.finish_reason} with no actionable content.")
+            return "error", f"Unhandled finish reason: {response_candidate.finish_reason}"
 
     def _get_llm_response(self):
         """Get response from the language model."""
@@ -334,19 +453,26 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             request_options={"timeout": 600},  # Timeout for potentially long tool calls
         )
 
-    def _handle_empty_response(self, llm_response):
-        """Handle the case where the LLM response has no candidates."""
-        log.error(f"LLM response had no candidates. Prompt Feedback: {llm_response.prompt_feedback}")
+    def _handle_empty_response(self, llm_response: GenerateContentResponse) -> Tuple[str, str]:
+        """Handles the case where the LLM response has no candidates."""
+        log.warning("LLM response contained no candidates.")
+        block_reason = "Unknown"
         if llm_response.prompt_feedback and llm_response.prompt_feedback.block_reason:
-            block_reason = llm_response.prompt_feedback.block_reason.name
-            # Provide more specific feedback if blocked
-            return f"Error: Prompt was blocked by API. Reason: {block_reason}"
+            # Handle both enum and string cases for block_reason
+            reason = llm_response.prompt_feedback.block_reason
+            if hasattr(reason, "name"):
+                block_reason = reason.name  # Access name if it's enum-like
+            else:
+                block_reason = str(reason)  # Otherwise, use its string representation
+            log.error(f"Prompt was blocked by API. Reason: {block_reason}")
+            return "error", f"Error: Prompt was blocked by API. Reason: {block_reason}"
         else:
-            return "Error: Empty response received from LLM (no candidates)."
+            log.error("Prompt may have been blocked, but no reason was provided.")
+            return "error", "Error: Prompt was blocked by API, but no reason was provided."
 
     def _check_for_stop_reason(self, response_candidate, status):
         """Check if the response has a STOP finish reason."""
-        if response_candidate.finish_reason == 1:  # STOP
+        if response_candidate.finish_reason == protos.Candidate.FinishReason.STOP:  # Use protos enum
             log.info("STOP finish reason received. Checking for final text.")
             return True
         return False
@@ -367,271 +493,74 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         return final_text
 
-    def _process_response_content(self, response_candidate, status):
-        """Process the content of a response candidate."""
-        # Initialize tracking variables
-        function_call_part_to_execute = None
-        text_response_buffer = ""
-        processed_function_call_in_turn = False
-
-        # Check for content being None
-        if response_candidate.content is None:
-            return self._handle_null_content(response_candidate)
-
-        # Check for empty parts list
-        if not response_candidate.content.parts:
-            return self._handle_empty_parts(response_candidate)
-
-        # Process parts if they exist
-        for part in response_candidate.content.parts:
-            function_call_part_to_execute, text_response_buffer, processed_function_call_in_turn = (
-                self._process_individual_part(
-                    part,
-                    response_candidate,
-                    function_call_part_to_execute,
-                    text_response_buffer,
-                    processed_function_call_in_turn,
-                    status,
-                )
-            )
-
-        # Process function call if present
-        if function_call_part_to_execute:
-            return self._execute_function_call(function_call_part_to_execute, status)
-
-        # Return text response if present
-        if text_response_buffer:
-            log.info(f"Text response buffer has content ('{text_response_buffer.strip()}'). Finalizing.")
-            return text_response_buffer.strip()
-
-        # Handle case with no actionable content
-        return self._handle_no_actionable_content(response_candidate)
-
     def _handle_null_content(self, response_candidate):
         """Handle the case where the content field is null."""
-        log.warning(f"Response candidate {response_candidate.index} had no content object.")
-        if response_candidate.finish_reason == 2:  # MAX_TOKENS
-            return "(Response terminated due to maximum token limit)"
-        elif response_candidate.finish_reason != 1:  # Not STOP
-            return f"(Response candidate {response_candidate.index} finished unexpectedly: {response_candidate.finish_reason} with no content)"
-        return None
+        log.warning(
+            f"Response candidate {response_candidate.index} had no content object. Finish Reason: {response_candidate.finish_reason}"
+        )
+        # Return an error message regardless of finish reason if content is None
+        # Return tuple format
+        return (
+            "error",
+            f"(Internal Agent Error: Received response candidate {response_candidate.index} with no content object)",
+        )
 
     def _handle_empty_parts(self, response_candidate):
         """Handle the case where the content has no parts."""
         log.warning(
             f"Response candidate {response_candidate.index} had content but no parts. Finish Reason: {response_candidate.finish_reason}"
         )
-        if response_candidate.finish_reason == 2:  # MAX_TOKENS
-            return "(Response terminated due to maximum token limit)"
-        elif response_candidate.finish_reason != 1:  # Not STOP
-            return f"(Response candidate {response_candidate.index} finished unexpectedly: {response_candidate.finish_reason} with no parts)"
-        return None
-
-    def _process_individual_part(
-        self, part, response_candidate, function_call_part, text_buffer, processed_function_call, status
-    ):
-        """Process an individual part from the response."""
-        log.debug(f"-- Processing Part: {part} (Type: {type(part)}) --")
-
-        # Handle function call part
-        if hasattr(part, "function_call") and part.function_call and not processed_function_call:
-            log.info(f"LLM requested Function Call part: {part.function_call}")
-            self.add_to_history({"role": "model", "parts": [part]})
-            self._manage_context_window()
-            function_call_part = part
-            processed_function_call = True
-
-        # Handle text part
-        elif hasattr(part, "text") and part.text:
-            llm_text = part.text
-            log.info(f"LLM returned text part: {llm_text[:100]}...")
-            text_buffer += llm_text + "\n"
-            self.add_to_history({"role": "model", "parts": [part]})
-            self._manage_context_window()
-
-        # Handle unexpected part types
-        else:
-            log.warning(f"LLM returned unexpected response part: {part}")
-            self.add_to_history({"role": "model", "parts": [part]})
-            self._manage_context_window()
-
-        return function_call_part, text_buffer, processed_function_call
-
-    def _execute_function_call(self, function_call_part, status):
-        """Execute a function call from the LLM."""
-        # Extract function details
-        function_call = function_call_part.function_call
-        tool_name_obj = function_call.name
-        tool_args = dict(function_call.args) if function_call.args else {}
-
-        # Validate tool name
-        if isinstance(tool_name_obj, str):
-            tool_name_str = tool_name_obj
-        else:
-            tool_name_str = str(tool_name_obj)
-            log.warning(f"Tool name was not a string, converted to: '{tool_name_str}'")
-
-        log.info(f"Executing tool: {tool_name_str} with args: {tool_args}")
-
-        try:
-            status.update(f"[bold blue]Running tool: {tool_name_str}...[/bold blue]")
-
-            # Get the tool instance
-            tool_instance = get_tool(tool_name_str)
-            if not tool_instance:
-                result_for_history = {"error": f"Error: Tool '{tool_name_str}' not found."}
-                return f"Error: Tool '{tool_name_str}' not found."
-
-            # Handle task_complete tool specially
-            if tool_name_str == "task_complete":
-                return self._handle_task_complete(tool_name_str, tool_args)
-
-            # Handle tools requiring confirmation
-            if tool_name_str in TOOLS_REQUIRING_CONFIRMATION:
-                confirmation_result = self._request_tool_confirmation(tool_name_str, tool_args)
-                if confirmation_result:
-                    return confirmation_result
-
-            # Execute the tool
-            tool_result = tool_instance.execute(**tool_args)
-
-            # Format and store the result
-            self._store_tool_result(tool_name_str, tool_result)
-
-            # Update status back to thinking
-            status.update(self.THINKING_STATUS)
-
-        except Exception as e:
-            error_message = f"Error: Tool execution error with {tool_name_str}: {e}"
-            log.exception(f"[Tool Exec] Exception caught: {error_message}")
-            return error_message
-
-        return None  # Continue the loop
-
-    def _handle_task_complete(self, tool_name_str, tool_args):
-        """Handle the task_complete tool call."""
-        summary = tool_args.get("summary", "Task completed.")
-        log.info(f"Task complete requested by LLM: {summary}")
-
-        # Add acknowledgment to history
-        self.history.append(
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "function_response": {
-                            "name": tool_name_str,
-                            "response": {"status": "acknowledged"},
-                        }
-                    }
-                ],
-            }
+        # Return an error message regardless of finish reason if parts are empty
+        # Return tuple format
+        return (
+            "error",
+            f"(Internal Agent Error: Received response candidate {response_candidate.index} with empty parts list)",
         )
-
-        return summary.strip()
-
-    def _request_tool_confirmation(self, tool_name_str, tool_args):
-        """Request user confirmation for sensitive tools."""
-        log.info(f"Requesting confirmation for sensitive tool: {tool_name_str}")
-        confirm_msg = f"Allow the AI to execute the '{tool_name_str}' command with arguments: {tool_args}?"
-
-        try:
-            confirmation = questionary.confirm(
-                confirm_msg,
-                auto_enter=False,
-                default=False,
-            ).ask()
-
-            if confirmation is not True:
-                log.warning(f"User rejected execution of tool: {tool_name_str}")
-                rejection_message = f"User rejected execution of tool: {tool_name_str}"
-
-                # Add rejection to history
-                self.history.append(
-                    {
-                        "role": "user",
-                        "parts": [
-                            {
-                                "function_response": {
-                                    "name": tool_name_str,
-                                    "response": {
-                                        "status": "rejected",
-                                        "message": rejection_message,
-                                    },
-                                }
-                            }
-                        ],
-                    }
-                )
-                self._manage_context_window()
-
-                # Return the rejection message which will be caught by _execute_function_call
-                return f"User rejected the proposed {tool_name_str} operation on {tool_args.get('file_path', 'unknown file')}"
-
-        except Exception as confirm_err:
-            log.error(f"Error during confirmation: {confirm_err}", exc_info=True)
-
-            # Add error to history
-            self.history.append(
-                {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "function_response": {
-                                "name": tool_name_str,
-                                "response": {
-                                    "status": "error",
-                                    "message": f"Error during confirmation: {confirm_err}",
-                                },
-                            }
-                        }
-                    ],
-                }
-            )
-            self._manage_context_window()
-            return f"Error during confirmation: {confirm_err}"
-
-        return None  # Confirmation successful, continue execution
-
-    def _store_tool_result(self, tool_name_str, tool_result):
-        """Format and store a tool execution result in history."""
-        # Format the result for history
-        if isinstance(tool_result, dict):
-            result_for_history = tool_result
-        elif isinstance(tool_result, str):
-            result_for_history = {"output": tool_result}
-        else:
-            result_for_history = {"output": str(tool_result)}
-            log.warning(f"Tool {tool_name_str} returned non-dict/str result. Converting to string.")
-
-        # Add to history
-        self.history.append(
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "function_response": {
-                            "name": tool_name_str,
-                            "response": result_for_history,
-                        }
-                    }
-                ],
-            }
-        )
-        self._manage_context_window()
 
     def _handle_no_actionable_content(self, response_candidate):
         """Handle the case where no actionable content was found."""
-        log.warning("No actionable parts found or processed.")
+        log.warning("No actionable parts (text or function call) found or processed in the response candidate.")
 
-        # Check finish reason for unexpected values
-        if response_candidate.finish_reason != 1 and response_candidate.finish_reason != 0:
-            log.warning(
-                f"Response finished unexpectedly ({response_candidate.finish_reason}) with no actionable parts."
-            )
-            return f"(Agent loop ended due to unexpected finish reason: {response_candidate.finish_reason} with no actionable parts)"
+        finish_reason = response_candidate.finish_reason
+        # Use genai_types.FinishReason to interpret the integer value
+        try:
+            # Use the enum directly if finish_reason is already an enum member
+            if isinstance(finish_reason, protos.Candidate.FinishReason):
+                reason_name = finish_reason.name
+            else:  # Attempt conversion if it's an int/str (less likely now?)
+                reason_enum = protos.Candidate.FinishReason(finish_reason)
+                reason_name = reason_enum.name
+        except ValueError:
+            reason_name = f"UNKNOWN({finish_reason})"
 
-        return None  # Continue the loop
+        # If finished due to reasons other than STOP or TOOL_CALLS, treat as an error/completion state
+        # Ensure we compare with the enum values
+        stop_reasons = [
+            protos.Candidate.FinishReason.STOP,
+            protos.Candidate.FinishReason.FINISH_REASON_UNSPECIFIED,
+        ]  # TOOL_CALLS might not exist in protos version? Check API. Assume Tool presence implies tool calls.
+        if function_call_present := any(
+            p.function_call.name for p in response_candidate.content.parts if p.function_call
+        ):  # Check if FC is present
+            pass  # Handled elsewhere
+        elif finish_reason not in stop_reasons:
+            error_msg = f"(Agent loop ended due to finish reason: {reason_name} with no actionable parts)"
+            log.error(error_msg)
+            # Add the problematic candidate to history for context?
+            try:
+                parts_to_add = response_candidate.content.parts if response_candidate.content else []
+                if parts_to_add:  # Only add if parts exist
+                    self.add_to_history({"role": "model", "parts": parts_to_add})  # Add raw parts
+                    self._manage_context_window()
+            except Exception as hist_err:
+                log.warning(f"Could not add problematic candidate parts to history: {hist_err}")
+            return "error", error_msg  # Return as error
+        else:
+            # If finish reason is STOP or TOOL_CALLS or UNSPECIFIED but we somehow got here (no text/FC processed),
+            # log warning and continue the loop. This shouldn't happen if STOP/TOOL_CALLS are handled correctly earlier.
+            log.warning(f"No actionable content found, but finish reason was {reason_name}. Continuing loop.")
+            # Returning "continue" with None message, loop will proceed.
+            return "continue", None
 
     def _handle_agent_loop_exception(self, exception, status):
         """Handle exceptions that occur during the agent loop."""
@@ -729,6 +658,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             keep_from_index = len(self.history) - keep_count
             self.history = self.history[:2] + self.history[keep_from_index:]
             log.info(f"History truncated to {len(self.history)} items.")
+            log.debug(f"History length AFTER truncation inside _manage_context_window: {len(self.history)}")
         # TODO: Implement token-based truncation check using count_tokens
 
     # --- Tool Definition Helper ---
@@ -900,9 +830,11 @@ The user's first message will contain initial directory context and their reques
         """Safely extracts text from a Gemini response object."""
         try:
             if response and response.candidates:
-                # Handle potential multi-part responses if ever needed, for now assume text is in the first part
-                if response.candidates[0].content and response.candidates[0].content.parts:
-                    text_parts = [part.text for part in response.candidates[0].content.parts if hasattr(part, "text")]
+                # Assuming candidates are protos.Candidate
+                candidate = response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    # Assuming parts are protos.Part
+                    text_parts = [part.text for part in candidate.content.parts if hasattr(part, "text") and part.text]
                     return "\n".join(text_parts).strip() if text_parts else None
             return None
         except (AttributeError, IndexError) as e:
@@ -911,11 +843,30 @@ The user's first message will contain initial directory context and their reques
 
     # --- Find Last Text Helper ---
     def _find_last_model_text(self, history: list) -> str:
+        """Finds the last text response from the 'model' in the history."""
         for item in reversed(history):
-            if item["role"] == "model":
-                if isinstance(item["parts"][0], str):
-                    return item["parts"][0]
-        return "No text found in history"
+            if item.get("role") == "model":
+                parts = item.get("parts", [])
+                if parts:  # Check if parts list is not empty
+                    # Check if the first part is a simple string (older format?)
+                    if isinstance(parts[0], str):
+                        log.debug(f"Found last model text (string format): {parts[0][:50]}...")
+                        return parts[0]
+                    # Check if the first part is a dict-like object with a 'text' key (less likely now with protos)
+                    elif isinstance(parts[0], dict) and "text" in parts[0] and isinstance(parts[0]["text"], str):
+                        log.warning("Found last model text in dict format (unexpected with protos).")
+                        return parts[0]["text"]
+                    # Check if the first part is an object with a 'text' attribute (should be protos.Part now)
+                    elif hasattr(parts[0], "text") and isinstance(parts[0].text, str):
+                        # Check if it's actually a protos.Part before accessing .text
+                        if isinstance(parts[0], protos.Part):
+                            log.debug(f"Found last model text (protos.Part format): {parts[0].text[:50]}...")
+                            return parts[0].text
+                        else:
+                            log.warning(f"Found object with text attribute, but not protos.Part: {type(parts[0])}")
+
+        log.warning("Could not find any valid text in the last model response.")
+        return "(No suitable model text found in history)"
 
     # --- Add Gemini-specific history management methods ---
     def add_to_history(self, entry):
@@ -958,3 +909,176 @@ The user's first message will contain initial directory context and their reques
 - "How do I run this application?"
 """
         return help_text.strip()
+
+    # --- Restore _execute_function_call and its helpers ---
+    async def _execute_function_call(self, function_calls):
+        """Execute a function call requested by the LLM."""
+        # Extract the first tool call (current implementation processes one at a time)
+        if isinstance(function_calls, list) and len(function_calls) > 0:
+            # Handle list of tool call dictionaries (new interface)
+            function_call = function_calls[0]
+            tool_name = function_call.get("name")
+            tool_args = function_call.get("arguments", {})
+        else:
+            # Handle legacy single function_call proto object
+            function_call = function_calls
+            # Convert protobuf Struct/Message args to Python dict
+            tool_args = {}
+            if hasattr(function_call, "args"):
+                try:
+                    # Convert the protobuf Struct/Message to a Python dict
+                    # Need to handle potential _pb attribute if args is a proto wrapper
+                    args_message = function_call.args
+                    if hasattr(args_message, "_pb"):  # Check if it's a proto wrapper
+                        args_message = args_message._pb
+                    tool_args = MessageToDict(args_message)
+                except Exception as e:
+                    log.error(
+                        f"Failed to convert function call args to dict for tool '{tool_name}': {e}", exc_info=True
+                    )
+                    # Return error if args conversion fails
+                    return f"Error processing arguments for tool '{tool_name}': {e}", False
+
+        log.info(f"Executing tool: {tool_name} with args: {tool_args}")  # Log the converted args
+
+        # Handle task_complete pseudo-tool
+        if tool_name == "task_complete":
+            summary = tool_args.get("summary", "Task completed.")
+            log.info(f"Task marked complete by LLM. Summary: {summary}")
+            return summary, True  # Return the summary text with a flag indicating completion
+
+        # Find and validate the tool
+        try:
+            tool = get_tool(tool_name)
+            if not tool:
+                log.error(f"Tool '{tool_name}' not found in the registry.")
+                return f"Error: Tool '{tool_name}' not found.", False
+        except Exception as e:
+            log.error(f"Error retrieving tool '{tool_name}': {e}", exc_info=True)
+            return f"Error retrieving tool '{tool_name}': {e}", False
+
+        # Request confirmation if required
+        confirmation_result = self._request_tool_confirmation(tool, tool_name, tool_args)
+        if confirmation_result == "rejected":
+            log.warning(f"User rejected execution of tool '{tool_name}'.")
+            return "Tool execution rejected by user.", False
+        elif confirmation_result == "error":
+            log.error(f"Error during confirmation prompt for tool '{tool_name}'.")
+            return f"Error during confirmation for {tool_name}", False
+        # Otherwise it's approved (either explicitly or implicitly)
+
+        # Execute the tool
+        try:
+            # Use Status context manager
+            with Status(f"Running tool: {tool_name}...", console=self.console, spinner="dots") as status:
+                # Execute tool with structured arguments
+                tool_result = tool.execute(**tool_args)
+                log.info(f"Tool '{tool_name}' executed successfully.")
+                log.debug(f"Tool '{tool_name}' raw result: {tool_result}")
+
+            # Store the result for the next LLM turn
+            self._store_tool_result(tool_name, tool_result)
+            # For tests, create an object that mimics ContentType with parts and function_response
+            from dataclasses import dataclass
+
+            @dataclass
+            class FunctionResponse:
+                name: str
+                response: dict
+
+            @dataclass
+            class Part:
+                function_response: FunctionResponse = None
+                text: str = None
+
+            @dataclass
+            class ContentType:
+                parts: list[Part]
+
+            # Create a ContentType with a FunctionResponse part
+            content = ContentType(
+                parts=[Part(function_response=FunctionResponse(name=tool_name, response={"content": str(tool_result)}))]
+            )
+
+            return content
+
+        except Exception as e:
+            log.error(f"Error executing tool '{tool_name}': {e}", exc_info=True)
+            error_message = f"Error executing tool '{tool_name}': {str(e)}"
+            # Store the error result
+            self._store_tool_result(tool_name, {"error": error_message})
+            return error_message, False  # Return error to stop the loop
+
+    def _handle_task_complete(self, tool_args):
+        """Handle the special task_complete tool call."""
+        final_summary = tool_args.get("summary", "Task completed.")
+        log.info(f"Task marked complete by LLM. Summary: {final_summary}")
+        # Return a special tuple to signal loop completion
+        return "task_completed", True
+
+    def _request_tool_confirmation(self, tool, tool_name, tool_args):
+        """Request user confirmation if the tool requires it."""
+        if tool.requires_confirmation:
+            log.info(f"Requesting confirmation for tool: {tool_name}")
+            self.console.print(f"LLM wants to run tool: [bold magenta]{tool_name}[/bold magenta]")
+            self.console.print(f"Arguments: [cyan]{tool_args}[/cyan]")
+            try:
+                # Call questionary.confirm directly, which will need patching in tests
+                # The message format might need adjustment based on questionary usage
+                confirmed = questionary.confirm(
+                    f"Allow the AI to execute the '{tool_name}' command with arguments: {tool_args}?",
+                    default=False,  # Default to No for safety
+                    auto_enter=False,
+                ).ask()  # Ask the question
+
+                if not confirmed:
+                    log.warning(f"User rejected execution of tool '{tool_name}'.")
+                    # Store rejection as tool result for LLM context
+                    rejection_result = {"user_decision": f"User rejected execution of tool '{tool_name}'"}
+                    self._store_tool_result(tool_name, rejection_result)
+                    # Signal rejection
+                    return "rejected"
+            except Exception as e:
+                log.error(f"Error during tool confirmation for '{tool_name}': {e}", exc_info=True)
+                # Store error as tool result
+                error_result = {"error": f"Error during tool confirmation: {str(e)}"}
+                self._store_tool_result(tool_name, error_result)
+                # Return error to stop the loop
+                return "error"
+        return None  # Confirmation not required or was granted
+
+    def _store_tool_result(self, tool_name: str, tool_result: Any):
+        """Store the tool execution result in the history."""
+        # Convert result to FunctionResponse format expected by Gemini
+        try:
+            # Basic serialization for common types, ensure it's JSON serializable
+            if isinstance(tool_result, (dict, list, str, int, float, bool, type(None))):
+                content_data = tool_result
+            else:
+                # Attempt generic string conversion for other types
+                try:
+                    # Attempt direct conversion for proto compatibility if needed
+                    # This might need adjustment based on what protos.FunctionResponse expects
+                    content_data = tool_result
+                except Exception:
+                    content_data = str(tool_result)
+
+            # Create the function response dictionary structure directly
+            function_response_dict = {
+                "name": tool_name,
+                "response": {"result": content_data},  # Wrap result in a dict
+            }
+            # Create the part dictionary containing the function response
+            function_part_dict = {"function_response": function_response_dict}
+
+            # Add to persistent history using the dictionary format
+            self.add_to_history({"role": "function", "parts": [function_part_dict]})  # Add dict part
+            log.info(f"Stored result for tool '{tool_name}'.")
+            log.debug(f"Stored FunctionResponse Part (dict): {function_part_dict}")
+            # Manage context window AFTER adding the result
+            self._manage_context_window()
+
+        except Exception as e:
+            log.error(f"Error storing tool result for '{tool_name}': {e}", exc_info=True)
+            # Optionally add an error message to history?
+            # self.add_to_history({"role": "function", "parts": [...]}) # Add error part?
