@@ -428,6 +428,11 @@ class OllamaModel(AbstractModelAgent):
         log.warning(f"Ollama agent loop reached max iterations ({MAX_OLLAMA_ITERATIONS}).")
         return "(Agent reached maximum iterations)"
 
+    def _handle_empty_response(self) -> str:
+        """Handle empty responses from the model."""
+        log.warning("Received empty response from model")
+        return "The model provided an empty response. Please try again or rephrase your request."
+
     def _handle_max_tokens_error(self, exception) -> str:
         """Handle errors related to maximum token/context length being exceeded."""
         log.warning(f"Context length exceeded: {exception}")
@@ -643,8 +648,3 @@ class OllamaModel(AbstractModelAgent):
 
         log.debug(f"Prepared {len(openai_tools)} tools for Ollama API call.")
         return openai_tools if openai_tools else []
-
-    def _handle_empty_response(self) -> str:
-        """Handle empty responses from the model."""
-        log.warning("Received empty response from model")
-        return "The model provided an empty response. Please try again or rephrase your request."
