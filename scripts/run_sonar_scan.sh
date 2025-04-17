@@ -31,7 +31,7 @@ fi
 if [ ! -f "coverage.xml" ]; then
     echo -e "${YELLOW}No coverage.xml found. Running coverage first...${NC}"
     ./run_coverage.sh
-    
+
     # Check if coverage run was successful
     if [ $? -ne 0 ]; then
         echo -e "${RED}Coverage generation failed. Cannot continue.${NC}"
@@ -55,13 +55,13 @@ sonar-scanner \
 # Check if sonar-scanner was successful
 if [ $? -eq 0 ]; then
     echo -e "\n${GREEN}SonarCloud scan completed successfully!${NC}"
-    
+
     # Extract project key for URL
     PROJECT_KEY=$(grep "sonar.projectKey" sonar-project.properties | cut -d= -f2)
     ORGANIZATION=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2)
-    
+
     echo -e "\n${YELLOW}View results at:${NC}"
     echo -e "${GREEN}https://sonarcloud.io/dashboard?id=${PROJECT_KEY}${NC}"
 else
     echo -e "\n${RED}SonarCloud scan failed!${NC}"
-fi 
+fi

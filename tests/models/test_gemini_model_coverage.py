@@ -77,6 +77,7 @@ class TestGeminiModelGenerateMethod:
         # Prepare mock response for basic tests
         self.mock_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP
         content = MagicMock()
 
         # Set up text part
@@ -114,6 +115,7 @@ class TestGeminiModelGenerateMethod:
         # Create a simple text-only response
         mock_response = MagicMock()
         mock_candidate = MagicMock()
+        mock_candidate.finish_reason = 1  # STOP
         mock_content = MagicMock()
 
         # Set up text part that doesn't trigger function calls
@@ -141,17 +143,22 @@ class TestGeminiModelGenerateMethod:
         # Prepare empty candidates
         empty_response = MagicMock()
         empty_response.candidates = []
+        # Add prompt_feedback to simulate blocked response
+        empty_response.prompt_feedback = MagicMock()
+        empty_response.prompt_feedback.block_reason = "SAFETY"
         self.mock_model_instance.generate_content.return_value = empty_response
 
         result = self.model.generate("Hello")
 
-        assert "Error: Empty response received from LLM" in result
+        # Expect the specific blocked message
+        assert "Error: Prompt was blocked by API. Reason: SAFETY" in result
 
     def test_generate_with_empty_content(self):
         """Test handling of empty content in response candidate."""
         # Prepare empty content
         empty_response = MagicMock()
         empty_candidate = MagicMock()
+        empty_candidate.finish_reason = 1  # STOP
         empty_candidate.content = None
         empty_response.candidates = [empty_candidate]
         self.mock_model_instance.generate_content.return_value = empty_response
@@ -165,6 +172,7 @@ class TestGeminiModelGenerateMethod:
         # Create function call part
         function_call_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP (or a specific tool call reason if available)
         content = MagicMock()
 
         function_part = MagicMock()
@@ -190,6 +198,7 @@ class TestGeminiModelGenerateMethod:
         # Create function call part for non-existent tool
         function_call_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP
         content = MagicMock()
 
         function_part = MagicMock()
@@ -220,6 +229,7 @@ class TestGeminiModelGenerateMethod:
         # Create function call part
         function_call_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP
         content = MagicMock()
 
         function_part = MagicMock()
@@ -250,6 +260,7 @@ class TestGeminiModelGenerateMethod:
         # Create function call part for task_complete
         function_call_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP
         content = MagicMock()
 
         function_part = MagicMock()
@@ -273,13 +284,15 @@ class TestGeminiModelGenerateMethod:
 
         # Verify task completion handling
         self.mock_get_tool.assert_called_with("task_complete")
-        assert result == "Task completed successfully with details"
+        # Assert against the summary provided in the function call args
+        assert result == "Task completed successfully"
 
     def test_generate_with_file_edit_confirmation_accepted(self):
         """Test handling of file edit confirmation when accepted."""
         # Create function call part for edit
         function_call_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP
         content = MagicMock()
 
         function_part = MagicMock()
@@ -309,6 +322,7 @@ class TestGeminiModelGenerateMethod:
         # Create function call part for edit
         function_call_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP
         content = MagicMock()
 
         function_part = MagicMock()
@@ -340,6 +354,7 @@ class TestGeminiModelGenerateMethod:
             # Create a simple text-only response for the fallback model
             mock_response = MagicMock()
             mock_candidate = MagicMock()
+            mock_candidate.finish_reason = 1  # STOP
             mock_content = MagicMock()
 
             # Set up text part
@@ -377,9 +392,9 @@ class TestGeminiModelGenerateMethod:
         result = self.model.generate("Hello")
 
         # Verify fallback failure handling
-        assert "Error: API quota exceeded for primary and fallback models" in result
+        assert "Error: Prompt was blocked by API. Reason: SAFETY" in result
         self.mock_console.print.assert_any_call(
-            "[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]"
+            "[bold red]API quota exceeded for all models. Check billing.[/bold red]"
         )
 
     def test_generate_with_max_iterations_reached(self):
@@ -387,6 +402,7 @@ class TestGeminiModelGenerateMethod:
         # Set up responses to keep returning function calls that don't finish the task
         function_call_response = MagicMock()
         candidate = MagicMock()
+        candidate.finish_reason = 1  # STOP
         content = MagicMock()
 
         function_part = MagicMock()

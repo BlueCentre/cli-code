@@ -44,4 +44,4 @@ echo "=== Generating coverage report ==="
 coverage report --include="$MODULE_PATH"
 coverage html --include="$MODULE_PATH"
 
-echo "Coverage analysis complete for $MODULE" 
+echo "Coverage analysis complete for $MODULE"

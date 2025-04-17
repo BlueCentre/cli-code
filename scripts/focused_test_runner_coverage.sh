@@ -15,4 +15,4 @@ python -m pytest tests/tools/test_test_runner_tool.py -v --cov=src.cli_code.tool
 # Generate HTML report
 coverage html
 
-echo "Coverage complete. Check coverage_html/index.html for detailed report." 
+echo "Coverage complete. Check coverage_html/index.html for detailed report."

@@ -50,7 +50,9 @@ def generate_sequence(responses):
         try:
             return next(iterator)
         except StopIteration as err:
-            raise AssertionError(f"mock_agent.generate called unexpectedly with args: {args}, kwargs: {kwargs}") from None
+            raise AssertionError(
+                f"mock_agent.generate called unexpectedly with args: {args}, kwargs: {kwargs}"
+            ) from None
 
     return side_effect
 

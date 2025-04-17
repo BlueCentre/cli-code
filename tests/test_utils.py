@@ -5,12 +5,68 @@ Tests for utility functions in src/cli_code/utils.py.
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 # Force module import for coverage
 import src.cli_code.utils
+from src.cli_code.cli_utils import count_tokens  # Updated import path
 
-# Update import to use absolute import path including 'src'
-from src.cli_code.utils import count_tokens
+# Local Imports
+from src.cli_code.config import Config  # Import the Config class
+
+# Constants for testing
+APP_NAME = "cli-code-test"  # Define test constant if needed by tests
+CONFIG_FILE_NAME = "test-config.yaml"  # Use a test-specific config file name
+
+
+@pytest.fixture
+def temp_config_file(tmp_path):
+    # Use tmp_path fixture provided by pytest for temporary directory
+    test_dir = tmp_path / APP_NAME
+    test_dir.mkdir()
+    test_config_path = test_dir / CONFIG_FILE_NAME
+
+    # Create a dummy config file for testing loading
+    dummy_config_data = {
+        # Add some initial structure if Config expects it
+        "settings": {"initial_setting": 123}
+    }
+    with open(test_config_path, "w") as f:
+        yaml.dump(dummy_config_data, f)
+    return test_config_path
+
+
+def test_load_config_exists(temp_config_file):
+    """Test loading an existing config file using Config class."""
+    config_instance = Config(config_file_path=temp_config_file)
+    assert config_instance.config is not None
+    assert config_instance.config.get("settings", {}).get("initial_setting") == 123
+
+
+def test_load_config_nonexistent(tmp_path):
+    """Test loading a non-existent config file."""
+    non_existent_path = tmp_path / "nonexistent" / CONFIG_FILE_NAME
+    # Initialize Config - it should create the default structure
+    config_instance = Config(config_file_path=non_existent_path)
+    # Check if the file was created and has default content
+    assert non_existent_path.exists()
+    # Assert that it loaded/created a config (might be default)
+    assert isinstance(config_instance.config, dict)
+    assert "settings" in config_instance.config  # Check for default keys
+
+
+def test_update_config(temp_config_file):
+    """Test updating the config file."""
+    config_instance = Config(config_file_path=temp_config_file)
+    # Update settings directly or via a method if Config class provides one
+    config_instance.config["new_setting"] = "new_value"
+    config_instance.config["settings"]["existing_setting"] = "updated"
+    config_instance._save_config()  # Assuming a private save method
+
+    # Create a new instance to reload and verify
+    reloaded_instance = Config(config_file_path=temp_config_file)
+    assert reloaded_instance.config.get("new_setting") == "new_value"
+    assert reloaded_instance.config.get("settings", {}).get("existing_setting") == "updated"
 
 
 def test_count_tokens_simple():

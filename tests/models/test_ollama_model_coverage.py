@@ -123,8 +123,20 @@ class TestOllamaModelCoverage:
         self.open_patch = patch("builtins.open", mock_open(read_data="Test content"))
         self.mock_open = self.open_patch.start()
 
-        # Initialize the OllamaModel with proper parameters
-        self.model = OllamaModel("http://localhost:11434", self.mock_console, "llama2")
+        # Mock Ollama client
+        self.ollama_client_patch = patch("ollama.Client")
+        self.mock_ollama_client_class = self.ollama_client_patch.start()
+        self.mock_client_instance = MagicMock()
+        # Configure the list method on the instance *before* it's returned
+        self.mock_client_instance.models.list = MagicMock(name="list_method_mock")  # Make list a separate mock
+        self.mock_ollama_client_class.return_value = self.mock_client_instance
+
+        # Mock console
+        self.mock_console = MagicMock(spec=Console)
+
+        # Create model instance for tests
+        self.model = OllamaModel("http://base_url", self.mock_console, "test-model")
+        # Now self.model.client.models.list refers to the list_method_mock we created
 
     def teardown_method(self, method):
         """Clean up after test."""
@@ -138,6 +150,7 @@ class TestOllamaModelCoverage:
         self.isfile_patch.stop()
         self.glob_patch.stop()
         self.open_patch.stop()
+        self.ollama_client_patch.stop()
 
     def test_initialization(self):
         """Test initialization of OllamaModel."""

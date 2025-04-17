@@ -24,4 +24,4 @@ else
   echo "Note: Failures may be due to API services being unavailable."
 fi
 
-exit $exit_code 
+exit $exit_code

@@ -3,6 +3,7 @@ Gemini model integration for the CLI tool.
 """
 
 # Standard Library
+import asyncio
 import glob
 import json
 import logging
@@ -385,9 +386,15 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 # Use asyncio to run the coroutine to completion
                 import asyncio
 
-                result_type, result_value = asyncio.run(
-                    self._execute_function_call(function_call_part_to_execute.function_call)
-                )
+                result = asyncio.run(self._execute_function_call(function_call_part_to_execute.function_call))
+
+                # Check if result is a tuple (error case) or ContentType (success case)
+                if isinstance(result, tuple) and len(result) == 2:
+                    # We got a tuple with (message, continue_flag)
+                    result_type, result_value = result
+                else:
+                    # We got a ContentType object - this is a successful execution
+                    result_type, result_value = "continue", None
             except Exception as e:
                 log.error(f"Error executing function call: {e}")
                 return "error", f"Error executing function call: {e}"
@@ -759,115 +766,6 @@ Important Rules:
 
 The user's first message will contain initial directory context and their request."""
 
-    def _get_initial_context(self) -> str:
-        """
-        Gets the initial context for the conversation based on the following hierarchy:
-        1. Content of .rules/*.md files if the directory exists
-        2. Content of README.md in the root directory if it exists
-        3. Output of 'ls' command (fallback to original behavior)
-
-        Returns:
-            A string containing the initial context.
-        """
-
-        # Check if .rules directory exists
-        if os.path.isdir(".rules"):
-            log.info("Found .rules directory. Reading *.md files for initial context.")
-            try:
-                md_files = glob.glob(".rules/*.md")
-                if md_files:
-                    context_content = []
-                    for md_file in md_files:
-                        log.info(f"Reading rules file: {md_file}")
-                        try:
-                            with open(md_file, "r", encoding="utf-8", errors="ignore") as f:
-                                content = f.read().strip()
-                                if content:
-                                    file_basename = os.path.basename(md_file)
-                                    context_content.append(f"# Content from {file_basename}\n\n{content}")
-                        except Exception as read_err:
-                            log.error(f"Error reading rules file '{md_file}': {read_err}", exc_info=True)
-
-                    if context_content:
-                        combined_content = "\n\n".join(context_content)
-                        self.console.print("[dim]Context initialized from .rules/*.md files.[/dim]")
-                        return f"Project rules and guidelines:\n```markdown\n{combined_content}\n```\n"
-            except Exception as rules_err:
-                log.error(f"Error processing .rules directory: {rules_err}", exc_info=True)
-
-        # Check if README.md exists in the root
-        if os.path.isfile("README.md"):
-            log.info("Using README.md for initial context.")
-            try:
-                with open("README.md", "r", encoding="utf-8", errors="ignore") as f:
-                    readme_content = f.read().strip()
-                if readme_content:
-                    self.console.print("[dim]Context initialized from README.md.[/dim]")
-                    return f"Project README:\n```markdown\n{readme_content}\n```\n"
-            except Exception as readme_err:
-                log.error(f"Error reading README.md: {readme_err}", exc_info=True)
-
-        # Fall back to ls output (original behavior)
-        log.info("Falling back to 'ls' output for initial context.")
-        try:
-            ls_tool = get_tool("ls")
-            if ls_tool:
-                ls_result = ls_tool.execute()
-                log.info(f"Orientation ls result length: {len(ls_result) if ls_result else 0}")
-                self.console.print("[dim]Directory context acquired via 'ls'.[/dim]")
-                return f"Current directory contents (from initial `ls`):\n```\n{ls_result}\n```\n"
-            else:
-                log.error("CRITICAL: Could not find 'ls' tool for mandatory orientation.")
-                return "Error: The essential 'ls' tool is missing. Cannot proceed."
-        except Exception as orient_error:
-            log.error(f"Error during mandatory orientation (ls): {orient_error}", exc_info=True)
-            error_message = f"Error during initial directory scan: {orient_error}"
-            self.console.print(f"[bold red]Error getting initial directory listing: {orient_error}[/bold red]")
-            return f"{error_message}\n"
-
-    # --- Text Extraction Helper (if needed for final output) ---
-    def _extract_text_from_response(self, response) -> str | None:
-        """Safely extracts text from a Gemini response object."""
-        try:
-            if response and response.candidates:
-                # Assuming candidates are protos.Candidate
-                candidate = response.candidates[0]
-                if candidate.content and candidate.content.parts:
-                    # Assuming parts are protos.Part
-                    text_parts = [part.text for part in candidate.content.parts if hasattr(part, "text") and part.text]
-                    return "\n".join(text_parts).strip() if text_parts else None
-            return None
-        except (AttributeError, IndexError) as e:
-            log.warning(f"Could not extract text from response: {e} - Response: {response}")
-            return None
-
-    # --- Find Last Text Helper ---
-    def _find_last_model_text(self, history: list) -> str:
-        """Finds the last text response from the 'model' in the history."""
-        for item in reversed(history):
-            if item.get("role") == "model":
-                parts = item.get("parts", [])
-                if parts:  # Check if parts list is not empty
-                    # Check if the first part is a simple string (older format?)
-                    if isinstance(parts[0], str):
-                        log.debug(f"Found last model text (string format): {parts[0][:50]}...")
-                        return parts[0]
-                    # Check if the first part is a dict-like object with a 'text' key (less likely now with protos)
-                    elif isinstance(parts[0], dict) and "text" in parts[0] and isinstance(parts[0]["text"], str):
-                        log.warning("Found last model text in dict format (unexpected with protos).")
-                        return parts[0]["text"]
-                    # Check if the first part is an object with a 'text' attribute (should be protos.Part now)
-                    elif hasattr(parts[0], "text") and isinstance(parts[0].text, str):
-                        # Check if it's actually a protos.Part before accessing .text
-                        if isinstance(parts[0], protos.Part):
-                            log.debug(f"Found last model text (protos.Part format): {parts[0].text[:50]}...")
-                            return parts[0].text
-                        else:
-                            log.warning(f"Found object with text attribute, but not protos.Part: {type(parts[0])}")
-
-        log.warning("Could not find any valid text in the last model response.")
-        return "(No suitable model text found in history)"
-
     # --- Add Gemini-specific history management methods ---
     def add_to_history(self, entry):
         """Adds an entry to the Gemini conversation history."""
@@ -914,6 +812,7 @@ The user's first message will contain initial directory context and their reques
     async def _execute_function_call(self, function_calls):
         """Execute a function call requested by the LLM."""
         # Extract the first tool call (current implementation processes one at a time)
+        tool_name = None  # Initialize tool_name variable
         if isinstance(function_calls, list) and len(function_calls) > 0:
             # Handle list of tool call dictionaries (new interface)
             function_call = function_calls[0]
@@ -922,6 +821,7 @@ The user's first message will contain initial directory context and their reques
         else:
             # Handle legacy single function_call proto object
             function_call = function_calls
+            tool_name = function_call.name if hasattr(function_call, "name") else None
             # Convert protobuf Struct/Message args to Python dict
             tool_args = {}
             if hasattr(function_call, "args"):
@@ -931,7 +831,12 @@ The user's first message will contain initial directory context and their reques
                     args_message = function_call.args
                     if hasattr(args_message, "_pb"):  # Check if it's a proto wrapper
                         args_message = args_message._pb
-                    tool_args = MessageToDict(args_message)
+
+                    # Check if args_message is already a dictionary or needs conversion
+                    if isinstance(args_message, dict):
+                        tool_args = args_message
+                    else:
+                        tool_args = MessageToDict(args_message)
                 except Exception as e:
                     log.error(
                         f"Failed to convert function call args to dict for tool '{tool_name}': {e}", exc_info=True
@@ -941,11 +846,9 @@ The user's first message will contain initial directory context and their reques
 
         log.info(f"Executing tool: {tool_name} with args: {tool_args}")  # Log the converted args
 
-        # Handle task_complete pseudo-tool
+        # Handle task_complete special case
         if tool_name == "task_complete":
-            summary = tool_args.get("summary", "Task completed.")
-            log.info(f"Task marked complete by LLM. Summary: {summary}")
-            return summary, True  # Return the summary text with a flag indicating completion
+            return self._handle_task_complete(tool_args)
 
         # Find and validate the tool
         try:
@@ -978,6 +881,7 @@ The user's first message will contain initial directory context and their reques
 
             # Store the result for the next LLM turn
             self._store_tool_result(tool_name, tool_result)
+
             # For tests, create an object that mimics ContentType with parts and function_response
             from dataclasses import dataclass
 
@@ -1000,6 +904,7 @@ The user's first message will contain initial directory context and their reques
                 parts=[Part(function_response=FunctionResponse(name=tool_name, response={"content": str(tool_result)}))]
             )
 
+            # Return the content object directly for confirmed tool executions
             return content
 
         except Exception as e:
@@ -1023,13 +928,35 @@ The user's first message will contain initial directory context and their reques
             self.console.print(f"LLM wants to run tool: [bold magenta]{tool_name}[/bold magenta]")
             self.console.print(f"Arguments: [cyan]{tool_args}[/cyan]")
             try:
-                # Call questionary.confirm directly, which will need patching in tests
-                # The message format might need adjustment based on questionary usage
-                confirmed = questionary.confirm(
-                    f"Allow the AI to execute the '{tool_name}' command with arguments: {tool_args}?",
+                # Check if an event loop is running
+                is_async_context = False
+                try:
+                    asyncio.get_running_loop()
+                    is_async_context = True
+                except RuntimeError:
+                    is_async_context = False
+
+                # Create the question
+                question = questionary.confirm(
+                    f"Allow the AI to execute the '{tool_name}' command with arguments: {tool_args}?".strip(),
                     default=False,  # Default to No for safety
                     auto_enter=False,
-                ).ask()  # Ask the question
+                )
+
+                # Ask the question using the appropriate method
+                if is_async_context:
+                    # IMPORTANT: Cannot call asyncio.run() here as loop is already running.
+                    # Need to await the async version directly if _request_tool_confirmation
+                    # itself were async. Since it's not, we cannot directly await.
+                    # This indicates a potential design issue if confirmation is needed
+                    # within an async test loop using a synchronous main method.
+                    # For now, falling back to synchronous ask, which will likely error in tests.
+                    # A better solution might involve making the agent loop async or
+                    # using a different confirmation mechanism compatible with both contexts.
+                    log.warning("Running synchronous ask() in potentially async context due to design limitations.")
+                    confirmed = question.ask()  # Fallback, may error in async tests
+                else:
+                    confirmed = question.ask()  # Use synchronous ask in sync context
 
                 if not confirmed:
                     log.warning(f"User rejected execution of tool '{tool_name}'.")

@@ -9,7 +9,7 @@ echo "Starting coverage generation for CI..."
 # Set up coverage directory
 mkdir -p coverage_html
 
-# Set environment variables for CI 
+# Set environment variables for CI
 export CI_EXIT_ON_TEST_FAILURE=1  # Exit on test failures to ensure code quality
 export CI_TEST_TIMEOUT=60  # Default timeout
 
@@ -53,14 +53,14 @@ handle_test_error() {
   TEST_FILE=$1
   EXIT_CODE=$2
   LOG_FILE=$3
-  
+
   echo "----------------------------------------" | tee -a "$SUMMARY_LOG"
   if [ $EXIT_CODE -eq 124 ]; then
     echo "⚠️ WARNING: $TEST_FILE TIMED OUT (after $CI_TIMEOUT seconds)" | tee -a "$SUMMARY_LOG"
   else
     echo "⚠️ WARNING: $TEST_FILE FAILED with exit code $EXIT_CODE" | tee -a "$SUMMARY_LOG"
   fi
-  
+
   # If we have a log file, show the last few lines
   if [ -f "$LOG_FILE" ]; then
     echo "Last 10 lines from log:" | tee -a "$SUMMARY_LOG"
@@ -131,27 +131,27 @@ exit 0
 # run_test_group() {
 #   ...
 # }
-# 
+#
 # # Run gemini model tests individually
 # run_test_group "gemini model" \
 #   "tests/models/test_gemini.py" \
 #   ...
-# 
+#
 # # Run ollama model tests individually
 # run_test_group "ollama model" \
 #   "tests/models/test_ollama.py" \
 #   ...
-# 
+#
 # # Run config tests individually
 # run_test_group "config" \
 #   "tests/test_config.py" # Assuming config tests are at root of tests?
 #   ...
-# 
+#
 # # Run main tests individually
 # run_test_group "main" \
 #   "tests/test_main.py" \
 #   ...
-# 
+#
 # # Run remaining tests individually
 # run_test_group "remaining" \
 #   "tests/tools/test_task_complete_tool.py" \

@@ -56,4 +56,4 @@ fi
 # Clean up
 rm branch_protection.json
 
-echo "Branch protection rules applied successfully." 
+echo "Branch protection rules applied successfully."

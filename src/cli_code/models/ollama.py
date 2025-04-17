@@ -7,6 +7,7 @@ from typing import Dict, List
 import questionary  # Import questionary
 from rich.console import Console
 from rich.panel import Panel  # Import Panel
+from rich.status import Status
 
 # Attempt to import the OpenAI client library
 try:
@@ -20,8 +21,8 @@ except ImportError:
     # Log a warning or raise a more specific error during __init__ if openai is None.
     pass
 
+from ..cli_utils import count_tokens  # Import from renamed cli_utils
 from ..tools import AVAILABLE_TOOLS, get_tool  # Import get_tool
-from ..utils import count_tokens  # Import count_tokens
 from .base import AbstractModelAgent
 
 # Import MessageToDict for schema conversion
@@ -589,4 +590,4 @@ class OllamaModel(AbstractModelAgent):
                 log.error(f"Error preparing tool '{name}' for OpenAI format: {e}", exc_info=True)
 
         log.debug(f"Prepared {len(openai_tools)} tools for Ollama API call.")
-        return openai_tools if openai_tools else None
+        return openai_tools if openai_tools else []

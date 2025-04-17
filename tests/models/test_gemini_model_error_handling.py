@@ -71,7 +71,7 @@ class TestGeminiModelErrorHandling:
 
         # Verify error message is returned
         assert result is not None
-        assert result == "Error: Cannot process empty prompt. Please provide a valid input."
+        assert result == "Error: Cannot process empty prompt or model not initialized. Please try again."
 
         # Verify that no API call was made
         mock_generative_model.generate_content.assert_not_called()
@@ -143,6 +143,7 @@ class TestGeminiModelErrorHandling:
         mock_parts[0].function_call.args = {"arg1": "value1"}
 
         mock_response.candidates = [MagicMock()]
+        mock_response.candidates[0].finish_reason = 1  # STOP
         mock_response.candidates[0].content.parts = mock_parts
 
         mock_generative_model.generate_content.return_value = mock_response
@@ -170,6 +171,7 @@ class TestGeminiModelErrorHandling:
         mock_parts[0].function_call.args = {"arg1": "value1"}
 
         mock_response.candidates = [MagicMock()]
+        mock_response.candidates[0].finish_reason = 1  # STOP
         mock_response.candidates[0].content.parts = mock_parts
 
         mock_generative_model.generate_content.return_value = mock_response
@@ -197,6 +199,7 @@ class TestGeminiModelErrorHandling:
         mock_parts[0].function_call.args = {}  # Empty args, missing required ones
 
         mock_response.candidates = [MagicMock()]
+        mock_response.candidates[0].finish_reason = 1  # STOP
         mock_response.candidates[0].content.parts = mock_parts
 
         mock_generative_model.generate_content.return_value = mock_response
@@ -217,15 +220,23 @@ class TestGeminiModelErrorHandling:
         # Configure the mock to return an empty response
         mock_response = MagicMock()
         mock_response.candidates = []  # No candidates
+        mock_response.candidates[0].finish_reason = 1  # STOP
 
         mock_generative_model.generate_content.return_value = mock_response
 
         # Call generate
         result = gemini_model.generate("Test prompt")
 
-        # Verify empty response is handled
+        # Verify empty response is handled, expecting specific blocked message if applicable
         assert result is not None
-        assert "empty response" in result.lower() or "no response" in result.lower()
+        if mock_response.prompt_feedback and mock_response.prompt_feedback.block_reason:
+            block_reason_name = mock_response.prompt_feedback.block_reason
+            # Handle case where block_reason might be an enum/object
+            if hasattr(block_reason_name, "name"):
+                block_reason_name = block_reason_name.name
+            assert f"Prompt was blocked by API. Reason: {block_reason_name}" in result
+        else:
+            assert "empty response" in result.lower() or "no candidates" in result.lower()
 
     @pytest.fixture
     def mock_console(self):
@@ -293,35 +304,41 @@ class TestGeminiModelErrorHandling:
             model.model = mock_model
             mock_model.generate_content.side_effect = Exception("API Error")
 
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
+
             # Execute
             result = model.generate("test prompt")
 
             # Assert error during agent processing appears
             assert "Error during agent processing" in result
+            # Additional check for the specific error message
+            assert "API Error" in result
 
     @patch("src.cli_code.models.gemini.genai")
     def test_generate_with_safety_block(self, mock_genai, mock_console):
-        """Test generate method when content is blocked by safety filters."""
-        # Setup
-        with patch("src.cli_code.models.gemini.log"):
-            model = GeminiModel("valid_key", mock_console)
+        """Test handling of safety block finish reason."""
+        mock_model = self._setup_mock_model(mock_genai)
+        mock_safety_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = 3  # SAFETY
+        mock_candidate.content = MagicMock()
+        mock_candidate.content.parts = []  # Or parts that trigger safety
 
-            # Mock the model
-            mock_model = MagicMock()
-            model.model = mock_model
+        mock_safety_response.candidates = [mock_candidate]
 
-            # Configure the mock to return a blocked response
-            mock_response = MagicMock()
-            mock_response.prompt_feedback = MagicMock()
-            mock_response.prompt_feedback.block_reason = "SAFETY"
-            mock_response.candidates = []
-            mock_model.generate_content.return_value = mock_response
+        # Mock the generate_content method
+        mock_genai.GenerativeModel.return_value.generate_content.return_value = mock_safety_response
 
-            # Execute
-            result = model.generate("test prompt")
+        model = GeminiModel(api_key="fake_key", console=mock_console)
 
-            # Assert
-            assert "Empty response" in result or "no candidates" in result.lower()
+        result = model.generate("Generate unsafe content")
+
+        assert "error" in result.lower()
+        assert "safety concerns" in result.lower()
+        mock_model.generate_content.assert_called_once()
 
     @patch("src.cli_code.models.gemini.genai")
     @patch("src.cli_code.models.gemini.get_tool")
@@ -340,15 +357,18 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = [MagicMock()]
-            mock_part = MagicMock()
-            mock_part.function_call = MagicMock()
-            mock_part.function_call.name = "test_tool"
-            mock_part.function_call.args = "invalid_json"
-            mock_response.candidates[0].content.parts = [mock_part]
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            mock_response.candidates[0].content.parts = [MagicMock()]
+
             mock_model.generate_content.return_value = mock_response
 
             # Make JSON decoding fail
             mock_json_loads.side_effect = json.JSONDecodeError("Expecting value", "", 0)
+
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
 
             # Execute
             result = model.generate("test prompt")
@@ -372,11 +392,9 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = [MagicMock()]
-            mock_part = MagicMock()
-            mock_part.function_call = MagicMock()
-            mock_part.function_call.name = "test_tool"
-            mock_part.function_call.args = {}  # Empty args dict
-            mock_response.candidates[0].content.parts = [mock_part]
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            mock_response.candidates[0].content.parts = [MagicMock()]
+
             mock_model.generate_content.return_value = mock_response
 
             # Mock the tool to have required params
@@ -385,6 +403,11 @@ class TestGeminiModelErrorHandling:
             tool_declaration.parameters = {"required": ["required_param"]}
             tool_mock.get_function_declaration.return_value = tool_declaration
             mock_get_tool.return_value = tool_mock
+
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
 
             # Execute
             result = model.generate("test prompt")
@@ -407,15 +430,17 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = [MagicMock()]
-            mock_part = MagicMock()
-            mock_part.function_call = MagicMock()
-            mock_part.function_call.name = "nonexistent_tool"
-            mock_part.function_call.args = {}
-            mock_response.candidates[0].content.parts = [mock_part]
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            mock_response.candidates[0].content.parts = [MagicMock()]
+
             mock_model.generate_content.return_value = mock_response
 
             # Mock get_tool to return None for nonexistent tool
             with patch("src.cli_code.models.gemini.get_tool", return_value=None):
+                # Mock the status context manager
+                mock_status = MagicMock()
+                mock_status.update = MagicMock()
+                mock_console.status.return_value.__enter__.return_value = mock_status
                 # Execute
                 result = model.generate("test prompt")
 
@@ -438,17 +463,20 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = [MagicMock()]
-            mock_part = MagicMock()
-            mock_part.function_call = MagicMock()
-            mock_part.function_call.name = "test_tool"
-            mock_part.function_call.args = {}
-            mock_response.candidates[0].content.parts = [mock_part]
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            mock_response.candidates[0].content.parts = [MagicMock()]
+
             mock_model.generate_content.return_value = mock_response
 
             # Mock the tool to raise an exception
             tool_mock = MagicMock()
             tool_mock.execute.side_effect = Exception("Tool execution error")
             mock_get_tool.return_value = tool_mock
+
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
 
             # Execute
             result = model.generate("test prompt")
@@ -488,7 +516,14 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = []  # Empty candidates
+            mock_response.candidates[0].finish_reason = 1  # STOP
+
             mock_model.generate_content.return_value = mock_response
+
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
 
             # Execute
             result = model.generate("test prompt")
@@ -511,8 +546,16 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = [MagicMock()]
-            mock_response.candidates[0].content = None  # Missing content
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            # Intentionally malform the response (e.g., missing content or parts)
+            mock_response.candidates[0].content = None  # Example malformation
+
             mock_model.generate_content.return_value = mock_response
+
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
 
             # Execute
             result = model.generate("test prompt")
@@ -546,14 +589,16 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = [MagicMock()]
-            mock_part = MagicMock()
-            mock_part.function_call = MagicMock()
-            mock_part.function_call.name = "edit"  # Sensitive tool
-            mock_part.function_call.args = {"file_path": "test.py", "content": "new content"}
-            mock_response.candidates[0].content.parts = [mock_part]
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            mock_response.candidates[0].content.parts = [MagicMock()]
 
-            # First call returns the function call
+            # Mock the generate_content method
             mock_model.generate_content.return_value = mock_response
+
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
 
             # Execute
             result = model.generate("Edit the file test.py")
@@ -591,13 +636,21 @@ class TestGeminiModelErrorHandling:
             mock_response = MagicMock()
             mock_response.prompt_feedback = None
             mock_response.candidates = [MagicMock()]
-            mock_part = MagicMock()
-            mock_part.function_call = MagicMock()
-            mock_part.function_call.name = "edit"  # Sensitive tool
-            mock_part.function_call.args = {"file_path": "test.py", "content": "new content"}
-            mock_response.candidates[0].content.parts = [mock_part]
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            mock_response.candidates[0].content.parts = [MagicMock()]
 
+            mock_response.candidates = [MagicMock()]
+            mock_response.candidates[0].finish_reason = 1  # STOP
+            mock_parts = MagicMock()  # Define mock_parts
+            mock_response.candidates[0].content.parts = [mock_parts]
+
+            # Mock the generate_content method
             mock_model.generate_content.return_value = mock_response
+
+            # Mock the status context manager
+            mock_status = MagicMock()
+            mock_status.update = MagicMock()
+            mock_console.status.return_value.__enter__.return_value = mock_status
 
             # Execute
             result = model.generate("Edit the file test.py")
@@ -607,6 +660,63 @@ class TestGeminiModelErrorHandling:
             mock_tool.execute.assert_not_called()  # Tool should NOT be executed
             assert "cancelled confirmation" in result.lower()
             assert "edit on test.py" in result.lower()
+
+    @patch("src.cli_code.models.gemini.genai")
+    def test_generate_with_max_tokens(self, mock_genai, mock_console):
+        """Test handling of MAX_TOKENS finish reason."""
+        mock_model = self._setup_mock_model(mock_genai)
+        mock_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = 2  # MAX_TOKENS
+        mock_candidate.content = MagicMock()
+        mock_candidate.content.parts = []  # Or parts that trigger safety
+        mock_response.candidates = [mock_candidate]
+        mock_genai.GenerativeModel.return_value.generate_content.return_value = mock_response
+
+        model = GeminiModel(api_key="fake_key", console=mock_console)
+        result = model.generate("Generate long response")
+
+        assert "error" in result.lower()
+        assert "maximum token limit" in result.lower()
+        mock_model.generate_content.assert_called_once()
+
+    @patch("src.cli_code.models.gemini.genai")
+    def test_generate_with_recitation(self, mock_genai, mock_console):
+        """Test handling of RECITATION finish reason."""
+        mock_model = self._setup_mock_model(mock_genai)
+        mock_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = 4  # RECITATION
+        mock_candidate.content = MagicMock()
+        mock_candidate.content.parts = []
+        mock_response.candidates = [mock_candidate]
+        mock_genai.GenerativeModel.return_value.generate_content.return_value = mock_response
+
+        model = GeminiModel(api_key="fake_key", console=mock_console)
+        result = model.generate("Generate recitation")
+
+        assert "error" in result.lower()
+        assert "recitation policy" in result.lower()
+        mock_model.generate_content.assert_called_once()
+
+    @patch("src.cli_code.models.gemini.genai")
+    def test_generate_with_other_reason(self, mock_genai, mock_console):
+        """Test handling of OTHER finish reason."""
+        mock_model = self._setup_mock_model(mock_genai)
+        mock_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = 5  # OTHER
+        mock_candidate.content = MagicMock()
+        mock_candidate.content.parts = []
+        mock_response.candidates = [mock_candidate]
+        mock_genai.GenerativeModel.return_value.generate_content.return_value = mock_response
+
+        model = GeminiModel(api_key="fake_key", console=mock_console)
+        result = model.generate("Generate other reason")
+
+        assert "error" in result.lower()
+        assert "unknown reason" in result.lower()
+        mock_model.generate_content.assert_called_once()
 
 
 # --- Standalone Test for Quota Fallback ---

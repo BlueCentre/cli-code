@@ -7,4 +7,4 @@ ghauth() {
   GITHUB_TOKEN="" gh "$@"
 }
 
-echo "GitHub CLI auth wrapper loaded. Use 'ghauth' instead of 'gh' for commands requiring full repo access." 
+echo "GitHub CLI auth wrapper loaded. Use 'ghauth' instead of 'gh' for commands requiring full repo access."

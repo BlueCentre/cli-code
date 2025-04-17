@@ -26,4 +26,4 @@ Follow these style guidelines when generating or modifying code:
 * Use consistent naming conventions (snake_case for variables, functions; PascalCase for classes)
 * Include type annotations for function parameters and return types
 * Document functions with docstrings
-* Keep functions focused on a single responsibility 
+* Keep functions focused on a single responsibility
