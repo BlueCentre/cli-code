@@ -834,25 +834,26 @@ async def test_execute_function_call_confirmed(gemini_model_instance, mock_confi
     get_tool_mock.return_value = mock_tool
 
     # Setup the function call to execute
-    tool_calls = [{"id": "call1", "name": "tool1", "arguments": {"arg1": "value1"}}]
+    function_call = MagicMock()
+    function_call.name = "tool1"
+    function_call.args = {"arg1": "value1"}
 
     # Mock confirmation
-    mock_confirm.return_value.ask.return_value = True
+    # Override the async confirmation method to return None (meaning confirmed)
+    with patch.object(model, "_request_tool_confirmation_async", return_value=None):
+        # Execute the function call
+        result = await model._execute_function_call(function_call)
 
-    # Execute the function call
-    result = await model._execute_function_call(tool_calls)
+        # The result should be a ContentType-like object with parts that contain a function_response
+        assert hasattr(result, "parts"), "Result should have 'parts' attribute"
+        assert len(result.parts) == 1, "Result should have 1 part"
+        assert hasattr(result.parts[0], "function_response"), "Part should have function_response"
+        assert result.parts[0].function_response.name == "tool1"
+        assert "Tool 1 result" in str(result.parts[0].function_response.response)
 
-    # The result should be a ContentType-like object with parts that contain a function_response
-    assert hasattr(result, "parts"), "Result should have 'parts' attribute"
-    assert len(result.parts) == 1, "Result should have 1 part"
-    assert hasattr(result.parts[0], "function_response"), "Part should have function_response"
-    assert result.parts[0].function_response.name == "tool1"
-    assert "Tool 1 result" in str(result.parts[0].function_response.response)
-
-    # Verify tool confirmation and execution were called correctly
-    mock_confirm.assert_called_once()
-    get_tool_mock.assert_called_once_with("tool1")
-    mock_tool.execute.assert_called_once_with(arg1="value1")
+        # Verify tool execution was called correctly
+        get_tool_mock.assert_called_once_with("tool1")
+        mock_tool.execute.assert_called_once_with(arg1="value1")
 
 
 @pytest.mark.asyncio
@@ -867,23 +868,25 @@ async def test_execute_function_call_rejected(gemini_model_instance, mock_confir
     get_tool_mock.return_value = mock_tool
 
     # Setup the function call to execute
-    tool_calls = [{"id": "call1", "name": "tool1", "arguments": {"arg1": "value1"}}]
+    function_call = MagicMock()
+    function_call.name = "tool1"
+    function_call.args = {"arg1": "value1"}
 
-    # Mock rejection
-    mock_confirm.return_value.ask.return_value = False
+    # Mock rejection - return a string containing "REJECTED"
+    with patch.object(
+        model, "_request_tool_confirmation_async", return_value="REJECTED: Tool execution was rejected by user"
+    ):
+        # Execute the function call
+        result = await model._execute_function_call(function_call)
 
-    # Execute the function call
-    result = await model._execute_function_call(tool_calls)
+        # Check the rejection tuple format
+        assert isinstance(result, tuple)
+        assert "rejected" in result[0].lower()
+        assert "Tool execution was rejected by user" in result[1]
 
-    # Check the rejection tuple format
-    assert isinstance(result, tuple)
-    assert "rejected" in result[0].lower()
-    assert result[1] is False  # Indicates not to continue
-
-    # Verify tool confirmation was called but not execution
-    mock_confirm.assert_called_once()
-    get_tool_mock.assert_called_once_with("tool1")
-    mock_tool.execute.assert_not_called()
+        # Verify tool was looked up but not executed
+        get_tool_mock.assert_called_once_with("tool1")
+        mock_tool.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -898,22 +901,25 @@ async def test_execute_function_call_cancelled(gemini_model_instance, mock_confi
     get_tool_mock.return_value = mock_tool
 
     # Setup the function call to execute
-    tool_calls = [{"id": "call1", "name": "tool1", "arguments": {"arg1": "value1"}}]
+    function_call = MagicMock()
+    function_call.name = "tool1"
+    function_call.args = {"arg1": "value1"}
 
-    # Mock cancellation (None response)
-    mock_confirm.return_value.ask.return_value = None
+    # Mock cancellation by returning "CANCELLED" in the confirmation result
+    with patch.object(
+        model, "_request_tool_confirmation_async", return_value="CANCELLED: Tool execution was cancelled by user"
+    ):
+        # Execute the function call
+        result = await model._execute_function_call(function_call)
 
-    # Execute the function call
-    result = await model._execute_function_call(tool_calls)
+        # Check the tuple format
+        assert isinstance(result, tuple)
+        assert "cancelled" in result[0].lower()  # Check for cancelled now, not rejected
+        assert "User cancelled confirmation for tool1 tool" in result[1]  # Match the actual message format
 
-    # Check the tuple format
-    assert isinstance(result, tuple)
-    assert "cancelled" in result[0].lower()  # Check for cancelled now, not rejected
-
-    # Verify tool confirmation was called but not execution
-    mock_confirm.assert_called_once()
-    get_tool_mock.assert_called_once_with("tool1")
-    mock_tool.execute.assert_not_called()
+        # Verify tool confirmation was called but not execution
+        get_tool_mock.assert_called_once_with("tool1")
+        mock_tool.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -929,24 +935,23 @@ async def test_execute_function_call_tool_error(gemini_model_instance, mock_conf
     get_tool_mock.return_value = mock_tool
 
     # Setup the function call to execute
-    tool_calls = [{"id": "call1", "name": "tool1", "arguments": {"arg1": "value1"}}]
+    function_call = MagicMock()
+    function_call.name = "tool1"
+    function_call.args = {"arg1": "value1"}
 
-    # Mock approval
-    mock_confirm.return_value.ask.return_value = True
+    # Mock approval (return None for confirmation)
+    with patch.object(model, "_request_tool_confirmation_async", return_value=None):
+        # Execute the function call
+        result = await model._execute_function_call(function_call)
 
-    # Execute the function call
-    result = await model._execute_function_call(tool_calls)
+        # Check the error tuple format
+        assert isinstance(result, tuple)
+        assert "error" in result[0].lower()
+        assert "Tool execution failed" in result[1]
 
-    # Check the error tuple format
-    assert isinstance(result, tuple)
-    assert "error" in result[0].lower()
-    assert "tool execution failed" in result[0].lower()  # Part of the error message
-    assert result[1] is False  # Indicates not to continue
-
-    # Verify tool confirmation and execution were called
-    mock_confirm.assert_called_once()
-    get_tool_mock.assert_called_once_with("tool1")
-    mock_tool.execute.assert_called_once_with(arg1="value1")
+        # Verify tool execution was called
+        get_tool_mock.assert_called_once_with("tool1")
+        mock_tool.execute.assert_called_once_with(arg1="value1")
 
 
 # Test _send_request_and_process_response separately

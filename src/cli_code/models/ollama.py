@@ -433,6 +433,10 @@ class OllamaModel(AbstractModelAgent):
         log.warning("Received empty response from model")
         return "The model provided an empty response. Please try again or rephrase your request."
 
+    def handle_empty_response(self) -> str:
+        """Public method to handle empty responses from the model."""
+        return self._handle_empty_response()
+
     def _handle_max_tokens_error(self, exception) -> str:
         """Handle errors related to maximum token/context length being exceeded."""
         log.warning(f"Context length exceeded: {exception}")

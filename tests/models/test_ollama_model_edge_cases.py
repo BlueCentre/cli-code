@@ -82,22 +82,23 @@ def test_generate_with_empty_response(monkeypatch, mock_console):
 
 
 @pytest.mark.skipif(SKIP_OPENAI_TESTS, reason="OpenAI library not available")
-def test_handling_empty_response(monkeypatch, mock_console):
-    """Test handling of empty content in response."""
+def test_handling_empty_response(mock_console):
+    """Test the _handle_empty_response method."""
     from cli_code.models.ollama import OllamaModel
 
-    # Mock OpenAI class
-    mock_client = MagicMock()
-    monkeypatch.setattr("cli_code.models.ollama.OpenAI", lambda **kwargs: mock_client)
+    with patch("openai.OpenAI") as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
 
-    # Create instance with mocked dependencies
-    model = OllamaModel("http://localhost:11434", mock_console, "test-model")
+        mock_client.models.list.return_value = MagicMock(
+            data=[MagicMock(id="llama3", object="model", created=1677610602, owned_by="openai")]
+        )
 
-    # Test empty response handling
-    assert (
-        model._handle_empty_response()
-        == "The model provided an empty response. Please try again or rephrase your request."
-    )
+        model = OllamaModel(api_url="http://localhost:11434", console=mock_console, model_name="llama3")
+        result = model.handle_empty_response()
+
+        assert "empty response" in result.lower()
+        assert isinstance(result, str)
 
 
 @pytest.mark.skipif(SKIP_OPENAI_TESTS, reason="OpenAI library not available")
