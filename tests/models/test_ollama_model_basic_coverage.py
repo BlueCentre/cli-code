@@ -18,10 +18,6 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(SKIP_OPENAI_TESTS, reason="OpenAI library not available")
 
-# Import the OllamaModel only if OpenAI is available
-if not SKIP_OPENAI_TESTS:
-    from src.cli_code.models.ollama import OllamaModel
-
 
 @pytest.fixture
 def mock_console():
@@ -33,10 +29,19 @@ def mock_console():
 class TestOllamaModelBasicCoverage(unittest.TestCase):
     """Basic coverage tests for OllamaModel."""
 
+    # Define class variable for OllamaModel
+    OllamaModel = None
+
     def setUp(self):
         """Set up test fixtures."""
         if SKIP_OPENAI_TESTS:
             pytest.skip("OpenAI library not available")
+
+        # Import OllamaModel and assign to class variable if not already set
+        if TestOllamaModelBasicCoverage.OllamaModel is None:
+            from src.cli_code.models.ollama import OllamaModel
+
+            TestOllamaModelBasicCoverage.OllamaModel = OllamaModel
 
         # Create patches for OpenAI
         self.patch_openai_client = patch("openai.OpenAI")
@@ -48,8 +53,12 @@ class TestOllamaModelBasicCoverage(unittest.TestCase):
         self.mock_console = MagicMock(spec=Console)
 
         # Create model instance and patch __init__ to avoid API calls
-        with patch.object(OllamaModel, "_get_initial_context", return_value="Test context"):
-            self.model = OllamaModel(api_url="http://localhost:11434", console=self.mock_console, model_name="llama3")
+        with patch.object(
+            TestOllamaModelBasicCoverage.OllamaModel, "_get_initial_context", return_value="Test context"
+        ):
+            self.model = TestOllamaModelBasicCoverage.OllamaModel(
+                api_url="http://localhost:11434", console=self.mock_console, model_name="llama3"
+            )
 
         # Set up the chat completion mock
         self.mock_chat_completion = MagicMock()
@@ -66,8 +75,12 @@ class TestOllamaModelBasicCoverage(unittest.TestCase):
 
     def test_initialization(self):
         """Test OllamaModel initialization."""
-        with patch.object(OllamaModel, "_get_initial_context", return_value="Test context"):
-            model = OllamaModel(api_url="http://localhost:11434", console=self.mock_console, model_name="llama3")
+        with patch.object(
+            TestOllamaModelBasicCoverage.OllamaModel, "_get_initial_context", return_value="Test context"
+        ):
+            model = TestOllamaModelBasicCoverage.OllamaModel(
+                api_url="http://localhost:11434", console=self.mock_console, model_name="llama3"
+            )
 
         self.assertEqual(model.model_name, "llama3")
         self.assertEqual(model.api_url, "http://localhost:11434")
