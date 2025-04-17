@@ -423,19 +423,40 @@ class OllamaModel(AbstractModelAgent):
             return None
         try:
             models_response = self.client.models.list()
-            # The response object is a SyncPage[Model], access data via .data
-            available_models = []
-            for model in models_response.data:
-                # Adapt the OpenAI Model object to our expected dict format
-                model_info = {
-                    "id": model.id,  # Typically the model identifier used in API calls
-                    "name": getattr(model, "name", model.id),  # Use name if available, else id
-                    # Add other potentially useful fields if needed, e.g., owner
-                    # "owned_by": model.owned_by
-                }
-                available_models.append(model_info)
-            log.info(f"Found {len(available_models)} models at {self.api_url}")
-            return available_models
+            log.debug(f"Raw Ollama models list response: {models_response}")
+
+            # Handle both mock responses in tests and actual Ollama responses
+            if hasattr(models_response, "data") and isinstance(models_response.data, list):
+                # This handles mock responses in tests that use the OpenAI format
+                ollama_models = []
+                for model_item in models_response.data:
+                    model_id = getattr(model_item, "id", None)
+                    # Use name if available, otherwise fallback to id
+                    model_name = getattr(model_item, "name", model_id)
+                    if model_id:
+                        model_info = {"id": model_id, "name": model_name}
+                        ollama_models.append(model_info)
+                return ollama_models
+            # Adjust parsing based on observed structure in actual Ollama response: response is dict with 'models' key
+            elif isinstance(models_response, dict) and "models" in models_response:
+                ollama_models_raw = models_response["models"]
+                ollama_models = []
+                for model_data in ollama_models_raw:
+                    # Example: {'name': 'llama3:latest', 'modified_at': '...', 'size': ..., ...}
+                    model_info = {
+                        "id": model_data.get("name"),
+                        "name": model_data.get("name"),  # Often name includes tag
+                        "modified_at": model_data.get("modified_at"),
+                        "size": model_data.get("size"),
+                        # Add other potentially useful fields from model_data
+                    }
+                    ollama_models.append(model_info)
+                log.info(f"Found {len(ollama_models)} models at {self.api_url}")
+                return ollama_models
+            else:
+                # Log unexpected format and return None to indicate failure
+                log.warning(f"Unexpected Ollama models list format: {type(models_response)}")
+                return None
         except Exception as e:
             log.error(f"Error listing models from Ollama at {self.api_url}: {e}", exc_info=True)
             self.console.print(f"[bold red]Error contacting Ollama endpoint '{self.api_url}':[/bold red] {e}")

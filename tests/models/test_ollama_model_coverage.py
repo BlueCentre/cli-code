@@ -78,8 +78,9 @@ class TestOllamaModelCoverage:
         # Connect the response to the client
         self.openai_instance_mock.chat.completions.create.return_value = self.mock_response
 
-        # <<< Ensure 'models' attribute exists on the client mock >>>
-        self.openai_instance_mock.models = MagicMock()
+        # Mock OpenAI models.list method directly on the instance
+        self.model_list_mock = MagicMock()
+        self.openai_instance_mock.models.list = self.model_list_mock
 
         # Connect the instance to the class
         self.openai_class_mock.return_value = self.openai_instance_mock
@@ -123,20 +124,10 @@ class TestOllamaModelCoverage:
         self.open_patch = patch("builtins.open", mock_open(read_data="Test content"))
         self.mock_open = self.open_patch.start()
 
-        # Mock Ollama client
-        self.ollama_client_patch = patch("ollama.Client")
-        self.mock_ollama_client_class = self.ollama_client_patch.start()
-        self.mock_client_instance = MagicMock()
-        # Configure the list method on the instance *before* it's returned
-        self.mock_client_instance.models.list = MagicMock(name="list_method_mock")  # Make list a separate mock
-        self.mock_ollama_client_class.return_value = self.mock_client_instance
-
-        # Mock console
-        self.mock_console = MagicMock(spec=Console)
-
-        # Create model instance for tests
+        # Create model instance for tests after patching
         self.model = OllamaModel("http://base_url", self.mock_console, "test-model")
-        # Now self.model.client.models.list refers to the list_method_mock we created
+        # Explicitly set the client to use our mock
+        self.model.client = self.openai_instance_mock
 
     def teardown_method(self, method):
         """Clean up after test."""
@@ -150,7 +141,6 @@ class TestOllamaModelCoverage:
         self.isfile_patch.stop()
         self.glob_patch.stop()
         self.open_patch.stop()
-        self.ollama_client_patch.stop()
 
     def test_initialization(self):
         """Test initialization of OllamaModel."""
@@ -169,12 +159,13 @@ class TestOllamaModelCoverage:
         mock_response.data = [mock_model]
 
         # Configure the mock method created during setup
-        self.model.client.models.list.return_value = mock_response  # Configure the existing mock
+        self.model_list_mock.return_value = mock_response  # Configure the client mock's method
 
+        # Call the method
         result = self.model.list_models()
 
         # Verify client models list was called
-        self.model.client.models.list.assert_called_once()
+        self.model_list_mock.assert_called_once()
 
         # Verify result format
         assert len(result) == 1
@@ -184,14 +175,17 @@ class TestOllamaModelCoverage:
     def test_list_models_with_error(self):
         """Test listing models when API returns error."""
         # Configure the mock method to raise an exception
-        self.model.client.models.list.side_effect = Exception("API error")  # Configure the existing mock
+        self.model_list_mock.side_effect = Exception("API error")  # Configure the client mock's method
 
+        # Call the method and assert None is returned for error case
         result = self.model.list_models()
 
         # Verify error handling
         assert result is None
-        # Verify console prints an error message
-        self.mock_console.print.assert_any_call(mock.ANY)  # Using ANY matcher
+
+        # Verify console prints error messages (two calls are expected)
+        self.mock_console.print.assert_any_call(mock.ANY)  # This should match the first error message
+        assert self.mock_console.print.call_count >= 1  # At least one message should be printed
 
     def test_get_initial_context_with_rules_dir(self):
         """Test getting initial context from .rules directory."""
