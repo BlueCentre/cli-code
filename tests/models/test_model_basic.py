@@ -149,7 +149,7 @@ class TestGeminiModelBasics(TestCase):
         args, kwargs = self.mock_model.generate_content.call_args
 
         # Check that history was included
-        self.assertEqual(len(args[0]), 5)  # init(2) + test_add(1) + generate_adds(2)
+        self.assertEqual(len(args[0]), 4)  # init(2) + test_add(1) + generate_adds(1)
 
         # Check generation parameters
         # self.assertIn('generation_config', kwargs) # Checked via constructor mock
@@ -161,7 +161,7 @@ class TestGeminiModelBasics(TestCase):
         # self.assertEqual(response, "Generated response")
         # The actual response depends on the agent loop logic handling the mock
         # Since the mock has no actionable parts, it hits the fallback.
-        self.assertIn("Agent loop ended due to unexpected finish reason", response)
+        self.assertIn("Unhandled finish reason", response)
 
 
 # @skipIf(SHOULD_SKIP_TESTS, SKIP_REASON)

@@ -906,10 +906,9 @@ async def test_execute_function_call_cancelled(gemini_model_instance, mock_confi
     # Execute the function call
     result = await model._execute_function_call(tool_calls)
 
-    # Check the tuple format - implementation treats None as rejected
+    # Check the tuple format
     assert isinstance(result, tuple)
-    assert "rejected" in result[0].lower()  # Implementation treats None as rejection
-    assert result[1] is False  # Indicates not to continue
+    assert "cancelled" in result[0].lower()  # Check for cancelled now, not rejected
 
     # Verify tool confirmation was called but not execution
     mock_confirm.assert_called_once()

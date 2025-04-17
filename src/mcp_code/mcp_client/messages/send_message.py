@@ -54,11 +54,9 @@ async def send_message(
     message = JSONRPCMessage(id=req_id, method=method, params=params)
 
     last_exception = None
-    non_retryable_exception = None  # Store NonRetryableError here
 
     for attempt in range(1, retries + 1):
         is_final_attempt = attempt == retries
-        non_retryable_exception = None  # Reset for each attempt
 
         try:
             logging.debug(f"[send_message] Attempt {attempt}/{retries}: Sending message: {message}")
@@ -69,10 +67,9 @@ async def send_message(
                 return await _receive_matching_response(read_stream, req_id)
 
         except NonRetryableError as exc:
-            # Store the exception and break the loop to raise it outside fail_after
-            non_retryable_exception = exc
+            # Immediately raise non-retryable errors - don't retry them
             logging.error(f"[send_message] Non-retryable error for method '{method}': {exc}")
-            break  # Exit retry loop immediately
+            raise exc  # Directly raise the exception without wrapping
 
         except TimeoutError as exc:
             last_exception = exc
@@ -96,15 +93,18 @@ async def send_message(
             if is_final_attempt:
                 raise
 
-        if non_retryable_exception:
-            raise non_retryable_exception  # Raise stored non-retryable error outside the loop
-
-        # Wait before retrying if it wasn't a non-retryable error
+        # Wait before retrying
         await anyio.sleep(retry_delay)
 
-    # This should never be reached due to the raises above, but just in case
-    assert last_exception is not None
-    raise last_exception
+    # If all retries failed, raise the last captured exception
+    if last_exception:
+        raise last_exception
+    else:
+        # This case should ideally not be reached if retries > 0 and an error occurred,
+        # but handle defensively.
+        raise RuntimeError(
+            f"[send_message] Message sending failed after {retries} retries, but no exception was recorded."
+        )
 
 
 async def _receive_matching_response(read_stream: MemoryObjectReceiveStream, req_id: str) -> Union[Dict[str, Any], Any]:
