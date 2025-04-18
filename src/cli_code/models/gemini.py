@@ -9,10 +9,8 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 from unittest.mock import MagicMock
-
-import google.api_core.exceptions
 
 # Third-party Libraries
 import google.generativeai as genai
@@ -21,8 +19,6 @@ import rich
 from google.ai.generativelanguage_v1beta.types.generative_service import Candidate
 from google.api_core.exceptions import GoogleAPIError, InternalServerError, ResourceExhausted
 from google.generativeai import protos
-
-# Fixed imports based on google-generativeai 0.8.4 structure
 from google.generativeai.types import (
     ContentType,
     GenerateContentResponse,
@@ -32,8 +28,6 @@ from google.generativeai.types import (
     PartType,
     Tool,
 )
-
-# Import FunctionDeclaration from content_types module
 from google.generativeai.types.content_types import FunctionDeclaration
 from google.protobuf.json_format import MessageToDict
 from rich.console import Console
@@ -45,7 +39,7 @@ from rich.status import Status
 from ..tools import AVAILABLE_TOOLS, get_tool
 from ..utils.history_manager import MAX_HISTORY_TURNS, HistoryManager
 from ..utils.log_config import get_logger
-from ..utils.tool_registry import ToolRegistry  # ToolResponse potentially defined elsewhere or not needed?
+from ..utils.tool_registry import ToolRegistry
 from .base import AbstractModelAgent
 
 # Define tools requiring confirmation
@@ -190,7 +184,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             self.console.print(f"[bold red]Error listing Gemini models:[/bold red] {e}")
             return []  # Return empty list instead of None
 
-    def generate(self, prompt: str) -> Optional[str]:
+    async def generate(self, prompt: str) -> Optional[str]:
         logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
 
         # Add initial user prompt to history first
@@ -441,7 +435,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         try:
             # Execute the agent loop
-            result = self._execute_agent_loop(iteration_count, task_completed, final_summary, last_text_response)
+            result = await self._execute_agent_loop(iteration_count, task_completed, final_summary, last_text_response)
             return result
         except Exception as e:
             log.error(f"Error during Agent Loop: {str(e)}", exc_info=True)
@@ -494,7 +488,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         return turn_input_prompt
 
-    def _execute_agent_loop(self, iteration_count, task_completed, final_summary, last_text_response):
+    async def _execute_agent_loop(self, iteration_count, task_completed, final_summary, last_text_response):
         """Execute the main agent loop with LLM interactions and tool calls."""
         with self.console.status(self.THINKING_STATUS, spinner="dots") as status:
             while iteration_count < MAX_AGENT_ITERATIONS and not task_completed:
@@ -505,7 +499,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 status.update(self.THINKING_STATUS)
 
                 # Process a single iteration of the agent loop
-                iteration_result = self._process_agent_iteration(status, last_text_response)
+                iteration_result = await self._process_agent_iteration(status, last_text_response)
 
                 # Handle various outcomes from the iteration
                 if isinstance(iteration_result, tuple) and len(iteration_result) == 2:
@@ -529,7 +523,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 return last_text_response
             return self._handle_loop_completion(task_completed, final_summary, iteration_count)
 
-    def _process_agent_iteration(
+    async def _process_agent_iteration(
         self, status, max_iterations=MAX_AGENT_ITERATIONS, last_text_response=None
     ) -> Tuple[str, Optional[str]]:
         """Process a single iteration of the agent loop."""
@@ -548,208 +542,147 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                 return "error", error_msg
 
             # Process response from the model
-            return self._process_candidate_response(llm_response.candidates[0], status)
+            return await self._process_candidate_response(llm_response.candidates[0], status)
 
+        except StopIteration as e:
+            return self._handle_stop_iteration(e)
+        except ResourceExhausted as e:
+            return self._handle_quota_exceeded(e, status)
         except Exception as e:
             result = self._handle_agent_loop_exception(e, status)
             if result:
                 return "error", result
             return "continue", last_text_response
 
-    def _process_candidate_response(self, response_candidate: Candidate, status) -> Tuple[str, Optional[str]]:
-        """Process a single response candidate from the Gemini API."""
-        # Log the finish reason value directly, without assuming .name attribute
-        log.debug(
-            f"Processing candidate with finish_reason: {response_candidate.finish_reason if response_candidate.finish_reason is not None else 'N/A'}"
-        )
+    async def _process_candidate_response(
+        self, response_candidate: protos.Candidate, status
+    ) -> Tuple[str, Optional[str]]:
+        """Process a candidate response from the model.
 
-        # Handle MagicMock finish_reason for test compatibility
-        if isinstance(response_candidate.finish_reason, MagicMock):
-            log.debug("Detected MagicMock finish_reason in tests, treating as STOP (1)")
-            finish_reason = 1  # Treat as STOP for test compatibility
-        else:
-            finish_reason = response_candidate.finish_reason
+        Args:
+            response_candidate: The candidate response from the model
 
-        # Handle SAFETY finish reason (3) directly
-        if (
-            finish_reason == 3
-            or (hasattr(finish_reason, "value") and finish_reason.value == 3)
-            or finish_reason == protos.Candidate.FinishReason.SAFETY
-        ):
-            log.warning("Response stopped due to safety settings.")
-            # Don't add potentially unsafe content to history
-            return "error", "Response blocked due to safety concerns"
+        Returns:
+            tuple: (status, content) where status is one of:
+                - "continue" - Continue processing with the given content
+                - "complete" - Task is complete, stop processing
+                - "error" - Error occurred, handle accordingly
+        """
+        # Extract finish reason for reference
+        finish_reason = response_candidate.finish_reason
 
-        # Check if response has null content
+        # 1. Handle Safety Block
+        if finish_reason == protos.Candidate.FinishReason.SAFETY:
+            return self._handle_safety_block(response_candidate)
+
+        # 2. Check for Null/Empty Content or Parts
         if not response_candidate.content:
             return self._handle_null_content(response_candidate)
 
-        # Check if response has empty parts
         if not response_candidate.content.parts:
-            log.warning(f"Response candidate had content but no parts. Finish Reason: {finish_reason}")
-            # Call _handle_no_actionable_content for proper error handling (prevent infinite loops)
-            return self._handle_no_actionable_content(response_candidate)
+            if finish_reason == protos.Candidate.FinishReason.STOP:
+                log.info("Response candidate had no parts and finish reason STOP. Assuming end of generation.")
+                return self._handle_no_actionable_content(response_candidate)
+            else:
+                log.warning(f"Response candidate had content but no parts. Finish Reason: {finish_reason}")
+                return self._handle_no_actionable_content(response_candidate)
 
-        # Process parts (text and function calls)
-        function_call_part_to_execute = None
-        text_response_buffer = ""
+        # 3. Check for Task Complete Summary
+        task_complete_summary = self._extract_task_complete_summary(response_candidate)
+        if task_complete_summary is not None:
+            return "complete", task_complete_summary
+
+        # 4. Process Function Calls
+        function_call_part = self._extract_function_call(response_candidate)
+        if function_call_part:
+            return await self._handle_function_call(function_call_part)
+
+        # 5. Process Text Content
+        text_buffer = self._extract_text_content(response_candidate)
+        if text_buffer:
+            self.add_to_history({"role": "model", "parts": [protos.Part(text=text_buffer)]})
+            return "continue", text_buffer
+
+        # 6. Handle No Actionable Content
+        log.warning("Processed parts but found no text or executable function call.")
         if response_candidate.content and response_candidate.content.parts:
-            for part in response_candidate.content.parts:
-                if hasattr(part, "text") and part.text:
-                    text_response_buffer += part.text
-                elif hasattr(part, "function_call") and part.function_call:
-                    if function_call_part_to_execute:
-                        log.warning("Multiple function calls received in one response, only executing the first.")
-                    else:
-                        function_call_part_to_execute = part  # Store the whole part
-                        log.info(f"Received function call request: {part.function_call.name}")
+            self.add_to_history({"role": "model", "parts": response_candidate.content.parts})
+        return self._handle_no_actionable_content(response_candidate)
 
-                        # Special handling for task_complete tool
-                        if part.function_call.name == "task_complete":
-                            log.info("Task complete function call detected")
-                            try:
-                                # Parse the args as JSON if needed
-                                args = part.function_call.args
-                                if isinstance(args, str):
-                                    try:
-                                        args = json.loads(args)
-                                    except json.JSONDecodeError:
-                                        args = {"summary": "Task completed successfully"}
-                                elif not isinstance(args, dict):
-                                    args = {"summary": "Task completed successfully"}
+    def _handle_safety_block(self, response_candidate: protos.Candidate) -> Tuple[str, str]:
+        """Handle a response that was blocked due to safety settings."""
+        log.warning("Response stopped due to safety settings.")
+        return "error", "Response blocked due to safety concerns"
 
-                                # Get the summary if available
-                                summary = args.get("summary", "Task completed successfully")
-                                log.info(f"Task completed with summary: {summary}")
+    def _extract_task_complete_summary(self, response_candidate: protos.Candidate) -> Optional[str]:
+        """Extract task completion summary from response parts if present."""
+        if not response_candidate or not response_candidate.content or not response_candidate.content.parts:
+            return None
 
-                                # Add the response to history before returning
-                                self.add_to_history({"role": "model", "parts": response_candidate.content.parts})
+        for part in response_candidate.content.parts:
+            if (
+                hasattr(part, "function_call")
+                and part.function_call
+                and hasattr(part.function_call, "name")
+                and part.function_call.name == "task_complete"
+            ):
+                try:
+                    args = json.loads(part.function_call.args)
+                    return args.get("summary", "Task completed")
+                except json.JSONDecodeError:
+                    log.warning("Failed to parse task_complete args as JSON")
+                    return "Task completed"
+        return None
 
-                                return "complete", summary
-                            except Exception as e:
-                                log.error(f"Error handling task_complete: {e}", exc_info=True)
-                                # Continue with normal processing
-                else:
-                    # Handle parts with neither text nor function call
-                    log.warning("Received part with neither text nor function_call.")
-                    return (
-                        "complete",
-                        "(Internal Agent Error: Received response part with neither text nor function call)",
-                    )
+    def _extract_function_call(self, response_candidate: protos.Candidate) -> Optional[protos.Part]:
+        """Extract function call part from response if present."""
+        for part in response_candidate.content.parts:
+            if hasattr(part, "function_call"):
+                return part
+        return None
 
-        # --- Decision Logic ---
+    def _extract_text_content(self, response_candidate: protos.Candidate) -> Optional[str]:
+        """Extract text content from response parts if present."""
+        text_buffer = ""
+        for part in response_candidate.content.parts:
+            if hasattr(part, "text") and part.text:
+                text_buffer += part.text
+        return text_buffer if text_buffer else None
 
-        # Priority 1: Execute Function Call if present
-        if function_call_part_to_execute:
-            log.debug(f"Prioritizing function call: {function_call_part_to_execute.function_call.name}")
+    async def _handle_function_call(self, function_part: protos.Part) -> Tuple[str, Optional[str]]:
+        """Handle a function call from the model."""
+        if not function_part or not hasattr(function_part, "function_call") or not function_part.function_call:
+            return "error", "(Invalid function call format)"
 
-            # Get the tool name
-            tool_name = function_call_part_to_execute.function_call.name
+        try:
+            function_call = function_part.function_call
+            if not hasattr(function_call, "name") or not function_call.name:
+                return "error", "(Function call missing name)"
 
-            # Look up the tool using get_tool
-            tool = get_tool(tool_name)
+            function_name = function_call.name
 
-            # Special handling for edit tool to support tests
-            if tool_name == "edit":
-                import questionary
+            # Convert function args from proto to dict
+            function_args = {}
+            if hasattr(function_call, "args") and function_call.args:
+                function_args = MessageToDict(function_call.args, preserving_proto_field_name=True)
 
-                confirmation = questionary.confirm("Allow the AI to execute the edit?")
-                confirmation.ask()
+            # Add to history before executing
+            self.add_to_history(
+                {"role": "model", "parts": [{"function_call": {"name": function_name, "args": function_args}}]}
+            )
 
-            # Add the function call request to history (even if there's also text)
-            if response_candidate.content:
-                self.add_to_history(
-                    {"role": "model", "parts": response_candidate.content.parts}
-                )  # Parts should be iterable protos.Part
-            else:
-                log.warning("Attempted to add response to history, but candidate content was empty.")
-
-            # Execute the function call - we need to handle the async function differently
+            # Execute function
             try:
-                # Use asyncio to run the coroutine to completion
-                import asyncio
+                result = await self._execute_function(function_name, function_args)
+                return "continue", None
 
-                result = asyncio.run(self._execute_function_call(function_call_part_to_execute.function_call))
-
-                # Process the result based on the status type
-                if isinstance(result, tuple) and len(result) == 2:
-                    status, value = result
-
-                    if status == "error":
-                        log.error(f"Tool execution error: {value}")
-                        return "error", f"Error: Tool execution error with {tool_name}: {value}"
-                    elif status == "rejected":
-                        log.warning(f"Tool '{tool_name}' execution was rejected by user")
-                        return "complete", f"Tool execution of '{tool_name}' was rejected by user."
-                    elif status == "cancelled":
-                        log.warning(f"Tool '{tool_name}' execution was cancelled by user")
-                        return "complete", f"User cancelled the {tool_name} operation"
-                    elif status == "success":
-                        log.info(f"Tool '{tool_name}' executed successfully")
-                        # Store success to history and continue the conversation
-                        self._store_tool_result(tool_name, {}, value)
-                        return "continue", None
-                    elif status == "task_completed":
-                        log.info(f"Task completion requested: {value}")
-                        return "complete", value
-                    else:
-                        log.warning(f"Unknown status '{status}' from tool execution")
-                        return "continue", None
-                # Handle the case where result is a ContentType object with parts
-                elif hasattr(result, "parts"):
-                    log.info(f"Tool '{tool_name}' executed successfully with ContentType result")
-                    return "continue", None
-                else:
-                    # Backward compatibility for non-tuple returns
-                    log.warning("Tool execution returned non-tuple result, continuing")
-                    return "continue", None
             except Exception as e:
-                log.error(f"Error executing function call: {e}", exc_info=True)
-                return "error", f"Error executing function call: {e}"
+                log.error(f"Error executing function {function_name}: {str(e)}")
+                return "error", f"(Function execution error: {str(e)})"
 
-        # Priority 2: Handle specific non-STOP finish reasons
-        elif finish_reason == 2:  # MAX_TOKENS
-            log.warning("Response stopped due to maximum token limit.")
-            # Add to history even if it's an error for better context
-            if text_response_buffer:
-                self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})
-            return "error", f"Response exceeded maximum token limit. {text_response_buffer}"
-        elif finish_reason == 4:  # RECITATION
-            log.warning("Response stopped due to recitation policy.")
-            # Add to history even if it's a recitation for better context
-            if text_response_buffer:
-                self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})
-                return "error", f"Response blocked due to recitation policy. {text_response_buffer}"
-            else:
-                return "error", "Response blocked due to recitation policy."
-        elif finish_reason == 5:  # OTHER
-            log.warning("Response stopped due to an unspecified reason.")
-            # Use dict format for history part
-            if text_response_buffer:
-                self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})  # Use dict format
-                return "error", f"Response stopped for an unknown reason. {text_response_buffer}"
-            else:
-                return "error", "Response stopped for an unknown reason."
-
-        # Priority 3: Handle STOP or unspecified finish reason with text content
-        # Check for STOP (1) or UNSPECIFIED (0)
-        elif text_response_buffer and finish_reason in [0, 1]:
-            log.debug(f"Received text response with finish_reason: {finish_reason}. Completing.")
-            # Use dict format for history part
-            self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})  # Use dict format
-            return "complete", text_response_buffer.strip()
-
-        # Priority 4: Handle STOP (1) or unspecified (0) finish reason with NO text and NO function call
-        elif finish_reason in [0, 1]:
-            log.warning(f"Received finish_reason {finish_reason} with no text or function call.")
-            # Don't add an empty message to history unless necessary for state tracking?
-            # For now, treat as effectively complete but empty.
-            return "complete", "(Agent received an empty response)"
-        # Fallback for any other unexpected finish reason if text_buffer is empty
-        else:
-            log.error(f"Unhandled finish_reason {finish_reason} with no actionable content.")
-            # Replace with call to the dedicated method
-            return self._handle_no_actionable_content(response_candidate)
+        except Exception as e:
+            log.error(f"Error handling function call: {str(e)}")
+            return "error", f"(Function call error: {str(e)})"
 
     def _get_llm_response(self):
         """Get response from the language model."""
@@ -813,42 +746,26 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
         return final_text
 
-    def _handle_null_content(self, response_candidate):
-        """Handle the case where the response content attribute is None."""
-        # Get finish reason if available
-        finish_reason = getattr(response_candidate, "finish_reason", None)
-        log.warning(f"Response candidate had no content object. Finish Reason: {finish_reason}")
+    def _handle_null_content(self, response_candidate: protos.Candidate) -> Tuple[str, str]:
+        """Handle a response with null content."""
+        log.warning("Response had null content")
+        finish_reason = getattr(response_candidate, "finish_reason", "UNKNOWN")
+        return "error", f"Agent received no content in response. Reason: {finish_reason}"
 
-        # For FINISH_REASON_UNSPECIFIED (0), return as complete with empty response message
-        if finish_reason == 0 or finish_reason == protos.Candidate.FinishReason.FINISH_REASON_UNSPECIFIED:
-            return "complete", "(Agent received an empty response)"
-
-        # For STOP (1), return as complete
-        elif finish_reason == 1 or finish_reason == protos.Candidate.FinishReason.STOP:
-            return "complete", f"(Agent received no content in response. Reason: 1)"
-
-        # For MAX_TOKENS (2), return as error
-        elif finish_reason == 2 or finish_reason == protos.Candidate.FinishReason.MAX_TOKENS:
-            return "error", f"(Agent received no content in response. Reason: MAX_TOKENS)"
-
-        # For any other finish reason, return a generic message as error
-        else:
-            # Use string representation of finish_reason to handle both int and enum values
-            return "error", f"(Agent received no content in response. Reason: {finish_reason})"
-
-    def _handle_no_actionable_content(self, response_candidate):
-        """Handle the case where there is no actionable content in the response."""
-        # Get finish reason
-        finish_reason = getattr(response_candidate, "finish_reason", None)
-        log.error(f"Unhandled finish_reason {finish_reason} with no actionable content.")
-        # Always return error status to prevent infinite loops
-        return "error", f"Unexpected state: No actionable content with finish reason {finish_reason}"
+    def _handle_no_actionable_content(self, response_candidate: protos.Candidate) -> Tuple[str, str]:
+        """Handle a response with no actionable content."""
+        log.warning("Response had no actionable content")
+        finish_reason = getattr(response_candidate, "finish_reason", "UNKNOWN")
+        # Check if this is an unexpected state
+        if isinstance(finish_reason, int) and finish_reason > 5:
+            return "error", f"Unexpected state in response with finish reason {finish_reason}"
+        return "error", f"Response had no actionable content. Finish reason: {finish_reason}"
 
     def _handle_agent_loop_exception(self, exception, status):
         """Handle exceptions that occur during the agent loop."""
         if isinstance(exception, StopIteration):
             return self._handle_stop_iteration(exception)
-        elif isinstance(exception, google.api_core.exceptions.ResourceExhausted):
+        elif isinstance(exception, ResourceExhausted):
             return self._handle_quota_exceeded(exception, status)
         else:
             return self._handle_general_exception(exception)
@@ -1103,7 +1020,7 @@ The user's first message will contain initial directory context and their reques
 
             # Special case for task_complete
             if function_name == "task_complete":
-                summary = args.get("summary", "Task completed successfully.")
+                summary = args.get("summary", "Task completed.")
                 log.info(f"Task completed. Summary: {summary}")
                 # For task_complete, return a tuple
                 return "task_completed", summary
@@ -1254,23 +1171,11 @@ The user's first message will contain initial directory context and their reques
             log.error(f"Error in confirmation request: {e}", exc_info=True)
             return None  # If any error occurs, let the execution continue for test compatibility
 
-    def _store_tool_result(self, function_name, function_args=None, tool_result=None):
-        """Store the result of a tool execution in the conversation history."""
-        # If tool_result is None but function_args is provided, assume function_args is the result
-        # This handles the case when the method is called with only two arguments
-        if tool_result is None and function_args is not None:
-            tool_result = function_args
-            function_args = {}
-
-        # Add the result to history in a format that Gemini API expects
-        try:
-            log.debug(f"Storing tool result in history for: {function_name}")
-            # Use appropriate format for tool results in history
-            tool_message = {"role": "tool", "parts": [{"text": str(tool_result) if tool_result is not None else ""}]}
-            self.history.append(tool_message)
-            self._manage_context_window()
-        except Exception as e:
-            log.error(f"Failed to store tool result in history: {e}", exc_info=True)
+    def _store_tool_result(self, function_name, args: dict, result: Any) -> None:
+        """Store the result of a tool execution in history."""
+        self.add_to_history(
+            {"role": "tool", "tool_name": function_name, "parts": [{"text": str(result)}], "args": args}
+        )
 
     def _find_last_model_text(self, history: List[Dict]) -> Optional[str]:
         """Find the last text part from a model response in the history."""
@@ -1286,3 +1191,100 @@ The user's first message will contain initial directory context and their reques
                     elif hasattr(part, "text") and part.text:  # Handle objects with text attribute
                         return part.text
         return None  # No model text found
+
+    async def _execute_function(self, name: str, args: dict) -> Any:
+        """Execute a function with the given name and arguments."""
+        try:
+            if hasattr(self, name):
+                func = getattr(self, name)
+                if asyncio.iscoroutinefunction(func):
+                    return await func(**args)
+                return func(**args)
+            else:
+                log.error(f"Function {name} not found")
+                return "error", f"Function {name} not found"
+        except Exception as e:
+            log.error(f"Error executing function {name}: {str(e)}")
+            return "error", str(e)
+
+    def handle_api_error(self, error: GoogleAPIError) -> None:
+        """Handle Google API errors with appropriate messaging."""
+        if isinstance(error, ResourceExhausted):
+            rich.print("[red]Rate limit exceeded. Please wait a moment before trying again.[/red]")
+        elif isinstance(error, InternalServerError):
+            rich.print("[red]Google API internal error. Please try again later.[/red]")
+        else:
+            rich.print(f"[red]API Error: {str(error)}[/red]")
+
+    def sync_generate(self, prompt: str) -> Optional[str]:
+        """
+        Synchronous version of generate for testing purposes.
+
+        This method should only be used in tests to avoid dealing with async/await
+        in test code.
+        """
+        import asyncio
+
+        try:
+            # Use asyncio.run in tests to execute the coroutine
+            return asyncio.run(self.generate(prompt))
+        except RuntimeError as e:
+            # Handle the case where there's already a running event loop
+            if "There is no current event loop in thread" in str(e):
+                # Get the current event loop or create a new one
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(self.generate(prompt))
+            else:
+                raise
+
+    def sync_process_candidate_response(
+        self, response_candidate: protos.Candidate, status
+    ) -> Tuple[str, Optional[str]]:
+        """
+        Synchronous version of _process_candidate_response for testing purposes.
+
+        Args:
+            response_candidate: The candidate response from the model
+            status: The status object for progress display
+
+        Returns:
+            Same as the async version
+        """
+        import asyncio
+
+        try:
+            # Use asyncio.run in tests to execute the coroutine
+            return asyncio.run(self._process_candidate_response(response_candidate, status))
+        except RuntimeError as e:
+            # Handle the case where there's already a running event loop
+            if "There is no current event loop in thread" in str(e):
+                # Get the current event loop or create a new one
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(self._process_candidate_response(response_candidate, status))
+            else:
+                raise
+
+    def sync_execute_function(self, name: str, args: dict) -> Any:
+        """
+        Synchronous version of _execute_function for testing purposes.
+
+        Args:
+            name: The name of the function to execute
+            args: The arguments to pass to the function
+
+        Returns:
+            The result of the function execution
+        """
+        import asyncio
+
+        try:
+            # Use asyncio.run in tests to execute the coroutine
+            return asyncio.run(self._execute_function(name, args))
+        except RuntimeError as e:
+            # Handle the case where there's already a running event loop
+            if "There is no current event loop in thread" in str(e):
+                # Get the current event loop or create a new one
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(self._execute_function(name, args))
+            else:
+                raise

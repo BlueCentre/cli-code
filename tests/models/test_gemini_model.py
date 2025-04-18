@@ -417,10 +417,13 @@ class TestGeminiModel:
         function_result = "Function result"
 
         # Mock the _execute_agent_loop method to return our expected result
-        model._execute_agent_loop = MagicMock(return_value=function_result)
+        # Use AsyncMock for async methods
+        from unittest.mock import AsyncMock
 
-        # Call the method under test
-        result = model.generate("test prompt")
+        model._execute_agent_loop = AsyncMock(return_value=function_result)
+
+        # Call the method under test - using sync_generate instead of asyncio.run
+        result = model.sync_generate("test prompt")
 
         # Verify the result matches what we expect
         assert result == function_result
