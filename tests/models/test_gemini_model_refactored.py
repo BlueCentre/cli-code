@@ -7,11 +7,28 @@ import os
 from unittest.mock import MagicMock, Mock, call, mock_open, patch
 
 import google.api_core.exceptions
+
+# from src.cli_code.utils import SearchTool
+import google.generativeai as genai
+
+# Keep general types import and try importing Candidate from here
+import google.generativeai.types as genai_types
 import pytest
 import questionary
 from google.api_core.exceptions import ResourceExhausted
 
+# Remove Candidate import as it seems unused and causes errors
+# from google.generativeai.types import Candidate
+# Specific type imports from submodules
+from google.generativeai.types.generation_types import GenerateContentResponse, GenerationConfig
+
+from src.cli_code.config import Config
+from src.cli_code.mcp.tools.registry import ToolRegistry
+from src.cli_code.models.base import AbstractModelAgent
 from src.cli_code.models.gemini import GeminiModel
+
+# Remove imports for Content, Part, FunctionCall as they cause errors and might be unused
+# from google.generativeai.types.content_types import Content, Part, FunctionCall
 
 # Test constants
 FAKE_API_KEY = "test-api-key"
@@ -34,32 +51,38 @@ def mock_console():
 @pytest.fixture
 def gemini_instance(mock_console):
     """Provides a GeminiModel instance with mocked dependencies."""
-    with (
-        patch("src.cli_code.models.gemini.genai.configure"),
-        patch("src.cli_code.models.gemini.genai.GenerativeModel"),
-        patch("src.cli_code.models.gemini.GeminiModel._create_tool_definitions", return_value=None),
-        patch("src.cli_code.models.gemini.GeminiModel._create_system_prompt", return_value="Test Prompt"),
-    ):
-        # Create the instance
-        model = GeminiModel(api_key=FAKE_API_KEY, console=mock_console, model_name=TEST_MODEL_NAME)
+    # Mock the config object if needed for specific tests, or pass necessary args directly
+    # config = MagicMock(spec=Config)
+    # config.gemini_model = "gemini-1.5-flash-latest" # Example model
+    # config.gemini_api_key = os.environ.get("GEMINI_API_KEY", "test_api_key")
+    # config.temperature = 0.7
+    # config.top_p = 0.9
+    # config.top_k = 40
+    # config.max_output_tokens = 1024
+    # config.stop_sequences = []
 
-        # Mock the add_to_history method
-        model.add_to_history = MagicMock()
+    api_key = os.environ.get("GEMINI_API_KEY", "test_api_key")
+    model_name = "gemini-1.5-flash-latest"  # Provide a default or fetch from a mock config if needed
 
-        # Mock _manage_context_window
-        model._manage_context_window = MagicMock()
-
-        # Replace history list with a MagicMock to track append calls
-        model.history = MagicMock()
-        # Make sure the history mock simulates list behavior for indexing
-        model.history.__getitem__.side_effect = (
-            lambda i: {"role": "model", "parts": [{"text": "test response"}]} if i == -1 else None
-        )
-
-        # Set up the model property directly
-        model.model = MagicMock()
-        model.current_model_name = TEST_MODEL_NAME
-        return model
+    # Ensure the necessary arguments are passed based on __init__ signature
+    # Remove config and individual generation params if not accepted by __init__
+    instance = GeminiModel(
+        api_key=api_key,
+        console=mock_console,
+        model_name=model_name,
+        # temperature=config.temperature,
+        # top_p=config.top_p,
+        # top_k=config.top_k,
+        # max_output_tokens=config.max_output_tokens,
+        # stop_sequences=config.stop_sequences,
+    )
+    # Use the correct method name from ToolRegistry for mocking
+    instance.tool_manager = MagicMock(spec=ToolRegistry)
+    instance.tool_manager.get_schemas.return_value = {}  # Mock get_schemas, return empty dict for no tools
+    instance.model = MagicMock()  # Mock the internal GenerativeModel
+    instance.chat = MagicMock()  # Mock the chat session
+    instance.history = []  # Initialize history
+    return instance
 
 
 # Tests for validation methods
@@ -109,13 +132,18 @@ def test_handle_special_commands_not_special(gemini_instance):
 # Tests for context preparation
 
 
-def test_prepare_input_context(gemini_instance):
+def test_prepare_input_context(gemini_instance, mocker):
     """Test preparation of input context."""
+    # Patch add_to_history on the instance
+    mock_add_history = mocker.patch.object(gemini_instance, "add_to_history", autospec=True)
+    # Patch _manage_context_window as it's called by add_to_history
+    mocker.patch.object(gemini_instance, "_manage_context_window", autospec=True)
     with patch.object(gemini_instance, "_get_initial_context", return_value="Initial context"):
         result = gemini_instance._prepare_input_context("User request")
         assert "Initial context" in result
         assert "User request" in result
-        assert gemini_instance.add_to_history.called
+        # Assert the patched method was called
+        mock_add_history.assert_called()
 
 
 # Tests for LLM response handling
@@ -180,8 +208,12 @@ def test_check_for_stop_reason_false(gemini_instance):
     assert result is False
 
 
-def test_extract_final_text(gemini_instance):
+def test_extract_final_text(gemini_instance, mocker):
     """Test extracting final text from a response candidate."""
+    # Patch add_to_history on the instance
+    mock_add_history = mocker.patch.object(gemini_instance, "add_to_history", autospec=True)
+    # Patch _manage_context_window as it's called by add_to_history
+    mocker.patch.object(gemini_instance, "_manage_context_window", autospec=True)
     mock_candidate = MagicMock()
     mock_part = MagicMock()
     mock_part.text = "Final text"
@@ -190,7 +222,8 @@ def test_extract_final_text(gemini_instance):
     result = gemini_instance._extract_final_text(mock_candidate)
 
     assert result == "Final text\n"
-    assert gemini_instance.add_to_history.called
+    # Assert the patched method was called
+    mock_add_history.assert_called()
 
 
 # Tests for exception handling
@@ -421,37 +454,55 @@ def test_request_tool_confirmation_error(gemini_instance):
         assert "Error during confirmation" in result
 
 
-def test_store_tool_result_dict(gemini_instance):
+def test_store_tool_result_dict(gemini_instance, mocker):
     """Test storing dictionary tool result."""
     tool_name = "view"
     tool_result = {"output": "File content"}
+    # Patch _manage_context_window on the instance
+    mock_manage_context = mocker.patch.object(gemini_instance, "_manage_context_window", autospec=True)
 
     gemini_instance._store_tool_result(tool_name, tool_result)
 
-    # Verify that appropriate methods were called
-    assert gemini_instance._manage_context_window.called
+    # Verify that the patched method was called
+    mock_manage_context.assert_called_once()
+    # Also check history was appended (optional but good)
+    assert len(gemini_instance.history) > 0
+    assert gemini_instance.history[-1]["role"] == "user"
+    assert gemini_instance.history[-1]["parts"][0]["function_response"]["name"] == tool_name
 
 
-def test_store_tool_result_str(gemini_instance):
+def test_store_tool_result_str(gemini_instance, mocker):
     """Test storing string tool result."""
     tool_name = "view"
     tool_result = "File content"
+    # Patch _manage_context_window on the instance
+    mock_manage_context = mocker.patch.object(gemini_instance, "_manage_context_window", autospec=True)
 
     gemini_instance._store_tool_result(tool_name, tool_result)
 
-    # Verify that appropriate methods were called
-    assert gemini_instance._manage_context_window.called
+    # Verify that the patched method was called
+    mock_manage_context.assert_called_once()
+    # Also check history was appended (optional but good)
+    assert len(gemini_instance.history) > 0
+    assert gemini_instance.history[-1]["role"] == "user"
+    assert gemini_instance.history[-1]["parts"][0]["function_response"]["name"] == tool_name
 
 
-def test_store_tool_result_other(gemini_instance):
+def test_store_tool_result_other(gemini_instance, mocker):
     """Test storing non-dict/non-str tool result."""
     tool_name = "view"
     tool_result = 42  # int
+    # Patch _manage_context_window on the instance
+    mock_manage_context = mocker.patch.object(gemini_instance, "_manage_context_window", autospec=True)
 
     gemini_instance._store_tool_result(tool_name, tool_result)
 
-    # Verify that appropriate methods were called
-    assert gemini_instance._manage_context_window.called
+    # Verify that the patched method was called
+    mock_manage_context.assert_called_once()
+    # Also check history was appended (optional but good)
+    assert len(gemini_instance.history) > 0
+    assert gemini_instance.history[-1]["role"] == "user"
+    assert gemini_instance.history[-1]["parts"][0]["function_response"]["name"] == tool_name
 
 
 def test_handle_no_actionable_content_unexpected(gemini_instance):
@@ -479,8 +530,13 @@ def test_handle_no_actionable_content_normal(gemini_instance):
 # Additional tests to improve coverage
 
 
-def test_process_response_content_with_function_call(gemini_instance):
+@patch("src.cli_code.models.gemini.GeminiModel._execute_function_call")
+def test_process_response_content_with_function_call(mock_execute_func_call, gemini_instance, mocker):
     """Test processing response content with a function call."""
+    # Patch add_to_history specifically for this test
+    mock_add_to_history = mocker.patch.object(gemini_instance, "add_to_history", autospec=True)
+    gemini_instance.history = []  # Ensure clean history for this test
+
     mock_candidate = MagicMock()
     mock_function_call = MagicMock()
     mock_function_call_part = MagicMock()
@@ -490,19 +546,25 @@ def test_process_response_content_with_function_call(gemini_instance):
     mock_candidate.content.parts = [mock_function_call_part]
     mock_status = MagicMock()
 
-    # Mock _process_individual_part to return values
-    with (
-        patch.object(gemini_instance, "_process_individual_part", return_value=(mock_function_call_part, "", True)),
-        patch.object(gemini_instance, "_execute_function_call", return_value="Function call result"),
-    ):
-        result = gemini_instance._process_response_content(mock_candidate, mock_status)
+    # Mock the execution result
+    mock_execute_func_call.return_value = None  # Simulate successful execution, continue loop
 
-        assert result == "Function call result"
-        assert gemini_instance._execute_function_call.called
+    result = gemini_instance._process_response_content(mock_candidate, mock_status)
+
+    # Assert function call execution was attempted
+    mock_execute_func_call.assert_called_once_with(mock_function_call_part, mock_status)
+    # Assert the method returns None to signal loop continuation
+    assert result is None
+    # Verify history addition via the mock
+    mock_add_to_history.assert_called_once_with({"role": "model", "parts": [mock_function_call_part]})
 
 
-def test_process_response_content_with_text(gemini_instance):
+def test_process_response_content_with_text(gemini_instance, mocker):
     """Test processing response content with text."""
+    # Patch add_to_history specifically for this test
+    mock_add_to_history = mocker.patch.object(gemini_instance, "add_to_history", autospec=True)
+    gemini_instance.history = []  # Ensure clean history for this test
+
     mock_candidate = MagicMock()
     mock_text_part = MagicMock()
     mock_text_part.text = "Sample text"
@@ -511,66 +573,41 @@ def test_process_response_content_with_text(gemini_instance):
     mock_candidate.content.parts = [mock_text_part]
     mock_status = MagicMock()
 
-    # Mock _process_individual_part to return values
-    with patch.object(gemini_instance, "_process_individual_part", return_value=(None, "Sample text", False)):
-        result = gemini_instance._process_response_content(mock_candidate, mock_status)
+    result = gemini_instance._process_response_content(mock_candidate, mock_status)
 
-        assert result == "Sample text"
-
-
-def test_process_individual_part_with_function_call(gemini_instance):
-    """Test processing individual part with function call."""
-    mock_part = MagicMock()
-    mock_part.function_call = MagicMock()
-    mock_part.text = None
-
-    mock_candidate = MagicMock()
-    mock_status = MagicMock()
-
-    function_call_part, text_buffer, processed_function_call = gemini_instance._process_individual_part(
-        mock_part, mock_candidate, None, "", False, mock_status
-    )
-
-    assert function_call_part is mock_part
-    assert text_buffer == ""
-    assert processed_function_call is True
-    assert gemini_instance.add_to_history.called
-    assert gemini_instance._manage_context_window.called
+    # Assert the method returns the extracted text
+    assert result == "Sample text"
+    # Verify history addition via the mock
+    mock_add_to_history.assert_called_once_with({"role": "model", "parts": [mock_text_part]})
 
 
-def test_process_individual_part_with_text(gemini_instance):
-    """Test processing individual part with text."""
-    mock_part = MagicMock()
-    mock_part.function_call = None
-    mock_part.text = "Sample text"
+def test_process_response_content_with_stop_reason(gemini_instance, mocker):
+    """Test _process_candidate_response handles STOP reason before processing content."""
+    # Patch add_to_history as it's called by _extract_final_text
+    mock_add_to_history = mocker.patch.object(gemini_instance, "add_to_history", autospec=True)
+    # Patch _manage_context_window as it's called by add_to_history
+    mocker.patch.object(gemini_instance, "_manage_context_window", autospec=True)
+
+    gemini_instance.history = []  # Ensure clean history
 
     mock_candidate = MagicMock()
+    mock_text_part = MagicMock()
+    mock_text_part.text = "Final text."
+    mock_candidate.content.parts = [mock_text_part]
+    mock_candidate.finish_reason = 1  # STOP
     mock_status = MagicMock()
 
-    function_call_part, text_buffer, processed_function_call = gemini_instance._process_individual_part(
-        mock_part, mock_candidate, None, "", False, mock_status
-    )
+    # Mock the _process_response_content method itself to ensure it's not called
+    mock_process_content = mocker.patch.object(gemini_instance, "_process_response_content", autospec=True)
 
-    assert function_call_part is None
-    assert text_buffer == "Sample text\n"
-    assert processed_function_call is False
-    assert gemini_instance.add_to_history.called
-    assert gemini_instance._manage_context_window.called
+    # Call the method under test
+    result = gemini_instance._process_candidate_response(mock_candidate, mock_status)
 
-
-def test_execute_function_call_with_task_complete(gemini_instance):
-    """Test executing function call with task_complete tool."""
-    mock_function_call_part = MagicMock()
-    mock_function_call_part.function_call.name = "task_complete"
-    mock_function_call_part.function_call.args = {"summary": "Task completed"}
-
-    mock_status = MagicMock()
-
-    with patch.object(gemini_instance, "_handle_task_complete", return_value="Task completed"):
-        result = gemini_instance._execute_function_call(mock_function_call_part, mock_status)
-
-        assert result == "Task completed"
-        assert gemini_instance._handle_task_complete.called
+    # Assertions
+    mock_process_content.assert_not_called()  # Ensure content processing was skipped
+    assert result == ("complete", "Final text.")  # Check the tuple format result
+    # Check add_to_history was called (indirectly via _extract_final_text)
+    mock_add_to_history.assert_called_once()
 
 
 def test_get_initial_context_with_rules_dir(gemini_instance):
@@ -755,7 +792,7 @@ def test_create_tool_definitions_no_declarations(gemini_instance):
         result = gemini_instance._create_tool_definitions()
 
         assert result is None
-        assert mock_tool_instance.get_function_declaration.called
+        mock_tool_instance.get_function_declaration.assert_called_once()
 
 
 def test_create_tool_definitions_no_method(gemini_instance):

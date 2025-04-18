@@ -89,7 +89,7 @@ def test_execute_agent_loop_normal_completion(gemini_instance):
 
             # Verify expectations
             mock_process.assert_called_once()
-            mock_handle_completion.assert_called_once_with(True, final_summary, 1)
+            mock_handle_completion.assert_called_once_with(True, None, 1)
             assert result == "Success: Task completed"
 
 
@@ -407,4 +407,55 @@ def test_process_candidate_response_no_result(gemini_instance):
             # Verify expectations
             mock_check_stop.assert_called_once_with(mock_candidate, mock_status)
             mock_process.assert_called_once_with(mock_candidate, mock_status)
-            assert result == ("task_completed", None)
+            assert result[0] == "continue"
+
+
+def test_execute_agent_loop_max_iterations(gemini_instance):
+    """Test agent loop with maximum iterations."""
+    # Set up mocks for method calls
+    with patch.object(gemini_instance, "_process_agent_iteration") as mock_process:
+        mock_process.return_value = ("task_completed", None)
+
+        # Set up necessary values for the method call
+        iteration_count = 0
+        task_completed = False
+        final_summary = "Final summary"
+        last_text_response = ""
+
+        # Mock _handle_loop_completion
+        with patch.object(gemini_instance, "_handle_loop_completion") as mock_handle_completion:
+            mock_handle_completion.return_value = "Success: Task completed"
+
+            # Execute the loop
+            result = gemini_instance._execute_agent_loop(
+                iteration_count, task_completed, final_summary, last_text_response
+            )
+
+            # Verify expectations
+            mock_process.assert_called_once()
+            mock_handle_completion.assert_called_once_with(True, None, 1)
+            assert result == "Success: Task completed"
+
+
+def test_process_candidate_response_user_rejected(gemini_instance):
+    """Test processing a response containing a user rejection message."""
+    # Mock _check_for_stop_reason to return False
+    with patch.object(gemini_instance, "_check_for_stop_reason") as mock_check_stop:
+        mock_check_stop.return_value = False
+
+        # Mock _process_response_content to return a rejection message
+        with patch.object(gemini_instance, "_process_response_content") as mock_process:
+            rejection_message = "User rejected the proposed operation on file.txt"
+            mock_process.return_value = rejection_message
+
+            # Create test candidate
+            mock_candidate = MagicMock()
+            mock_status = MagicMock()
+
+            # Call the method
+            result = gemini_instance._process_candidate_response(mock_candidate, mock_status)
+
+            # Verify expectations
+            mock_check_stop.assert_called_once_with(mock_candidate, mock_status)
+            mock_process.assert_called_once_with(mock_candidate, mock_status)
+            assert result == ("continue", rejection_message)

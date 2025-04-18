@@ -2,6 +2,8 @@
 Tests for the OllamaModel class.
 """
 
+from types import SimpleNamespace  # Import SimpleNamespace
+
 import pytest
 
 # Import directly to ensure coverage
@@ -69,10 +71,13 @@ def test_get_initial_context_with_ls_fallback(ollama_model_with_mocks):
     model = ollama_model_with_mocks["model"]
     mock_tool = ollama_model_with_mocks["mock_tool"]
 
+    # Reset mock before specific test call, as __init__ also calls it
+    mock_tool.execute.reset_mock()
+
     # Call method for testing
     context = model._get_initial_context()
 
-    # Verify tool was used
+    # Verify tool was used during *this* call
     mock_tool.execute.assert_called_once()
 
     # Check result content
@@ -105,20 +110,14 @@ def test_list_models(ollama_model_with_mocks, mocker):
     model = ollama_model_with_mocks["model"]
     mock_client = ollama_model_with_mocks["mock_client"]
 
-    # Set up individual mock model objects
-    mock_model1 = mocker.MagicMock()
-    mock_model1.id = "llama3"
-    mock_model1.name = "Llama 3"
+    # Use SimpleNamespace for mock data to avoid mock interaction issues
+    mock_model1 = SimpleNamespace(id="llama3", name="Llama 3")
+    mock_model2 = SimpleNamespace(id="mistral", name="Mistral")
 
-    mock_model2 = mocker.MagicMock()
-    mock_model2.id = "mistral"
-    mock_model2.name = "Mistral"
+    # Simulate the response object containing a 'data' attribute with the list
+    mock_models_list = SimpleNamespace(data=[mock_model1, mock_model2])
 
-    # Create mock list response with data property
-    mock_models_list = mocker.MagicMock()
-    mock_models_list.data = [mock_model1, mock_model2]
-
-    # Configure client mock to return model list
+    # Configure client mock to return the simulated response object
     mock_client.models.list.return_value = mock_models_list
 
     # Call the method
@@ -139,38 +138,45 @@ def test_generate_simple_response(ollama_model_with_mocks, mocker):
     model = ollama_model_with_mocks["model"]
     mock_client = ollama_model_with_mocks["mock_client"]
 
-    # Set up mock response for a single completion
-    mock_message = mocker.MagicMock()
-    mock_message.content = "Test response"
-    mock_message.tool_calls = None
+    # --- Corrected Mock Structure ---
+    # 1. Mock the innermost ChatCompletionMessage
+    mock_chat_completion_message = mocker.MagicMock()
+    mock_chat_completion_message.content = "Test response"
+    mock_chat_completion_message.tool_calls = None
+    # Mock the model_dump method needed for adding to history
+    mock_chat_completion_message.model_dump.return_value = {"role": "assistant", "content": "Test response"}
 
-    # Include necessary methods for dict conversion
-    mock_message.model_dump.return_value = {"role": "assistant", "content": "Test response"}
+    # 2. Mock the Choice object containing the message
+    mock_choice = mocker.MagicMock()
+    mock_choice.message = mock_chat_completion_message
+    # Add finish_reason if the code checks it
+    mock_choice.finish_reason = "stop"
 
+    # 3. Mock the top-level ChatCompletion object containing choices
     mock_completion = mocker.MagicMock()
-    mock_completion.choices = [mock_message]
+    mock_completion.choices = [mock_choice]
+    # --- End Corrected Mock Structure ---
 
-    # Override the MAX_OLLAMA_ITERATIONS to ensure our test completes with one step
+    # Override the MAX_OLLAMA_ITERATIONS to ensure test completes with one step
     mocker.patch("src.cli_code.models.ollama.MAX_OLLAMA_ITERATIONS", 1)
 
-    # Use reset_mock() to clear previous calls from initialization
+    # Reset mock calls made during initialization
     mock_client.chat.completions.create.reset_mock()
 
-    # For the generate method, we need to ensure it returns once and doesn't loop
+    # Configure the client mock to return the structured completion
     mock_client.chat.completions.create.return_value = mock_completion
 
-    # Mock the model_dump method to avoid errors
+    # Mock tool preparation as it's not relevant here
     mocker.patch.object(model, "_prepare_openai_tools", return_value=None)
 
     # Call generate method
     result = model.generate("Test prompt")
 
-    # Verify client method called at least once
-    assert mock_client.chat.completions.create.called
+    # Verify client method called
+    mock_client.chat.completions.create.assert_called_once()
 
-    # Since the actual implementation enters a loop and has other complexities,
-    # we'll check if the result is reasonable without requiring exact equality
-    assert "Test response" in result or result.startswith("(Agent")
+    # Check the final result (should be the text content now)
+    assert result == "Test response"
 
 
 def test_manage_ollama_context(ollama_model_with_mocks, mocker):

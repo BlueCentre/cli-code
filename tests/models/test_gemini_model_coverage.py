@@ -141,11 +141,15 @@ class TestGeminiModelGenerateMethod:
         # Prepare empty candidates
         empty_response = MagicMock()
         empty_response.candidates = []
+        # Need to mock prompt_feedback for the updated error handling
+        empty_response.prompt_feedback = MagicMock()
+        empty_response.prompt_feedback.block_reason.name = "SAFETY_BLOCK"
         self.mock_model_instance.generate_content.return_value = empty_response
 
         result = self.model.generate("Hello")
 
-        assert "Error: Empty response received from LLM" in result
+        # assert "Error: Empty response received from LLM" in result # OLD
+        assert "Error: Prompt was blocked by API. Reason: SAFETY_BLOCK" in result  # NEW
 
     def test_generate_with_empty_content(self):
         """Test handling of empty content in response candidate."""
@@ -153,12 +157,19 @@ class TestGeminiModelGenerateMethod:
         empty_response = MagicMock()
         empty_candidate = MagicMock()
         empty_candidate.content = None
+        empty_candidate.index = 0  # Add index for error message formatting
+        empty_candidate.finish_reason = 5  # Example unexpected reason
         empty_response.candidates = [empty_candidate]
         self.mock_model_instance.generate_content.return_value = empty_response
 
         result = self.model.generate("Hello")
 
-        assert "(Agent received response candidate with no content/parts)" in result
+        # assert "(Agent received response candidate with no content/parts)" in result # OLD
+        # Expect the specific message from _handle_null_content
+        assert (
+            f"(Response candidate {empty_candidate.index} finished unexpectedly: {empty_candidate.finish_reason} with no content)"
+            in result
+        )  # NEW
 
     def test_generate_with_function_call(self):
         """Test generating with function call in response."""
@@ -259,21 +270,24 @@ class TestGeminiModelGenerateMethod:
 
         content.parts = [function_part]
         candidate.content = content
+        candidate.finish_reason = 0  # Function call expected
         function_call_response.candidates = [candidate]
 
         self.mock_model_instance.generate_content.return_value = function_call_response
 
-        # Set up task_complete tool
+        # Set up task_complete tool mock (it's handled directly now, execute not called)
         task_complete_tool = MagicMock()
-        task_complete_tool.execute.return_value = "Task completed successfully with details"
-        self.mock_get_tool.return_value = task_complete_tool
+        self.mock_get_tool.return_value = task_complete_tool  # get_tool is still called
 
         # Execute
         result = self.model.generate("Complete task")
 
         # Verify task completion handling
         self.mock_get_tool.assert_called_with("task_complete")
-        assert result == "Task completed successfully with details"
+        # assert result == "Task completed successfully with details" # OLD
+        # The summary is directly returned by _handle_task_complete
+        assert result == "Task completed successfully"  # NEW
+        task_complete_tool.execute.assert_not_called()  # Verify the mock tool execute wasn't called
 
     def test_generate_with_file_edit_confirmation_accepted(self):
         """Test handling of file edit confirmation when accepted."""
@@ -369,6 +383,7 @@ class TestGeminiModelGenerateMethod:
         """Test handling when quota is exceeded even on fallback model."""
         # Set the current model to already be the fallback
         self.model.current_model_name = FALLBACK_MODEL
+        self.model.model.model_name = FALLBACK_MODEL  # Ensure mock instance reflects this too
 
         # Set up call to raise ResourceExhausted
         self.mock_model_instance.generate_content.side_effect = ResourceExhausted("Quota exceeded")
@@ -378,8 +393,10 @@ class TestGeminiModelGenerateMethod:
 
         # Verify fallback failure handling
         assert "Error: API quota exceeded for primary and fallback models" in result
+        # The error message printed to console has changed
         self.mock_console.print.assert_any_call(
-            "[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]"
+            # "[bold red]API quota exceeded for primary and fallback models. Please check your plan/billing.[/bold red]" # OLD
+            "[bold red]API quota exceeded for all models. Check billing.[/bold red]"  # NEW
         )
 
     def test_generate_with_max_iterations_reached(self):
