@@ -96,7 +96,18 @@
         "Step 5: Verification - Perform end-to-end testing, get user feedback, run final SonarCloud scan",
         "Step 6: Documentation - Update relevant docs, add code comments, update README if needed",
         "Step 7: Commit Preparation - Prepare detailed commit description, write clear messages, reference issues",
-        "Step 8: Review and Submit - Final review, push only completed changes, submit PR"
+        "Step 8: Review and Submit - Final review, push only completed changes, submit PR",
+        "Define the task or feature.",
+        "Create a new branch for the work.",
+        "Implement the code changes.",
+        "Test the changes thoroughly.",
+        "Commit the changes with a clear message.",
+        "Push the branch to the remote repository.",
+        "Check memory for GitHub PR creation authentication workflow.",
+        "Create a Pull Request (PR).",
+        "Address feedback and iterate.",
+        "Merge the PR once approved.",
+        "Deploy the changes if applicable."
       ]
     },
     {
@@ -104,7 +115,7 @@
       "name": "SonarCloud Analysis Process",
       "entityType": "TechnicalProcess",
       "observations": [
-        "Generate coverage report with: pytest --cov=src tests --cov-report=xml",
+        "Generate coverage report with: pytest --cov=src test_dir --cov-report=xml",
         "Run local SonarCloud scan with: sonar-scanner -Dsonar.login=YOUR_SONARCLOUD_TOKEN or use environment variable",
         "Local analysis allows for faster feedback loop before pushing changes",
         "GitHub Actions workflow automatically runs scans on push",
@@ -138,6 +149,81 @@
         "Be mindful of performance implications",
         "Profile code for expensive operations when necessary",
         "Consider memory usage for larger data processing"
+      ]
+    },
+    {
+      "type": "entity",
+      "entityType": "Authentication Workflow",
+      "observations": [
+        "Before creating a GitHub PR, ensure proper authentication.",
+        "This might involve using a Personal Access Token (PAT).",
+        "Store the PAT securely, e.g., in environment variables or a secrets manager.",
+        "Configure Git to use the PAT for HTTPS operations.",
+        "Alternatively, use SSH keys for authentication.",
+        "Ensure the SSH key is added to your GitHub account."
+      ],
+      "name": "GitHub PR Creation Authentication Workflow"
+    },
+    {
+      "type": "entity",
+      "name": "CLI-code Repository",
+      "entityType": "Project",
+      "observations": [
+        "GitHub repository at BlueCentre/cli-code",
+        "Python package with PyPI name 'cli-code-agent'",
+        "AI coding assistant CLI using Google's Gemini models with function calling"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "CLI-code Release Process",
+      "entityType": "Workflow",
+      "observations": [
+        "Version 0.3.0 was released by updating version in pyproject.toml, updating changelog, committing changes, creating an annotated tag (v0.3.0), pushing to main, and pushing the tag",
+        "CI/CD pipeline optimized to reduce redundant builds by limiting push triggers to main branch and tags only",
+        "Follows semantic versioning with detailed criteria for MAJOR/MINOR/PATCH version bumps",
+        "Uses GitHub Actions workflow to automatically publish to PyPI when a tag starting with 'v' is pushed",
+        "Two publishing options: PyPI API Token (simpler) or Trusted Publishing (more secure)",
+        "Verification steps include checking PyPI listing, installation testing, and functionality testing"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "CLI-code GitHub Workflow",
+      "entityType": "Process",
+      "observations": [
+        "Feature branches follow pattern 'feature/*' or 'fix/*'",
+        "Pull requests used for code review before merging to main",
+        "Version bumps and changelog updates committed directly to main after PR is merged",
+        "Squash and merge recommended for feature branches to keep clean history",
+        "CI pipeline runs on PR events and push to main for validation"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Git Commit Workflow",
+      "entityType": "workflow",
+      "observations": [
+        "ALWAYS run 'git status' BEFORE committing to see ALL modified files",
+        "ALWAYS check for untracked files that should be included",
+        "Use git diff to verify changes before staging them",
+        "When fixing tests/bugs, include ALL related files in the SAME commit",
+        "Double-check after staging with 'git status' to confirm nothing is missing",
+        "Include file paths in commit messages when specific files are modified",
+        "NEVER use --no-verify when committing (always allow hooks to run)",
+        "If pre-commit hooks fail, FIX the underlying issues instead of bypassing them",
+        "Pre-commit hooks enforce quality standards that must be respected",
+        "Follow the project's CI/CD practices without shortcuts"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Memory Backup Location",
+      "entityType": "FileLocation",
+      "observations": [
+        "Memory is backed up to scripts/memory_backup.json in the repository",
+        "This file contains both entities and relations",
+        "Should be updated when new important information is added to memory"
       ]
     }
   ],
@@ -195,6 +281,24 @@
       "from": "SonarCloud Analysis Process",
       "to": "Code Quality Standards",
       "relationType": "supports"
+    },
+    {
+      "type": "relation",
+      "from": "CLI-code Repository",
+      "relationType": "uses",
+      "to": "CLI-code Release Process"
+    },
+    {
+      "type": "relation",
+      "from": "CLI-code Repository",
+      "relationType": "follows",
+      "to": "CLI-code GitHub Workflow"
+    },
+    {
+      "type": "relation",
+      "from": "CLI-code Release Process",
+      "relationType": "depends on",
+      "to": "CLI-code GitHub Workflow"
     }
   ]
 }
