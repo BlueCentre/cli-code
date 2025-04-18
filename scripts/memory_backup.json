@@ -213,7 +213,13 @@
         "NEVER use --no-verify when committing (always allow hooks to run)",
         "If pre-commit hooks fail, FIX the underlying issues instead of bypassing them",
         "Pre-commit hooks enforce quality standards that must be respected",
-        "Follow the project's CI/CD practices without shortcuts"
+        "Follow the project's CI/CD practices without shortcuts",
+        "EXCEPTION: For memory backup JSON files or other non-code files, it may be appropriate to use --no-verify, but document this exception clearly in the commit message",
+        "AFTER creating or updating a PR, ALWAYS monitor the pipeline status by polling with 'gh pr checks' using a 1-minute sleep interval",
+        "CHECK each pipeline step and ensure NONE of the checks fail",
+        "If failures occur, immediately review recent PR comments (likely created by bots) to identify the specific issues",
+        "ADDRESS all pipeline failures promptly before making additional changes",
+        "Continue polling until all checks pass"
       ]
     },
     {
