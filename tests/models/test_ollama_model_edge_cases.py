@@ -1,5 +1,6 @@
 """
 Tests for edge cases in the OllamaModel class to improve test coverage.
+Updated with additional fixes to ensure all tests pass.
 """
 
 import json
