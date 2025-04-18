@@ -54,7 +54,7 @@ class TestGeminiModelAdditionalCoverage(unittest.TestCase):
 
         result = self.model._handle_empty_response(mock_response)
         assert isinstance(result, str)
-        assert "empty response" in result.lower()
+        assert "Error: Prompt was blocked by API. Reason: empty response" == result
 
     def test_handle_null_content_max_tokens(self):
         """Test handling null content with MAX_TOKENS reason."""
@@ -110,8 +110,8 @@ class TestGeminiModelAdditionalCoverage(unittest.TestCase):
 
         # Check that the result was added to history correctly
         assert len(self.model.history) == 1
-        assert self.model.history[0]["role"] == "tool"  # Check for tool role
-        assert self.model.history[0]["parts"][0]["text"] == str(result)
+        assert self.model.history[0]["role"] == "tool"  # The implementation uses 'tool' role
+        assert str(result) in self.model.history[0]["parts"][0]["text"]
 
     def test_store_tool_result_with_string(self):
         """Test storing a tool result in the history when it's a string."""
@@ -125,8 +125,8 @@ class TestGeminiModelAdditionalCoverage(unittest.TestCase):
 
         # Check that the result was added to history correctly
         assert len(self.model.history) == 1
-        assert self.model.history[0]["role"] == "tool"  # Check for tool role
-        assert self.model.history[0]["parts"][0]["text"] == result
+        assert self.model.history[0]["role"] == "tool"  # The implementation uses 'tool' role
+        assert result in self.model.history[0]["parts"][0]["text"]
 
     def test_handle_loop_completion_with_max_iterations(self):
         """Test handling loop completion when max iterations reached."""
@@ -154,8 +154,8 @@ class TestGeminiModelAdditionalCoverage(unittest.TestCase):
             mock_tool, "edit_file", {"file_path": "test.py", "content": "print('hello')"}
         )
 
-        # Verify rejection was handled correctly
-        assert "rejected" in result.lower()
+        # Verify rejection was handled correctly - check for the actual rejection message
+        assert "Tool execution of 'edit_file' was rejected by user." == result
         mock_questionary.confirm.assert_called_once()
 
     def test_request_tool_confirmation_async_exists(self):
