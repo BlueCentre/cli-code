@@ -369,7 +369,11 @@ class TestModelEdgeCases:
         result = model.generate("Test prompt")
 
         # Assert
-        assert "no content" in result.lower() or "content/parts" in result.lower()
+        assert (
+            "no content" in result.lower()
+            or "content/parts" in result.lower()
+            or "actionable content" in result.lower()
+        )
 
     def test_ollama_with_empty_system_prompt(self, mock_console):
         """Test Ollama with an empty system prompt."""

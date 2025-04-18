@@ -587,7 +587,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # Check if response has empty parts
         if not response_candidate.content.parts:
             log.warning(f"Response candidate had content but no parts. Finish Reason: {finish_reason}")
-            return "complete", "(Internal Agent Error: Received response candidate with no content/parts available)"
+            # Call _handle_no_actionable_content for proper error handling (prevent infinite loops)
+            return self._handle_no_actionable_content(response_candidate)
 
         # Process parts (text and function calls)
         function_call_part_to_execute = None
@@ -709,13 +710,15 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # Priority 2: Handle specific non-STOP finish reasons
         elif finish_reason == 2:  # MAX_TOKENS
             log.warning("Response stopped due to maximum token limit.")
-            # Use dict format for history part
-            self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})  # Use dict format
+            # Add to history even if it's an error for better context
+            if text_response_buffer:
+                self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})
             return "error", f"Response exceeded maximum token limit. {text_response_buffer}"
         elif finish_reason == 4:  # RECITATION
             log.warning("Response stopped due to recitation policy.")
-            # Don't add potentially problematic content to history, but include it in the response
+            # Add to history even if it's a recitation for better context
             if text_response_buffer:
+                self.add_to_history({"role": "model", "parts": [{"text": text_response_buffer}]})
                 return "error", f"Response blocked due to recitation policy. {text_response_buffer}"
             else:
                 return "error", "Response blocked due to recitation policy."
@@ -745,7 +748,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # Fallback for any other unexpected finish reason if text_buffer is empty
         else:
             log.error(f"Unhandled finish_reason {finish_reason} with no actionable content.")
-            return "error", f"Unhandled finish reason: {finish_reason}"
+            # Replace with call to the dedicated method
+            return self._handle_no_actionable_content(response_candidate)
 
     def _get_llm_response(self):
         """Get response from the language model."""
@@ -837,7 +841,8 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         # Get finish reason
         finish_reason = getattr(response_candidate, "finish_reason", None)
         log.error(f"Unhandled finish_reason {finish_reason} with no actionable content.")
-        return "error", f"Unhandled finish reason: {finish_reason}"
+        # Always return error status to prevent infinite loops
+        return "error", f"Unexpected state: No actionable content with finish reason {finish_reason}"
 
     def _handle_agent_loop_exception(self, exception, status):
         """Handle exceptions that occur during the agent loop."""

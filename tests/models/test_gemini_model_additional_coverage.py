@@ -261,3 +261,52 @@ class TestGeminiModelAdditionalCoverage:
         # Verify the history is cleared except for system prompt
         assert len(model.history) == 2
         assert model.history[0]["role"] == "system"
+
+    def test_handle_unexpected_finish_reason_no_actionable_content(self, model):
+        """Test handling unexpected finish reason with no actionable content."""
+        # Mock a response candidate with an unexpected finish reason
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = 99  # Use a value that doesn't match any known finish reason
+
+        # Call the method
+        status, message = model._handle_no_actionable_content(mock_candidate)
+
+        # Verify we get an error status to prevent infinite loops
+        assert status == "error"
+        assert "Unexpected state" in message
+        assert "finish reason 99" in message
+
+        # Test that process_candidate_response also calls this method for the same case
+        mock_candidate.content = MagicMock()
+        mock_candidate.content.parts = []  # No parts = no actionable content
+
+        status, message = model._process_candidate_response(mock_candidate, MagicMock())
+
+        # Verify we get an error status to prevent infinite loops
+        assert status == "error"
+        assert "Unexpected state" in message
+
+    def test_error_response_added_to_history(self, model):
+        """Test that error responses are added to history for better context."""
+        # Create a mock candidate with recitation finish reason (4)
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = 4  # RECITATION
+        mock_candidate.content = MagicMock()
+        # Add some text content that should be stored even though it's an error
+        mock_text = "This is potentially problematic content"
+        mock_candidate.content.parts = [MagicMock(text=mock_text)]
+
+        # Clear history first
+        model.history = []
+
+        # Process the candidate
+        status, message = model._process_candidate_response(mock_candidate, MagicMock())
+
+        # Verify the response was rejected due to recitation
+        assert status == "error"
+        assert "recitation policy" in message
+
+        # Verify the text was still added to history for context
+        assert len(model.history) == 1
+        assert model.history[0]["role"] == "model"
+        assert model.history[0]["parts"][0]["text"] == mock_text
