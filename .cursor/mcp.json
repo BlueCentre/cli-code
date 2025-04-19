@@ -31,9 +31,17 @@
       "url": "https://mcp.composio.dev/googletasks/{{env.COMPOSIO_UNIQUE_ID}}"
     },
     "GitHub MCP": {
-      "command": "npx -y @modelcontextprotocol/server-github",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server"
+      ],
       "env": {
-        "GITHUB_TOKEN": "{{env.GITHUB_TOKEN}}"
+        "GITHUB_PERSONAL_ACCESS_TOKEN":"{{env.GITHUB_TOKEN}}"
       }
     },
     "sonarqube": {

@@ -7,32 +7,42 @@ from typing import Any, Dict, List, Optional, Set, Union, get_args, get_origin, 
 # Use fallback only if explicitly forced.
 FORCE_FALLBACK = os.environ.get("MCP_FORCE_FALLBACK") == "1"
 
-try:
-    if not FORCE_FALLBACK:
-        from pydantic import BaseModel as PydanticBase
-        from pydantic import ConfigDict as PydanticConfigDict
-        from pydantic import Field as PydanticField
-        from pydantic import ValidationError
 
-        PYDANTIC_AVAILABLE = True
-    else:
-        PYDANTIC_AVAILABLE = False
-except ImportError:
-    PYDANTIC_AVAILABLE = False
-
-
-# Custom exception to mimic Pydantic's ValidationError - defined outside the if/else block
-# so it's always available for import
+# Define custom ValidationError *first* so it's always available
 class ValidationError(Exception):
     pass
 
 
+try:
+    if not FORCE_FALLBACK:
+        # Attempt to import Pydantic components
+        from pydantic import BaseModel as PydanticBase
+        from pydantic import ConfigDict as PydanticConfigDict
+        from pydantic import Field as PydanticField
+
+        # Do NOT import ValidationError from pydantic here to avoid conflict
+        PYDANTIC_AVAILABLE = True
+    else:
+        # Force fallback even if Pydantic is installed
+        PYDANTIC_AVAILABLE = False
+        # Raise ImportError so the except block is hit if Pydantic IS installed but fallback is forced
+        # This simplifies the logic below.
+        raise ImportError("Forcing fallback.")
+except ImportError:
+    PYDANTIC_AVAILABLE = False
+
+
 if PYDANTIC_AVAILABLE:
     # Use real Pydantic.
+    import pydantic  # Import the base pydantic module
+
     McpPydanticBase = PydanticBase
     Field = PydanticField
     ConfigDict = PydanticConfigDict
-    # We imported ValidationError from pydantic above, don't need to redefine
+    # Use Pydantic's real ValidationError if Pydantic is used
+    # We need to reference it explicitly here if needed elsewhere
+    # (but tests should use the globally defined one for simplicity)
+    PydanticValidationError = pydantic.ValidationError
 else:
     # Fallback implementation
     from dataclasses import dataclass
@@ -59,7 +69,7 @@ else:
 
         def __post_init__(self):
             cls = self.__class__
-            # If not already set up, initialize __model_fields__ and __model_init_required__.
+            # Initialize class-level field info if not already done
             if not hasattr(cls, "__model_fields__"):
                 cls.__model_fields__ = {}
                 cls.__model_init_required__ = set()
@@ -72,91 +82,120 @@ else:
                             if value.required:
                                 cls.__model_init_required__.add(name)
                         else:
+                            # Regular class attribute with a default value
                             cls.__model_fields__[name] = Field(default=value)
                     else:
+                        # Field defined only by annotation, treat as required
                         cls.__model_fields__[name] = Field(default=None, required=True)
                         cls.__model_init_required__.add(name)
 
-            # Convert nested dicts into model instances if the annotation appears to be a model.
-            for name, type_hint in self.__annotations__.items():
+            # === Order Adjustment ===
+            # 1. Replace Field objects with their defaults *first*.
+            #    This ensures default_factory values are present before nested validation.
+            for key, field_obj in cls.__model_fields__.items():
+                if key not in self.__dict__ or self.__dict__[key] is None:  # Only set if not provided in __init__
+                    if isinstance(field_obj, Field):
+                        if field_obj.default_factory is not None:
+                            # Check if the key wasn't already set by __init__
+                            if key not in self.__dict__ or self.__dict__[key] is field_obj.default:
+                                self.__dict__[key] = field_obj.default_factory()
+                        elif field_obj.default is not None:
+                            # Check if the key wasn't already set by __init__
+                            if key not in self.__dict__ or self.__dict__[key] is None:
+                                self.__dict__[key] = field_obj.default
+                    # else: It was likely a plain default value handled by @dataclass
+
+            # 2. Convert nested dicts into model instances.
+            #    This relies on step 1 having set default dicts if necessary.
+            annotations = get_type_hints(self.__class__)
+            for name, type_hint in annotations.items():
                 val = self.__dict__.get(name)
-                if val is not None and isinstance(val, dict) and hasattr(type_hint, "__annotations__"):
+                is_likely_model = hasattr(type_hint, "__annotations__") or (
+                    inspect.isclass(type_hint) and issubclass(type_hint, McpPydanticBase)
+                )
+                if val is not None and isinstance(val, dict) and is_likely_model:
                     try:
                         self.__dict__[name] = type_hint(**val)
-                    except Exception:
-                        pass
+                    except ValidationError as e:
+                        raise ValidationError(f"Validation error in field '{name}': {e}") from e
+                    except Exception as e:
+                        pass  # Ignore other potential errors for now
 
-            # Replace any Field objects with their default or default_factory values.
-            for key, value in list(self.__dict__.items()):
-                if isinstance(value, Field):
-                    if value.default_factory is not None:
-                        self.__dict__[key] = value.default_factory()
-                    else:
-                        self.__dict__[key] = value.default
-
-            # Validate required fields.
-            if hasattr(self.__class__, "__model_init_required__"):
+            # 3. Validate required fields are now present (after defaults/init).
+            if hasattr(cls, "__model_init_required__"):
                 missing = []
-                for field_name in self.__class__.__model_init_required__:
-                    if field_name not in self.__dict__ or self.__dict__[field_name] is None:
+                for field_name in cls.__model_init_required__:
+                    # Check if field is missing or explicitly set to None (unless it's Optional)
+                    value = self.__dict__.get(field_name)
+                    if value is None:
+                        field_type = annotations.get(field_name)
+                        origin = get_origin(field_type)
+                        args = get_args(field_type)
+                        # Allow None only if it's Optional
+                        if not (origin is Union and type(None) in args):
+                            missing.append(field_name)
+                    elif field_name not in self.__dict__:  # Should be redundant with get check, but safe
                         missing.append(field_name)
+
                 if missing:
                     raise ValidationError(f"Missing required fields: {', '.join(missing)}")
 
-            # Perform type validation based on type hints
+            # 4. Perform type validation on final values.
+            #    Put back the list/dict checks now that default factories are handled.
             self._validate_types()
 
         def _validate_types(self):
-            """Validate field types based on type annotations"""
+            """Validate field types based on type annotations (with list/dict checks)."""
             annotations = get_type_hints(self.__class__)
-
             for field_name, expected_type in annotations.items():
-                # Skip validation if the field is not set
                 if field_name not in self.__dict__:
                     continue
-
                 value = self.__dict__[field_name]
 
-                # Skip validation for None values if the field is Optional
+                # NEW: Skip validation entirely if the value is still a Field object
+                # This handles cases where default_factory resolution didn't replace it.
+                if isinstance(value, Field):
+                    continue
+
                 if value is None:
                     origin = get_origin(expected_type)
                     args = get_args(expected_type)
                     if origin is Union and type(None) in args:
                         continue
-                    # If the field is not Optional and the value is None, validation is handled elsewhere
-                    continue
+                    else:
+                        continue  # Let required check handle non-optional Nones
 
-                # Handle Optional types by extracting the actual type
+                # Extract the base type if it's Optional[X]
                 origin = get_origin(expected_type)
                 args = get_args(expected_type)
-
                 if origin is Union and type(None) in args:
-                    # It's an Optional type, extract the actual type(s)
                     non_none_types = [t for t in args if t is not type(None)]
                     if len(non_none_types) == 1:
                         expected_type = non_none_types[0]
                         origin = get_origin(expected_type)
                         args = get_args(expected_type)
+                    else:
+                        continue  # Skip complex Optional[Union[...]] validation
 
-                # Handle List, Dict and other container types
+                # Type checks for resolved values
                 if origin is list or origin is List:
                     if not isinstance(value, list):
-                        raise ValidationError(f"{field_name} must be a list")
+                        raise ValidationError(f"{field_name} must be a list, got {type(value).__name__}")
                 elif origin is dict or origin is Dict:
                     if not isinstance(value, dict):
-                        raise ValidationError(f"{field_name} must be a dictionary")
-                elif expected_type is str or expected_type == str:
+                        raise ValidationError(f"{field_name} must be a dictionary, got {type(value).__name__}")
+                elif expected_type is str:
                     if not isinstance(value, str):
-                        raise ValidationError(f"{field_name} must be a string")
-                elif expected_type is int or expected_type == int:
+                        raise ValidationError(f"{field_name} must be a string, got {type(value).__name__}")
+                elif expected_type is int:
                     if not isinstance(value, int):
-                        raise ValidationError(f"{field_name} must be an integer")
-                elif expected_type is float or expected_type == float:
+                        raise ValidationError(f"{field_name} must be an integer, got {type(value).__name__}")
+                elif expected_type is float:
                     if not isinstance(value, (int, float)):
-                        raise ValidationError(f"{field_name} must be a number")
-                elif expected_type is bool or expected_type == bool:
+                        raise ValidationError(f"{field_name} must be a number, got {type(value).__name__}")
+                elif expected_type is bool:
                     if not isinstance(value, bool):
-                        raise ValidationError(f"{field_name} must be a boolean")
+                        raise ValidationError(f"{field_name} must be a boolean, got {type(value).__name__}")
 
         def __init_subclass__(cls, **kwargs):
             super().__init_subclass__(**kwargs)
@@ -185,36 +224,34 @@ else:
 
         def __init__(self, **data: Any):
             cls = self.__class__
-            if not hasattr(cls, "__model_fields__"):
-                cls.__model_fields__ = {}
-                cls.__model_init_required__ = set()
-                annotations = cls.__annotations__ if hasattr(cls, "__annotations__") else {}
-                for name, _type_hint in annotations.items():
-                    if name in cls.__dict__:
-                        value = cls.__dict__[name]
-                        if isinstance(value, Field):
-                            cls.__model_fields__[name] = value
-                            if value.required:
-                                cls.__model_init_required__.add(name)
-                        else:
-                            cls.__model_fields__[name] = Field(default=value)
-                    else:
-                        cls.__model_fields__[name] = Field(default=None, required=True)
-                        cls.__model_init_required__.add(name)
-            # Initialize declared fields.
-            self_dict = {}
-            for name, field_obj in self.__class__.__model_fields__.items():
-                if name in data:
-                    self_dict[name] = data.pop(name)
+            # Ensure class-level field info is initialized
+            if not hasattr(cls, "__model_fields__") or not cls.__model_fields__:
+                cls.__init_subclass__()
+
+            processed_data = data.copy()
+
+            # 1. Initialize declared fields using provided data or defaults/factories
+            for name, field_obj in cls.__model_fields__.items():
+                if name in processed_data:
+                    value = processed_data.pop(name)
+                    setattr(self, name, value)
                 else:
+                    # Value not provided, use default or factory
                     if field_obj.default_factory is not None:
-                        self_dict[name] = field_obj.default_factory()
-                    else:
-                        self_dict[name] = field_obj.default
-            # Add extra fields.
-            for k, v in data.items():
-                self_dict[k] = v
-            object.__setattr__(self, "__dict__", self_dict)
+                        setattr(self, name, field_obj.default_factory())
+                    elif field_obj.default is not None:
+                        setattr(self, name, field_obj.default)
+                    elif not field_obj.required:
+                        # Not required, no default -> defaults to None implicitly
+                        setattr(self, name, None)
+                    # If required and no default/factory, it remains unset here;
+                    # __post_init__ will catch it.
+
+            # 2. Add any extra fields provided
+            for k, v in processed_data.items():
+                setattr(self, k, v)
+
+            # Call __post_init__ if it exists (for validation and nested conversion)
             if hasattr(self, "__post_init__"):
                 self.__post_init__()
 
@@ -254,19 +291,22 @@ else:
             **kwargs,
         ) -> str:
             data = self.model_dump(exclude=exclude, exclude_none=exclude_none)
-            # For JSONRPCMessage, force compact JSON.
-            if self.__class__.__name__ == "JSONRPCMessage":
-                return json.dumps(data, separators=(",", ":"), indent=None)
-            else:
-                if separators is None:
-                    separators = (",", ":")
-                return json.dumps(data, indent=indent, separators=separators)
 
-        def json(self, **kwargs):
-            if self.__class__.__name__ == "JSONRPCMessage":
-                data = self.model_dump()
-                return json.dumps(data, separators=(",", ":"))
-            return self.model_dump_json(**kwargs)
+            # Determine separators based on indent and explicit parameter
+            if separators is not None:
+                chosen_separators = separators
+            elif indent is not None:
+                # Standard python json.dumps uses (", ", ": ") when indenting
+                chosen_separators = (", ", ": ")
+            else:
+                # Default to compact separators if no indent and no explicit separators
+                chosen_separators = (",", ":")
+
+            # Special case for JSONRPCMessage: force compact only if no indent AND no explicit separators given
+            if self.__class__.__name__ == "JSONRPCMessage" and indent is None and separators is None:
+                chosen_separators = (",", ":")
+
+            return json.dumps(data, indent=indent, separators=chosen_separators)
 
         def dict(self, **kwargs):
             return self.model_dump(**kwargs)
@@ -275,5 +315,6 @@ else:
         def model_validate(cls, data: Dict[str, Any]):
             return cls(**data)
 
+    # Fallback ConfigDict (simple function returning the dict)
     def ConfigDict(**kwargs) -> Dict[str, Any]:
         return dict(**kwargs)
