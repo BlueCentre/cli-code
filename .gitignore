@@ -35,3 +35,6 @@ coverage_report.xml
 htmlcov/
 test_logs/
 coverage_html/
+
+# SonarQube/SonarScanner
+.scannerwork/

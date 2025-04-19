@@ -1,7 +1,7 @@
 # chuk_mcp/chuk_mcp.mcp_client/messages/resources/resource.py
 from typing import Optional
 
-from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase
+from mcp_code.mcp_client.mcp_pydantic_base import McpPydanticBase
 
 
 class Resource(McpPydanticBase):

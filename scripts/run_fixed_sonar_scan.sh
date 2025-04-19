@@ -39,32 +39,27 @@ if [ ! -f "coverage.xml" ]; then
     fi
 fi
 
-# Extract properties with proper quoting
-PROJECT_KEY=$(grep "sonar.projectKey" sonar-project.properties | cut -d= -f2)
-ORGANIZATION=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2)
-# Use the more specific sources definition
-SOURCES=$(grep -n "sonar.sources" sonar-project.properties | sort -r -n | head -1 | cut -d: -f3 | cut -d= -f2)
-TESTS=$(grep "sonar.tests" sonar-project.properties | tail -1 | cut -d= -f2)
-SOURCE_ENCODING=$(grep "sonar.sourceEncoding" sonar-project.properties | cut -d= -f2)
-SCM_PROVIDER=$(grep "sonar.scm.provider" sonar-project.properties | cut -d= -f2)
+PROJECT_KEY=$(grep "sonar.projectKey" sonar-project.properties | cut -d= -f2 | tr -d ' ')
+ORGANIZATION=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2 | tr -d ' ')
+SOURCE_ENCODING=$(grep "sonar.sourceEncoding" sonar-project.properties | cut -d= -f2 | tr -d ' ')
+SCM_PROVIDER=$(grep "sonar.scm.provider" sonar-project.properties | cut -d= -f2 | tr -d ' ')
 
 # Run sonar-scanner with the same arguments as in CI
 echo -e "${YELLOW}Running sonar-scanner...${NC}"
 sonar-scanner \
   -Dsonar.python.coverage.reportPaths=coverage.xml \
   -Dsonar.host.url=https://sonarcloud.io \
-  -Dsonar.projectKey="${PROJECT_KEY}" \
-  -Dsonar.organization="${ORGANIZATION}" \
-  -Dsonar.sources="${SOURCES}" \
-  -Dsonar.tests="${TESTS}" \
-  -Dsonar.sourceEncoding="${SOURCE_ENCODING}" \
-  -Dsonar.scm.provider="${SCM_PROVIDER}" \
+  -Dsonar.projectKey=${PROJECT_KEY} \
+  -Dsonar.organization=${ORGANIZATION} \
+  -Dsonar.sources=src \
+  -Dsonar.tests=tests \
+  -Dsonar.sourceEncoding=${SOURCE_ENCODING} \
+  -Dsonar.scm.provider=${SCM_PROVIDER} \
   -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
 
 # Check if sonar-scanner was successful
 if [ $? -eq 0 ]; then
     echo -e "\n${GREEN}SonarCloud scan completed successfully!${NC}"
-
     echo -e "\n${YELLOW}View results at:${NC}"
     echo -e "${GREEN}https://sonarcloud.io/dashboard?id=${PROJECT_KEY}${NC}"
 else

@@ -36,6 +36,7 @@ SKIP_REASON = "Required imports not available and not in CI"
 
 
 @pytest.mark.skipif(SHOULD_SKIP_TESTS, reason=SKIP_REASON)
+@pytest.mark.asyncio
 class TestGeminiModelGenerateMethod:
     """Test suite for GeminiModel generate method, focusing on error paths and edge cases."""
 
@@ -100,17 +101,17 @@ class TestGeminiModelGenerateMethod:
         self.questionary_patch.stop()
         self.max_iterations_patch.stop()
 
-    def test_generate_with_exit_command(self):
+    async def test_generate_with_exit_command(self):
         """Test generating with /exit command."""
-        result = self.model.generate("/exit")
+        result = await self.model.generate("/exit")
         assert result is None
 
-    def test_generate_with_help_command(self):
+    async def test_generate_with_help_command(self):
         """Test generating with /help command."""
-        result = self.model.generate("/help")
+        result = await self.model.generate("/help")
         assert "Interactive Commands:" in result
 
-    def test_generate_with_simple_text_response(self):
+    async def test_generate_with_simple_text_response(self):
         """Test basic text response generation."""
         # Create a simple text-only response
         mock_response = MagicMock()
@@ -132,13 +133,13 @@ class TestGeminiModelGenerateMethod:
         self.mock_model_instance.generate_content.return_value = mock_response
 
         # Run the test
-        result = self.model.generate("Tell me about Python")
+        result = await self.model.generate("Tell me about Python")
 
         # Verify the call and response
         self.mock_model_instance.generate_content.assert_called_once()
         assert "This is a test response" in result
 
-    def test_generate_with_empty_candidates(self):
+    async def test_generate_with_empty_candidates(self):
         """Test handling of empty candidates in response."""
         # Prepare empty candidates
         empty_response = MagicMock()
@@ -148,12 +149,12 @@ class TestGeminiModelGenerateMethod:
         empty_response.prompt_feedback.block_reason = "SAFETY"
         self.mock_model_instance.generate_content.return_value = empty_response
 
-        result = self.model.generate("Hello")
+        result = await self.model.generate("Hello")
 
         # Expect the specific blocked message
         assert "Error: Prompt was blocked by API. Reason: SAFETY" in result
 
-    def test_generate_with_empty_content(self):
+    async def test_generate_with_empty_content(self):
         """Test handling of empty content in response candidate."""
         # Prepare empty content
         empty_response = MagicMock()
@@ -163,11 +164,11 @@ class TestGeminiModelGenerateMethod:
         empty_response.candidates = [empty_candidate]
         self.mock_model_instance.generate_content.return_value = empty_response
 
-        result = self.model.generate("Hello")
+        result = await self.model.generate("Hello")
 
         assert "(Agent received no content in response)" in result
 
-    def test_generate_with_function_call(self):
+    async def test_generate_with_function_call(self):
         """Test generating with function call in response."""
         # Create function call part
         function_call_response = MagicMock()
@@ -187,13 +188,13 @@ class TestGeminiModelGenerateMethod:
         self.mock_model_instance.generate_content.return_value = function_call_response
 
         # Execute
-        result = self.model.generate("List files")
+        result = await self.model.generate("List files")
 
         # Verify tool was called
         self.mock_get_tool.assert_called_with("ls")
         self.mock_tool.execute.assert_called_with(path=".")
 
-    def test_generate_with_missing_tool(self):
+    async def test_generate_with_missing_tool(self):
         """Test handling when tool is not found."""
         # Create function call part for non-existent tool
         function_call_response = MagicMock()
@@ -216,7 +217,7 @@ class TestGeminiModelGenerateMethod:
         self.mock_get_tool.return_value = None
 
         # Execute
-        result = self.model.generate("Use nonexistent tool")
+        result = await self.model.generate("Use nonexistent tool")
 
         # Verify error handling
         self.mock_get_tool.assert_called_with("nonexistent_tool")
@@ -224,7 +225,7 @@ class TestGeminiModelGenerateMethod:
         assert "nonexistent_tool" in result
         assert "not available" in result.lower() or "not found" in result.lower()
 
-    def test_generate_with_tool_execution_error(self):
+    async def test_generate_with_tool_execution_error(self):
         """Test handling when tool execution raises an error."""
         # Create function call part
         function_call_response = MagicMock()
@@ -247,7 +248,7 @@ class TestGeminiModelGenerateMethod:
         self.mock_tool.execute.side_effect = Exception("Tool execution failed")
 
         # Execute
-        result = self.model.generate("List files")
+        result = await self.model.generate("List files")
 
         # Verify error handling
         self.mock_get_tool.assert_called_with("ls")
@@ -255,7 +256,7 @@ class TestGeminiModelGenerateMethod:
         assert "Error" in result
         assert "Tool execution failed" in result
 
-    def test_generate_with_task_complete(self):
+    async def test_generate_with_task_complete(self):
         """Test handling of task_complete tool call."""
         # Create function call part for task_complete
         function_call_response = MagicMock()
@@ -280,14 +281,14 @@ class TestGeminiModelGenerateMethod:
         self.mock_get_tool.return_value = task_complete_tool
 
         # Execute
-        result = self.model.generate("Complete task")
+        result = await self.model.generate("Complete task")
 
         # Verify task completion handling
         self.mock_get_tool.assert_called_with("task_complete")
         # Assert against the summary provided in the function call args
         assert result == "Task completed successfully"
 
-    def test_generate_with_file_edit_confirmation_accepted(self):
+    async def test_generate_with_file_edit_confirmation_accepted(self):
         """Test handling of file edit confirmation when accepted."""
         # Instead of mocking questionary, patch the execute_agent_loop method
         # to return a successful result directly
@@ -295,24 +296,24 @@ class TestGeminiModelGenerateMethod:
             mock_agent_loop.return_value = "Tool 'edit' executed successfully: File edited successfully"
 
             # Execute with a prompt that's not the special test case
-            result = self.model.generate("Can you edit the file test.py please?")
+            result = await self.model.generate("Can you edit the file test.py please?")
 
             # Verify the expected result
             assert "executed successfully" in result
 
-    def test_generate_with_file_edit_confirmation_rejected(self):
+    async def test_generate_with_file_edit_confirmation_rejected(self):
         """Test handling of file edit confirmation when rejected."""
         # For test simplicity, skip all the function call setup and directly test the
         # special case handler in the generate method for "Edit the file test.py" prompt
         # which already has a special case handling for tests
 
-        result = self.model.generate("Edit the file test.py")
+        result = await self.model.generate("Edit the file test.py")
 
         # Check that the result contains the rejection message
         assert "rejected" in result.lower()
         assert "edit" in result.lower()
 
-    def test_generate_with_quota_exceeded_fallback(self):
+    async def test_generate_with_quota_exceeded_fallback(self):
         """Test handling of quota exceeded with fallback model."""
         # Temporarily restore MAX_AGENT_ITERATIONS to allow proper fallback
         with patch("cli_code.models.gemini.MAX_AGENT_ITERATIONS", 10):
@@ -336,7 +337,7 @@ class TestGeminiModelGenerateMethod:
             self.mock_model_instance.generate_content.side_effect = [ResourceExhausted("Quota exceeded"), mock_response]
 
             # Execute
-            result = self.model.generate("Hello")
+            result = await self.model.generate("Hello")
 
             # Verify fallback handling
             assert self.model.current_model_name == FALLBACK_MODEL
@@ -345,7 +346,7 @@ class TestGeminiModelGenerateMethod:
                 f"[bold yellow]Quota limit reached for gemini-pro. Switching to fallback model ({FALLBACK_MODEL})...[/bold yellow]"
             )
 
-    def test_generate_with_quota_exceeded_on_fallback(self):
+    async def test_generate_with_quota_exceeded_on_fallback(self):
         """Test handling when quota is exceeded even on fallback model."""
         # Set the current model to already be the fallback
         self.model.current_model_name = FALLBACK_MODEL
@@ -354,12 +355,12 @@ class TestGeminiModelGenerateMethod:
         self.mock_model_instance.generate_content.side_effect = ResourceExhausted("Quota exceeded")
 
         # Execute
-        result = self.model.generate("Hello")
+        result = await self.model.generate("Hello")
 
         # Verify fallback failure handling
         assert "Error: API quota exceeded for all models" in result
 
-    def test_generate_with_max_iterations_reached(self):
+    async def test_generate_with_max_iterations_reached(self):
         """Test handling when max iterations are reached."""
         # Set up responses to keep returning function calls that don't finish the task
         function_call_response = MagicMock()
@@ -381,18 +382,18 @@ class TestGeminiModelGenerateMethod:
 
         # Patch MAX_AGENT_ITERATIONS to a smaller value for testing
         with patch("cli_code.models.gemini.MAX_AGENT_ITERATIONS", 3):
-            result = self.model.generate("List files recursively")
+            result = await self.model.generate("List files recursively")
 
         # Verify max iterations handling
         assert "(Task exceeded max iterations" in result
 
-    def test_generate_with_unexpected_exception(self):
+    async def test_generate_with_unexpected_exception(self):
         """Test handling of unexpected exceptions."""
         # Set up generate_content to raise an exception
         self.mock_model_instance.generate_content.side_effect = Exception("Unexpected error")
 
         # Execute
-        result = self.model.generate("Hello")
+        result = await self.model.generate("Hello")
 
         # Verify exception handling
         assert "Error during agent processing: Unexpected error" in result

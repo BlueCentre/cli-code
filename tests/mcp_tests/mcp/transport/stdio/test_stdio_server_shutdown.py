@@ -200,16 +200,36 @@ async def test_shutdown_with_null_streams():
     with patch("logging.info") as mock_log_info:
         await shutdown_stdio_server(read_stream=None, write_stream=None, process=mock_process, timeout=1.0)
 
-    # Verify stdin was still closed
+    # Verify stdin was closed (as process still had one)
     mock_process.stdin.aclose.assert_called_once()
+    assert "Process exited normally" in mock_log_info.call_args_list[-2][0][0]
+    assert "Stdio server shutdown complete" in mock_log_info.call_args_list[-1][0][0]
 
-    # Verify process exited normally
+
+async def test_shutdown_process_no_stdin():
+    """Test shutdown when the process object has no stdin attribute."""
+    # Create a mock process that exits normally but lacks stdin
+    mock_process = MockProcess(exit_on_close=True)
+    mock_process.stdin = None  # Explicitly set stdin to None
+
+    # Create mock streams (not used but required by signature)
+    read_send, read_stream = anyio.create_memory_object_stream(max_buffer_size=10)
+    write_stream, write_receive = anyio.create_memory_object_stream(max_buffer_size=10)
+
+    # Call shutdown function
+    with patch("logging.info") as mock_log_info:
+        await shutdown_stdio_server(
+            read_stream=read_stream, write_stream=write_stream, process=mock_process, timeout=1.0
+        )
+
+    # Verify process exited normally (since exit_on_close is True, wait() returns quickly)
+    # The main check is that it didn't crash trying to close None
     assert "Process exited normally" in mock_log_info.call_args_list[-2][0][0]
     assert "Stdio server shutdown complete" in mock_log_info.call_args_list[-1][0][0]
 
 
 async def test_shutdown_with_null_process():
-    """Test shutdown with null process."""
+    """Test shutdown function handles a null process object gracefully."""
     # Create mock streams
     read_send, read_stream = anyio.create_memory_object_stream(max_buffer_size=10)
     write_stream, write_receive = anyio.create_memory_object_stream(max_buffer_size=10)
@@ -220,3 +240,40 @@ async def test_shutdown_with_null_process():
 
     # Verify shutdown completed
     assert "Stdio server shutdown complete" in mock_log_info.call_args[0][0]
+
+
+async def test_shutdown_wait_exception():
+    """Test handling of exceptions raised directly by process.wait()."""
+    # Create a mock process that will raise an error on wait()
+    mock_process = MockProcess()
+
+    # Mock the wait method to raise an exception
+    wait_error = RuntimeError("Wait failed unexpectedly")
+    mock_process.wait = AsyncMock(side_effect=wait_error)
+    mock_process.kill = MagicMock()  # Need a non-async mock for kill in exception handler
+
+    # Mock stdin close
+    mock_process.stdin.aclose = AsyncMock()
+
+    # Create mock streams
+    read_send, read_stream = anyio.create_memory_object_stream(max_buffer_size=10)
+    write_stream, write_receive = anyio.create_memory_object_stream(max_buffer_size=10)
+
+    # Call shutdown function
+    with patch("logging.info") as mock_log_info, patch("logging.error") as mock_log_error:
+        await shutdown_stdio_server(
+            read_stream=read_stream, write_stream=write_stream, process=mock_process, timeout=1.0
+        )
+
+    # Verify the exception was caught and logged
+    mock_log_error.assert_called_once()
+    assert "Unexpected error during stdio server shutdown" in mock_log_error.call_args[0][0]
+    assert str(wait_error) in mock_log_error.call_args[0][0]
+
+    # Verify process was forcibly terminated via kill()
+    mock_process.kill.assert_called_once()
+    # The second wait call happens *after* kill in the except block
+    mock_process.wait.assert_awaited_once()  # Should be awaited once in except block
+
+    assert "Process forcibly terminated" in mock_log_info.call_args_list[-2][0][0]
+    assert "Stdio server shutdown complete" in mock_log_info.call_args_list[-1][0][0]

@@ -142,3 +142,21 @@ directory = "coverage_html"
 
 [tool.coverage.xml]
 output = "coverage.xml"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-asyncio = "^0.26.0"
+pytest-cov = "^6.1.1"
+pytest-mock = "^3.14.0"
+pytest-timeout = "^2.3.1"
+anyio = "^4.9.0"
+trio = "^0.26.0"
+ruff = "^0.5.0"
+pre-commit = "^3.3.3"
+ipython = "^8.12.0"
+ipdb = "^0.13.13"
+pylint = "^3.0.3"
+pytest-xdist = "^3.3.1"
+coverage = {extras = ["toml"], version = "^7.2.7"}
+pytest-clarity = "^1.0.1"
+pytest-sugar = "^1.0.0"

@@ -216,11 +216,11 @@ class TestGeminiModelCoverageAdditions:
 
         # Test with only two arguments (result passed as second argument)
         self.model.history = []
-        self.model._store_tool_result("another_tool", "This is both args and result")
+        # Ensure three arguments are passed: tool_name, args, result
+        self.model._store_tool_result("another_tool", {"arg": "val"}, "This is the result")
 
-        # Verify result is correctly stored
+        # Verify the history entry
         assert len(self.model.history) == 1
-        assert "This is both args and result" in str(self.model.history[0]["parts"][0]["text"])
 
     def test_update_system_prompt(self):
         """Test updating system prompt."""

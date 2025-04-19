@@ -3,8 +3,14 @@
     "memory": {
       "command": "npx -y @modelcontextprotocol/server-memory",
       "env": {
-        "MEMORY_PATH": "scripts/memorystore.json"
+        "MEMORY_FILE_PATH": "scripts/memorystore.json"
       }
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-puppeteer"
+      ]
     },
     "Atlassian MCP": {
       "command": "uvx",
@@ -28,6 +34,18 @@
       "command": "npx -y @modelcontextprotocol/server-github",
       "env": {
         "GITHUB_TOKEN": "{{env.GITHUB_TOKEN}}"
+      }
+    },
+    "sonarqube": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "sonarqube-mcp-server@1.0.0"
+      ],
+      "env": {
+        "SONARQUBE_URL": "https://sonarcloud.io",
+        "SONARQUBE_TOKEN": "{{env.SONAR_TOKEN}}",
+        "SONARQUBE_ORGANIZATION": "{{env.SONAR_ORGANIZATION}}"
       }
     },
     "gcp": {

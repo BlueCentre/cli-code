@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+import traceback
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
@@ -34,40 +35,67 @@ class MockProcess:
         self.stdin.send = AsyncMock()
         self.stdin.aclose = AsyncMock()
         self.stdout = AsyncMock()
+        # Make terminate and kill mock objects to track calls
+        self.terminate = MagicMock()
+        self.kill = MagicMock()
 
     async def wait(self):
         self.returncode = self._exit_code
         return self._exit_code
 
-    def terminate(self):
-        self.returncode = self._exit_code
+    # Keep original terminate/kill logic if needed, but mocks handle tracking
+    # def terminate(self):
+    #     self.returncode = self._exit_code
 
-    def kill(self):
-        self.returncode = self._exit_code
+    # def kill(self):
+    #     self.returncode = self._exit_code
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Ensure terminate/kill were called if exit wasn't clean
+        if exc_type is not None:
+            # In a real scenario, one of these would be called by the context manager
+            # We simulate this call here for testing the assert later
+            # self.terminate() # Or self.kill()
+            pass  # No need to actually call, just check if the context manager called it
         return False
+
+
+class MockAsyncTextStream:
+    """Minimal mock for an async text stream like TextReceiveStream."""
+
+    def __init__(self, lines_to_yield):
+        self._lines = lines_to_yield
+        self._iter = iter(self._lines)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            line = next(self._iter)
+            # Simulate potential chunking
+            if isinstance(line, tuple):
+                await anyio.sleep(0.001)  # Small delay
+                return line[0]
+            else:
+                return line
+        except StopIteration as e:
+            # Raise StopAsyncIteration while preserving the original exception context
+            raise StopAsyncIteration from e
 
 
 async def test_stdio_client_initialization():
     """Test the initialization of stdio client."""
-    # Create StdioServerParameters
     server_params = StdioServerParameters(command="python", args=["-m", "mcp.server"], env={"TEST_ENV": "value"})
-
-    # Skip this test as it's challenging to properly mock the process
-    # and streams in a way that's compatible with the implementation
     pytest.skip("This test requires adjustments to the stdio_client.py implementation")
 
 
 async def test_stdio_client_message_sending():
     """Test sending messages through the stdio client."""
     server_params = StdioServerParameters(command="python", args=["-m", "mcp.server"])
-
-    # Skip this test as it's challenging to properly mock the process
-    # and streams in a way that's compatible with the implementation
     pytest.skip("This test requires adjustments to the stdio_client.py implementation")
 
 
@@ -75,12 +103,7 @@ async def test_stdio_client_message_receiving():
     """Test receiving messages through the stdio client."""
     server_params = StdioServerParameters(command="python", args=["-m", "mcp.server"])
     mock_process = MockProcess()
-
-    # Sample JSON-RPC message from the server
     server_message = {"jsonrpc": "2.0", "id": "resp-1", "result": {"status": "success"}}
-
-    # This test is challenging to implement properly because it depends on internal
-    # implementation details of the stdio_client. Skip for now.
     pytest.skip("This test requires adjustments to the stdio_client.py implementation")
 
 
@@ -105,33 +128,36 @@ async def test_stdio_client_invalid_parameters():
 async def test_stdio_client_process_termination():
     """Test process termination during stdio client shutdown."""
     server_params = StdioServerParameters(command="python", args=["-m", "mcp.server"])
-
-    # Skip this test as it's challenging to properly mock the process
-    # and streams in a way that's compatible with the implementation
     pytest.skip("This test requires adjustments to the stdio_client.py implementation")
 
 
 async def test_stdio_client_with_non_json_output():
     """Test handling of non-JSON output from the server."""
-    # Skip this test as we can't directly test process_json_line
     pytest.skip("Cannot directly test internal function process_json_line")
 
 
 @pytest.fixture
 def mock_stdio_client():
-    """Create a mock StdioClient instance for testing."""
-    # Create a minimal StdioClient instance
-    server_params = StdioServerParameters(command="test")
+    """Create a mock StdioClient instance for testing, including process/streams."""
+    server_params = StdioServerParameters(command="test_cmd")
     client = StdioClient(server_params)
 
-    # Set up the necessary attributes
+    # Mock the process and its streams
     client.process = MockProcess()
-    client.write_stream_reader = AsyncMock()
+    client.process.stdin = AsyncMock()
+    client.process.stdout = MagicMock()  # Needs to be usable with MockAsyncTextStream
 
-    # Set up the outgoing stream
-    mock_outgoing = AsyncMock()
-    read_stream, write_stream = anyio.create_memory_object_stream(10)
-    client.write_stream_reader = AsyncMock()
+    # Mock the internal memory streams used by the client
+    client.read_stream_writer, client.read_stream = anyio.create_memory_object_stream(10)
+    client.write_stream, client.write_stream_reader = anyio.create_memory_object_stream(10)
+
+    # Mock the TaskGroup for __aenter__/__aexit__ tests if needed later
+    client.tg = AsyncMock()
+    client.tg.__aenter__ = AsyncMock(return_value=client.tg)
+    client.tg.__aexit__ = AsyncMock(return_value=False)
+    client.tg.start_soon = MagicMock()
+    client.tg.cancel_scope = MagicMock()
+    client.tg.cancel_scope.cancel = MagicMock()
 
     return client
 
@@ -296,3 +322,228 @@ async def test_send_tool_execute_with_string():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == "test-id"
     assert response["result"]["status"] == "success"
+
+
+async def test_stdout_reader_valid_json(mock_stdio_client):
+    """Test _stdout_reader processing valid JSON lines."""
+    lines = [
+        '{"jsonrpc": "2.0", "id": 1, "result": "ok"}\n',
+        '{"jsonrpc": "2.0", "method": "notify", "params": [1, 2]}\n',
+    ]
+    mock_stdout_stream = MockAsyncTextStream(lines)
+
+    # Patch TextReceiveStream to return our mock stream
+    with patch("mcp_code.mcp_client.transport.stdio.stdio_client.TextReceiveStream", return_value=mock_stdout_stream):
+        # Run the reader in a task group context (simplified)
+        async with mock_stdio_client.read_stream_writer:
+            await mock_stdio_client._stdout_reader()
+
+    # Check messages received on the client's internal read_stream
+    results = []
+    mock_stdio_client.read_stream.receive_nowait()
+    mock_stdio_client.read_stream.receive_nowait()
+    with pytest.raises(anyio.WouldBlock):
+        mock_stdio_client.read_stream.receive_nowait()
+
+
+async def test_stdout_reader_invalid_json(mock_stdio_client):
+    """Test _stdout_reader handling invalid JSON and continuing."""
+    lines = [
+        '{"jsonrpc": "2.0", "id": 1, "result": "ok"}\n',
+        "this is not json\n",
+        '{"jsonrpc": "2.0", "method": "notify2"}\n',
+    ]
+    mock_stdout_stream = MockAsyncTextStream(lines)
+
+    # Use separate with statements for clarity
+    with patch("mcp_code.mcp_client.transport.stdio.stdio_client.TextReceiveStream", return_value=mock_stdout_stream):
+        with patch("logging.error") as mock_log_error:
+            async with mock_stdio_client.read_stream_writer:
+                await mock_stdio_client._stdout_reader()
+
+    # Check that the error was logged
+    # Note: pytest.lazy_fixture isn't standard, using direct string contains check
+    error_logged = False
+    for call_args in mock_log_error.call_args_list:
+        if "JSON decode error" in call_args[0][0]:
+            error_logged = True
+            break
+    assert error_logged, "Expected JSON decode error not logged"
+
+
+async def test_stdout_reader_partial_json(mock_stdio_client):
+    """Test _stdout_reader handling partially received JSON lines."""
+    lines = [
+        '{"jsonrpc": "2.0", ',  # Partial line
+        '"id": 1, "result": "partial_ok"}\n',  # Rest of line
+        '{"method": "complete"}\n',
+    ]
+    mock_stdout_stream = MockAsyncTextStream(lines)
+
+    with patch("mcp_code.mcp_client.transport.stdio.stdio_client.TextReceiveStream", return_value=mock_stdout_stream):
+        async with mock_stdio_client.read_stream_writer:
+            await mock_stdio_client._stdout_reader()
+
+    # Check messages received (add assertions back if needed)
+    results = []
+    try:
+        while True:
+            msg = mock_stdio_client.read_stream.receive_nowait()
+            results.append(msg)
+    except anyio.WouldBlock:
+        pass
+    # Basic check - more detailed assertions can be added
+    assert len(results) == 2
+
+
+async def test_stdout_reader_exception_in_processing(mock_stdio_client):
+    """Test _stdout_reader handling errors during message validation/processing."""
+    lines = ['{"jsonrpc": "2.0", "id": 1, "result": "ok"}\n']
+    mock_stdout_stream = MockAsyncTextStream(lines)
+
+    # Mock the internal _process_json_line to raise an error
+    process_error = ValueError("Validation Failed")
+    # Assign the mock directly to the instance attribute
+    mock_stdio_client._process_json_line = AsyncMock(side_effect=process_error)
+
+    # Patch TextReceiveStream and logging.error using nested with statements
+    with patch("mcp_code.mcp_client.transport.stdio.stdio_client.TextReceiveStream", return_value=mock_stdout_stream):
+        with patch("logging.error") as mock_log_error:
+            async with mock_stdio_client.read_stream_writer:  # Ensure TaskGroup context is handled
+                # The reader itself shouldn't crash
+                await mock_stdio_client._stdout_reader()
+
+            # Check that _process_json_line was called
+            mock_stdio_client._process_json_line.assert_awaited_once_with({"jsonrpc": "2.0", "id": 1, "result": "ok"})
+
+            # Check that the processing error was logged
+            mock_log_error.assert_called_once()
+            assert "Error processing JSON line" in mock_log_error.call_args[0][0]
+            assert str(process_error) in mock_log_error.call_args[0][0]
+
+
+async def test_stdout_reader_stream_closure(mock_stdio_client):
+    """Test _stdout_reader handles stream closure gracefully."""
+    lines = ['{"id": 1}\n']
+    mock_stdout_stream = MockAsyncTextStream(lines)
+
+    # Simulate ClosedResourceError during iteration
+    async def mock_anext(*args):
+        yield lines[0]
+        raise anyio.ClosedResourceError
+
+    mock_stdout_stream.__aiter__ = mock_anext
+
+    # Use nested with statements for patching
+    with patch("mcp_code.mcp_client.transport.stdio.stdio_client.TextReceiveStream", return_value=mock_stdout_stream):
+        with patch("logging.debug") as mock_log_debug:
+            async with mock_stdio_client.read_stream_writer:
+                await mock_stdio_client._stdout_reader()
+
+    # Check the debug message for stream closure
+    mock_log_debug.assert_any_call("Read stream closed.")
+
+
+async def test_stdio_client_aenter_aexit(mock_stdio_client):
+    """Test the basic __aenter__ and __aexit__ flow."""
+    # Mock open_process
+    mock_process = MockProcess()
+    mock_open_process = AsyncMock(return_value=mock_process)
+
+    # Mock get_default_environment
+    mock_get_env = MagicMock(return_value={"ENV": "test"})
+
+    with (
+        patch("anyio.open_process", mock_open_process) as mock_open_process_ctx,
+        patch("mcp_code.mcp_client.host.environment.get_default_environment", mock_get_env) as mock_get_env_ctx,
+    ):
+        async with mock_stdio_client as (r_stream, w_stream):
+            # Check streams are returned
+            assert r_stream is mock_stdio_client.read_stream
+            assert w_stream is mock_stdio_client.write_stream
+
+            # Check process was started
+            mock_open_process_ctx.assert_awaited_once_with(
+                ["test_cmd"],  # command + args from fixture params
+                env={"ENV": "test"},
+                stderr=sys.stderr,
+            )
+            assert mock_stdio_client.process is mock_process
+
+            # Check task group was started
+            mock_stdio_client.tg.__aenter__.assert_awaited_once()
+            assert mock_stdio_client.tg.start_soon.call_count == 2
+
+        # Check __aexit__ behavior
+        mock_stdio_client.tg.cancel_scope.cancel.assert_called_once()
+        mock_stdio_client.tg.__aexit__.assert_awaited_once()
+        # Check _terminate_process was called (needs more detailed mock)
+        # For now, just check if the process methods were called via the mock
+        assert mock_process.terminate.called or mock_process.kill.called
+
+
+async def test_stdio_client_context_manager():
+    """Test the stdio_client async context manager wrapper."""
+    server_params = StdioServerParameters(command="test_ctx")
+    mock_process = MockProcess()
+
+    with (
+        patch("anyio.open_process", AsyncMock(return_value=mock_process)) as mock_open_proc,
+        patch("mcp_code.mcp_client.transport.stdio.stdio_client.StdioClient.__aenter__") as mock_aenter,
+        patch("mcp_code.mcp_client.transport.stdio.stdio_client.StdioClient.__aexit__") as mock_aexit,
+    ):
+        # Mock __aenter__ to return mock streams
+        mock_read, mock_write = AsyncMock(), AsyncMock()
+        mock_aenter.return_value = (mock_read, mock_write)
+
+        async with stdio_client(server_params) as (r, w):
+            assert r is mock_read
+            assert w is mock_write
+            mock_aenter.assert_awaited_once()
+            # __aexit__ is not awaited yet
+            mock_aexit.assert_not_awaited()
+
+        # After exiting the block, __aexit__ should be awaited
+        mock_aexit.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "line, expect_error, log_msg",
+    [
+        # Valid JSON-RPC message (result)
+        ('{"jsonrpc": "2.0", "id": 1, "result": true}', False, None),
+        # Valid JSON-RPC message (notification)
+        ('{"jsonrpc": "2.0", "method": "notify"}', False, None),
+        # Invalid JSON string
+        ("invalid json", True, "Failed to decode JSON"),  # Updated expected log msg
+        # Valid JSON but invalid RPC (empty object)
+        ("{}", True, "Error processing JSON line"),  # Updated expected log msg
+        # Valid JSON but invalid RPC (wrong version)
+        ('{"jsonrpc": "1.0"}', True, "Error processing JSON line"),  # Updated expected log msg
+    ],
+)
+async def test_process_json_line(mock_stdio_client, line, expect_error, log_msg):
+    """Test _process_json_line with valid and invalid data."""
+    # Mock the send stream to capture output
+    mock_stdio_client.read_stream = AsyncMock()
+    mock_stdio_client.read_stream.send = AsyncMock()
+
+    with patch("logging.error") as mock_log_error:
+        # Process the raw line string (simulate what _stdout_reader does)
+        await mock_stdio_client._process_json_line(line)
+
+    if expect_error:
+        mock_log_error.assert_called_once()
+        assert log_msg in mock_log_error.call_args[0][0]
+        # Ensure nothing sent on success stream on error
+        mock_stdio_client.read_stream.send.assert_not_called()
+    else:
+        mock_log_error.assert_not_called()
+        # Check if a message was sent successfully
+        mock_stdio_client.read_stream.send.assert_awaited_once()
+        # Verify the sent message is a JSONRPCMessage object
+        sent_msg = mock_stdio_client.read_stream.send.call_args[0][0]
+        assert isinstance(sent_msg, JSONRPCMessage)
+        # Optionally, check content based on the input 'line'
+        original_data = json.loads(line)
+        assert sent_msg.model_dump(exclude_none=True) == original_data

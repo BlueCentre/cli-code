@@ -8,6 +8,7 @@ from rich.console import Console
 from cli_code.models.gemini import GeminiModel
 
 
+@pytest.mark.asyncio
 class TestGeminiModelAdditionalCoverage:
     """Additional tests to improve code coverage for GeminiModel."""
 
@@ -34,14 +35,14 @@ class TestGeminiModelAdditionalCoverage:
         # Make generate_content raise AttributeError directly
         mock_gen_model.generate_content.side_effect = AttributeError("No 'text' attribute")
 
-        # Call generate method
-        result = model.generate("Test prompt")
+        # Call generate method using sync_generate
+        result = model.sync_generate("Test prompt")
 
         # Verify error handling for AttributeError
         assert "Error during agent processing" in result
 
     @patch("vertexai.generative_models.GenerativeModel")
-    def test_error_handling_quota_exceeded(self, mock_generative_model, model):
+    async def test_error_handling_quota_exceeded(self, mock_generative_model, model):
         """Test handling of quota exceeded errors (lines 362-374)."""
         # Setup mocks
         mock_gen_model = MagicMock()
@@ -60,13 +61,13 @@ class TestGeminiModelAdditionalCoverage:
         # Mock the _handle_quota_exceeded method to return a predictable result
         with patch.object(model, "_handle_quota_exceeded", return_value="Quota exceeded for API"):
             # Call generate method
-            result = model.generate("Test prompt")
+            result = await model.generate("Test prompt")
 
             # Verify quota error handling
             assert "Quota exceeded" in result
 
     @patch("vertexai.generative_models.GenerativeModel")
-    def test_error_handling_rate_limit(self, mock_generative_model, model):
+    async def test_error_handling_rate_limit(self, mock_generative_model, model):
         """Test handling of rate limit errors (lines 380-384)."""
         # Setup mocks
         mock_gen_model = MagicMock()
@@ -87,13 +88,13 @@ class TestGeminiModelAdditionalCoverage:
             model, "_handle_general_exception", return_value="Rate limit exceeded, please try again later"
         ):
             # Call generate method
-            result = model.generate("Test prompt")
+            result = await model.generate("Test prompt")
 
             # Verify rate limit error handling
             assert "Rate limit" in result
 
     @patch("vertexai.generative_models.GenerativeModel")
-    def test_error_handling_server_error(self, mock_generative_model, model):
+    async def test_error_handling_server_error(self, mock_generative_model, model):
         """Test handling of server errors (lines 390-393)."""
         # Setup mocks
         mock_gen_model = MagicMock()
@@ -112,13 +113,13 @@ class TestGeminiModelAdditionalCoverage:
         # Directly mock the _handle_general_exception method
         with patch.object(model, "_handle_general_exception", return_value="A server error occurred: 5xx"):
             # Call generate method
-            result = model.generate("Test prompt")
+            result = await model.generate("Test prompt")
 
             # Verify server error handling
             assert "server error" in result.lower()
 
     @patch("vertexai.generative_models.GenerativeModel")
-    def test_error_handling_safety_error(self, mock_generative_model, model):
+    async def test_error_handling_safety_error(self, mock_generative_model, model):
         """Test handling of safety errors (lines 403-406)."""
         # Setup mocks
         mock_gen_model = MagicMock()
@@ -137,13 +138,13 @@ class TestGeminiModelAdditionalCoverage:
         # Directly mock the _handle_general_exception method
         with patch.object(model, "_handle_general_exception", return_value="Response blocked due to safety settings"):
             # Call generate method
-            result = model.generate("Test prompt")
+            result = await model.generate("Test prompt")
 
             # Verify safety error handling
             assert "safety" in result.lower()
 
     @patch("vertexai.generative_models.GenerativeModel")
-    def test_error_handling_context_length(self, mock_generative_model, model):
+    async def test_error_handling_context_length(self, mock_generative_model, model):
         """Test handling of context length errors (lines 414-428)."""
         # Setup mocks
         mock_gen_model = MagicMock()
@@ -162,7 +163,7 @@ class TestGeminiModelAdditionalCoverage:
         # Directly mock the _handle_general_exception method
         with patch.object(model, "_handle_general_exception", return_value="Input exceeds maximum context length"):
             # Call generate method
-            result = model.generate("Test prompt")
+            result = await model.generate("Test prompt")
 
             # Verify context length error handling
             assert "context length" in result.lower()
@@ -213,7 +214,7 @@ class TestGeminiModelAdditionalCoverage:
 
     @patch("vertexai.generative_models.GenerativeModel")
     @patch("cli_code.models.gemini.get_tool")
-    def test_handle_tool_calls(self, mock_get_tool, mock_generative_model, model):
+    async def test_handle_tool_calls(self, mock_get_tool, mock_generative_model, model):
         """Test handling of tool calls (lines 1062-1097)."""
         # Setup mock model and response
         mock_gen_model = MagicMock()
@@ -241,7 +242,7 @@ class TestGeminiModelAdditionalCoverage:
         # Mock the agent loop behavior - make sure it processes one iteration then stops
         with patch.object(model, "_process_agent_iteration", return_value=("complete", "Tool executed successfully")):
             # Call generate method
-            result = model.generate("Run a function")
+            result = await model.generate("Run a function")
 
             # Verify the tool call was processed
             assert result == "Tool executed successfully"

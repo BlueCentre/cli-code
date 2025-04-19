@@ -3,6 +3,16 @@ Placeholder for Tool Registry utility.
 """
 
 
+# --- Custom Exception ---
+class ToolNotFound(Exception):
+    """Custom exception for when a tool is not found in the registry."""
+
+    pass
+
+
+# --- End Custom Exception ---
+
+
 class ToolRegistry:
     """Placeholder class for managing available tools."""
 

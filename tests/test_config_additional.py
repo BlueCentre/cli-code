@@ -1,20 +1,18 @@
 """
-Additional tests for config.py focused on improving coverage.
-
-This test file targets specific uncovered lines in config.py:
-- Lines 40-41: Error handling in get_app_config_dir
-- Line 182: Specific condition in get_config_from_user
-- Lines 261-263: Error handling in CliConfig.reset_config
+Test configuration functionality.
 """
 
+# Standard Library
 import os
 import tempfile
-from unittest.mock import MagicMock, mock_open, patch
 from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
 
+# Third-party Libraries
 import pytest
 from pytest import raises
 
+# Local Application/Library Specific Imports
 from cli_code.config import Config
 
 

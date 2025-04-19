@@ -1,9 +1,14 @@
 [run]
-source = src.cli_code
+source =
+    src.cli_code
+    src.mcp_code
 include =
     */src/cli_code/*.py
     */src/cli_code/*/*.py
     */src/cli_code/*/*/*.py
+    */src/mcp_code/*.py
+    */src/mcp_code/*/*.py
+    */src/mcp_code/*/*/*.py
 omit =
     */.rules/*
     */.venv/*

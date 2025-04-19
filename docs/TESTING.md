@@ -159,6 +159,54 @@ Recent work with the Google Generative AI (Gemini) API highlighted several key l
    - Mocking `questionary.confirm()` requires special attention since it returns an object with an `.ask()` method
    - Create a proper mock structure: `mock_confirm_obj.ask.return_value = True/False`
 
+### MCP Module Testing
+
+Testing the MCP client modules requires careful attention to mocking internal functions and understanding the module architecture:
+
+1. **Understanding Internal Function Imports**:
+   - Many MCP modules use internal functions that shouldn't be imported directly in tests
+   - Use `patch` to target the correct import path rather than importing internal functions directly
+   - For example:
+     ```python
+     # Instead of importing and mocking _connect_and_execute
+     # Use this to patch where it's used
+     mocker.patch("mcp_code.mcp_client.host.server_manager._connect_and_execute")
+     ```
+
+2. **Testing Asynchronous Functions**:
+   - Use `AsyncMock` for mocking async functions and `assert_awaited_once` to verify calls
+   - For complex error handling in async functions, patch at higher levels to test behavior rather than implementation
+   - Use `pytest.mark.anyio` to ensure proper async test environment
+
+3. **Mock Function Side Effects**:
+   - When mocking functions that are called multiple times with different arguments, use `side_effect` instead of `return_value`
+   - Example for `load_config` which is called twice with different arguments:
+     ```python
+     async def load_config_side_effect(*args, **kwargs):
+         if len(args) > 1 and args[1] == server_name:
+             # When called with server_name, return server parameters
+             return mock_params
+         # Otherwise return a dummy config with the server
+         return {"mcpServers": {server_name: {}}, "defaultServer": server_name}
+
+     mock_load_config = mocker.patch(
+         "mcp_code.mcp_client.host.server_manager.load_config",
+         new_callable=AsyncMock,
+         side_effect=load_config_side_effect
+     )
+     ```
+
+4. **Context Manager Mocking**:
+   - For context managers used in async functions, mock both `__aenter__` and `__aexit__`
+   - Return appropriate values from `__aenter__` that match what the function under test expects
+   - For the stdio_client context manager, return a tuple of (reader, writer) mocks
+
+5. **Testing Error Paths**:
+   - For functions that catch and handle exceptions, verify:
+     - The appropriate error message is printed
+     - The return value reflects the error state
+     - Cleanup operations are performed even when errors occur
+
 ### Maintaining Test Stability
 
 1. **Focus on Key Behaviors**: Test that the core functionality works, not the implementation details.
