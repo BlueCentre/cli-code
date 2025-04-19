@@ -30,4 +30,4 @@ This file documents the tools available in the CLI code assistant.
 - **summarize_code**: Create a summary of code in a file
 - **test_runner**: Run tests for the codebase
 
-Each tool follows a consistent interface for easy extension and maintenance. 
+Each tool follows a consistent interface for easy extension and maintenance.

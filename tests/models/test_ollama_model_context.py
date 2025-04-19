@@ -91,7 +91,7 @@ class TestOllamaModelContext:
         assert ollama_model.history[0]["role"] == "system"
         assert ollama_model.history[0]["content"] == ollama_model.system_prompt
 
-    @patch("src.cli_code.utils.count_tokens")
+    @patch("src.cli_code.cli_utils.count_tokens")
     def test_manage_ollama_context_no_truncation_needed(self, mock_count_tokens, ollama_model):
         """Test _manage_ollama_context when truncation is not needed."""
         # Setup count_tokens to return a small number of tokens
@@ -112,7 +112,7 @@ class TestOllamaModelContext:
     @pytest.mark.skip(
         reason="Mysterious failure: truncation doesn't reduce length despite mock forcing high token count. Revisit."
     )
-    @patch("src.cli_code.utils.count_tokens")
+    @patch("src.cli_code.cli_utils.count_tokens")
     def test_manage_ollama_context_truncation_needed(self, mock_count_tokens, ollama_model):
         """Test _manage_ollama_context when truncation is needed (mocking token count correctly)."""
         # Configure mock_count_tokens return value.
@@ -159,7 +159,7 @@ class TestOllamaModelContext:
         # so the *last* message should always be preserved if truncation happens.
         assert ollama_model.history[-1]["content"] == last_message_content
 
-    @patch("src.cli_code.utils.count_tokens")
+    @patch("src.cli_code.cli_utils.count_tokens")
     def test_manage_ollama_context_preserves_recent_messages(self, mock_count_tokens, ollama_model):
         """Test _manage_ollama_context preserves recent messages."""
         # Set up token count to exceed the limit to trigger truncation

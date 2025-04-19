@@ -17,7 +17,7 @@ git clone https://github.com/BlueCentre/cli-code.git
 cd cli-code
 # Create a virtual environment (optional but recommended)
 # uv venv
-# source .venv/bin/activate 
+# source .venv/bin/activate
 
 # Install in editable mode
 uv pip install -e .

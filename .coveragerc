@@ -1,9 +1,14 @@
 [run]
-source = src.cli_code
+source =
+    src.cli_code
+    src.mcp_code
 include =
     */src/cli_code/*.py
     */src/cli_code/*/*.py
     */src/cli_code/*/*/*.py
+    */src/mcp_code/*.py
+    */src/mcp_code/*/*.py
+    */src/mcp_code/*/*/*.py
 omit =
     */.rules/*
     */.venv/*
@@ -13,9 +18,6 @@ omit =
     */venv/*
     */.pytest_cache/*
     */site-packages/*
-    # Excluded as it primarily contains integration code with external dependencies
-    # that is difficult to test without mocking the entire Ollama API
-    # */src/cli_code/models/ollama.py
 
 [report]
 exclude_lines =

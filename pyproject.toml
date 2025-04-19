@@ -31,6 +31,7 @@ dependencies = [
     "openai>=1.0.0", # Add openai library dependency
     "protobuf>=4.0.0", # Add protobuf for schema conversion
     "google-cloud-aiplatform", # Add vertexai dependency
+    "anyio>=3.6.0",            # <-- ADDED for vendored mcp-code
     # Add any other direct dependencies your tools might have (e.g., requests for web_tools)
 ]
 
@@ -39,11 +40,16 @@ dependencies = [
 dev = [
     "build>=1.0.0",   # For building the package
     "pytest>=7.0.0",  # For running tests
+    "pytest-asyncio>=0.21.0", # <-- ADDED for MCP async tests
     "pytest-timeout>=2.2.0",  # For test timeouts
     "pytest-mock>=3.6.0", # Add pytest-mock dependency for mocker fixture
     "ruff>=0.1.0",    # For linting and formatting
     "protobuf>=4.0.0", # Also add to dev dependencies
     "pre-commit>=3.5.0",  # For pre-commit hooks
+    "mypy>=1.0.0",
+    "types-requests", # For requests type hints
+    "types-toml", # For toml type hints
+    "ollama>=0.1.0", # Added for Ollama model tests
     # Add other dev tools like coverage, mypy etc. here if needed
 ]
 
@@ -55,14 +61,15 @@ dev = [
 [project.scripts]
 cli-code = "cli_code.main:cli"
 
-# Remove the automatic package finding
-# [tool.setuptools.packages.find]
-# where = ["src"]  # look for packages in src/
-
-# Explicitly list packages
+# Add the package-dir mapping directly under [tool.setuptools]
 [tool.setuptools]
-packages = ["cli_code", "cli_code.models", "cli_code.tools"]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
+
+# Use automatic package finding for src-layout, specifying includes
+[tool.setuptools.packages.find]
+where = ["src"]  # look for packages in src/
+include = ["cli_code*", "mcp_code*"] # Explicitly include our packages
+namespaces = false
 
 # Add Ruff configuration
 [tool.ruff]
@@ -96,13 +103,15 @@ unfixable = []
 
 # Add pytest and pytest-cov configuration
 [tool.pytest.ini_options]
+# Adding pythonpath here for consistency, although pytest.ini should also work
+pythonpath = ["src"]
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 
 [tool.coverage.run]
-source = ["cli_code"]
+source = ["cli_code", "mcp_code"] # Include mcp_code in coverage source
 omit = [
     "*/.rules/*",
     "*/.venv/*",
@@ -126,10 +135,28 @@ exclude_lines = [
 ]
 precision = 2
 show_missing = true
-fail_under = 60  # Minimum coverage percentage required
+fail_under = 80  # Minimum coverage percentage required
 
 [tool.coverage.html]
 directory = "coverage_html"
 
 [tool.coverage.xml]
 output = "coverage.xml"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-asyncio = "^0.26.0"
+pytest-cov = "^6.1.1"
+pytest-mock = "^3.14.0"
+pytest-timeout = "^2.3.1"
+anyio = "^4.9.0"
+trio = "^0.26.0"
+ruff = "^0.5.0"
+pre-commit = "^3.3.3"
+ipython = "^8.12.0"
+ipdb = "^0.13.13"
+pylint = "^3.0.3"
+pytest-xdist = "^3.3.1"
+coverage = {extras = ["toml"], version = "^7.2.7"}
+pytest-clarity = "^1.0.1"
+pytest-sugar = "^1.0.0"

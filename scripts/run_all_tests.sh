@@ -21,4 +21,4 @@ else
   echo "Try running core tests only: ./run_core_tests.sh"
 fi
 
-exit $exit_code 
+exit $exit_code

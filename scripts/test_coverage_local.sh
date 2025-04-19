@@ -37,14 +37,14 @@ handle_test_error() {
   TEST_FILE=$1
   EXIT_CODE=$2
   LOG_FILE=$3
-  
+
   echo "----------------------------------------" | tee -a "$SUMMARY_LOG"
   if [ $EXIT_CODE -eq 124 ]; then
     echo "⚠️ WARNING: $TEST_FILE TIMED OUT (after $LOCAL_TIMEOUT seconds)" | tee -a "$SUMMARY_LOG"
   else
     echo "⚠️ WARNING: $TEST_FILE FAILED with exit code $EXIT_CODE" | tee -a "$SUMMARY_LOG"
   fi
-  
+
   # If we have a log file, show the last few lines
   if [ -f "$LOG_FILE" ]; then
     echo "Last 10 lines from log:" | tee -a "$SUMMARY_LOG"
@@ -136,26 +136,26 @@ run_test_group() {
   GROUP_NAME=$1
   shift
   TEST_FILES=("$@")
-  
+
   echo "Running $GROUP_NAME tests..." | tee -a "$SUMMARY_LOG"
-  
+
   for test_file in "${TEST_FILES[@]}"; do
     # Check if file exists
     if [ ! -f "$test_file" ]; then
       echo "Warning: Test file $test_file not found, skipping" | tee -a "$SUMMARY_LOG"
       continue
     fi
-    
+
     echo "Running $test_file with timeout $LOCAL_TIMEOUT seconds..." | tee -a "$SUMMARY_LOG"
     LOG_FILE="$LOG_DIR/local_$(basename $test_file).log"
-    
+
     # Run test with timeout and capture output
     python -m pytest \
       --cov=src.cli_code \
       --cov-append \
       --timeout=$LOCAL_TIMEOUT \
       "$test_file" > "$LOG_FILE" 2>&1
-    
+
     EXIT_CODE=$?
     if [ $EXIT_CODE -ne 0 ]; then
       if [ $EXIT_CODE -eq 124 ]; then
@@ -237,7 +237,7 @@ if [ -f "coverage.xml" ]; then
   echo "✅ coverage.xml file exists" | tee -a "$SUMMARY_LOG"
   # Extract source paths to verify they're correct
   python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); sources = root.find('sources'); print('Source paths in coverage.xml:'); [print(f'  {s.text}') for s in sources.findall('source')]" | tee -a "$SUMMARY_LOG"
-  
+
   # Extract overall coverage percentage
   COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); line_rate = float(root.attrib['line-rate'])*100; print('{:.2f}%'.format(line_rate))")
   echo "Overall coverage percentage: $COVERAGE" | tee -a "$SUMMARY_LOG"
@@ -251,4 +251,4 @@ echo "Local coverage testing completed." | tee -a "$SUMMARY_LOG"
 if [ $FAILED_TESTS -gt 0 -o $TIMED_OUT_TESTS -gt 0 ]; then
   echo "⚠️ Warning: Test run completed with $FAILED_TESTS failing tests and $TIMED_OUT_TESTS timed out tests" | tee -a "$SUMMARY_LOG"
   echo "Check the logs in $LOG_DIR for details" | tee -a "$SUMMARY_LOG"
-fi 
+fi

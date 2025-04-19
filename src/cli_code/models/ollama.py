@@ -7,6 +7,7 @@ from typing import Dict, List
 import questionary  # Import questionary
 from rich.console import Console
 from rich.panel import Panel  # Import Panel
+from rich.status import Status
 
 # Attempt to import the OpenAI client library
 try:
@@ -20,8 +21,8 @@ except ImportError:
     # Log a warning or raise a more specific error during __init__ if openai is None.
     pass
 
+from ..cli_utils import count_tokens  # Import from renamed cli_utils
 from ..tools import AVAILABLE_TOOLS, get_tool  # Import get_tool
-from ..utils import count_tokens  # Import count_tokens
 from .base import AbstractModelAgent
 
 # Import MessageToDict for schema conversion
@@ -398,10 +399,25 @@ class OllamaModel(AbstractModelAgent):
                         return content
                     else:
                         log.warning("Received empty content from model response with no tool calls")
-                        return "The model provided an empty response. Please try again with a more specific question."
+                        return self._handle_empty_response()
 
             except Exception as e:
                 log.error(f"Error during Ollama agent iteration {iteration_count}: {e}", exc_info=True)
+
+                # Handle specific error types
+                error_msg = str(e).lower()
+
+                # Check for context length exceeded
+                if "maximum context length" in error_msg or "context length" in error_msg or "token limit" in error_msg:
+                    log.warning("Context length exceeded error detected")
+                    return self._handle_max_tokens_error(e)
+
+                # Check for recitation error
+                elif "recitation" in error_msg:
+                    log.warning("Recitation error detected")
+                    return self._handle_recitation_error(e)
+
+                # Handle other errors
                 self.console.print(f"[bold red]Error during Ollama interaction:[/bold red] {e}")
                 # Clean history? Pop last user message?
                 if self.history and self.history[-1].get("role") == "user":
@@ -411,6 +427,31 @@ class OllamaModel(AbstractModelAgent):
         # If loop finishes without returning text (e.g., max iterations)
         log.warning(f"Ollama agent loop reached max iterations ({MAX_OLLAMA_ITERATIONS}).")
         return "(Agent reached maximum iterations)"
+
+    def _handle_empty_response(self) -> str:
+        """Handle empty responses from the model."""
+        log.warning("Received empty response from model")
+        return "The model provided an empty response. Please try again or rephrase your request."
+
+    def handle_empty_response(self) -> str:
+        """Public method to handle empty responses from the model."""
+        return self._handle_empty_response()
+
+    def _handle_max_tokens_error(self, exception) -> str:
+        """Handle errors related to maximum token/context length being exceeded."""
+        log.warning(f"Context length exceeded: {exception}")
+        # Clean history
+        if self.history and self.history[-1].get("role") == "user":
+            self.history.pop()
+        return "Error: The request exceeded the model's context length. Please try with a simpler request or clear the conversation history."
+
+    def _handle_recitation_error(self, exception) -> str:
+        """Handle errors related to recitation."""
+        log.warning(f"Recitation error: {exception}")
+        # Clean history
+        if self.history and self.history[-1].get("role") == "user":
+            self.history.pop()
+        return "Error: The model's response was classified as recitation. Please try rephrasing your request."
 
     def list_models(self) -> List[Dict] | None:
         """
@@ -422,19 +463,40 @@ class OllamaModel(AbstractModelAgent):
             return None
         try:
             models_response = self.client.models.list()
-            # The response object is a SyncPage[Model], access data via .data
-            available_models = []
-            for model in models_response.data:
-                # Adapt the OpenAI Model object to our expected dict format
-                model_info = {
-                    "id": model.id,  # Typically the model identifier used in API calls
-                    "name": getattr(model, "name", model.id),  # Use name if available, else id
-                    # Add other potentially useful fields if needed, e.g., owner
-                    # "owned_by": model.owned_by
-                }
-                available_models.append(model_info)
-            log.info(f"Found {len(available_models)} models at {self.api_url}")
-            return available_models
+            log.debug(f"Raw Ollama models list response: {models_response}")
+
+            # Handle both mock responses in tests and actual Ollama responses
+            if hasattr(models_response, "data") and isinstance(models_response.data, list):
+                # This handles mock responses in tests that use the OpenAI format
+                ollama_models = []
+                for model_item in models_response.data:
+                    model_id = getattr(model_item, "id", None)
+                    # Use name if available, otherwise fallback to id
+                    model_name = getattr(model_item, "name", model_id)
+                    if model_id:
+                        model_info = {"id": model_id, "name": model_name}
+                        ollama_models.append(model_info)
+                return ollama_models
+            # Adjust parsing based on observed structure in actual Ollama response: response is dict with 'models' key
+            elif isinstance(models_response, dict) and "models" in models_response:
+                ollama_models_raw = models_response["models"]
+                ollama_models = []
+                for model_data in ollama_models_raw:
+                    # Example: {'name': 'llama3:latest', 'modified_at': '...', 'size': ..., ...}
+                    model_info = {
+                        "id": model_data.get("name"),
+                        "name": model_data.get("name"),  # Often name includes tag
+                        "modified_at": model_data.get("modified_at"),
+                        "size": model_data.get("size"),
+                        # Add other potentially useful fields from model_data
+                    }
+                    ollama_models.append(model_info)
+                log.info(f"Found {len(ollama_models)} models at {self.api_url}")
+                return ollama_models
+            else:
+                # Log unexpected format and return None to indicate failure
+                log.warning(f"Unexpected Ollama models list format: {type(models_response)}")
+                return None
         except Exception as e:
             log.error(f"Error listing models from Ollama at {self.api_url}: {e}", exc_info=True)
             self.console.print(f"[bold red]Error contacting Ollama endpoint '{self.api_url}':[/bold red] {e}")
@@ -589,4 +651,4 @@ class OllamaModel(AbstractModelAgent):
                 log.error(f"Error preparing tool '{name}' for OpenAI format: {e}", exc_info=True)
 
         log.debug(f"Prepared {len(openai_tools)} tools for Ollama API call.")
-        return openai_tools if openai_tools else None
+        return openai_tools if openai_tools else []

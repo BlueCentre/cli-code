@@ -67,4 +67,4 @@ For *this migration*:
 ## 5. Considerations
 
 *   **Lock Files:** This plan focuses on replacing `pip install` and `venv`. We can decide later whether to also replace `pip-tools` with `uv pip compile` for managing lock files (`requirements.txt`/`.lock`). For now, `uv pip install -r requirements.txt` can still be used if needed.
-*   **Developer Adoption:** Ensure all active developers are aware of the switch and update their local environments/workflows. 
+*   **Developer Adoption:** Ensure all active developers are aware of the switch and update their local environments/workflows.

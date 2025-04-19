@@ -88,7 +88,7 @@ class TestDotEnvLoading:
             (
                 """
         # Comment line
-        
+
         INVALID_LINE_NO_PREFIX
         CLI_CODE_VALID_KEY=valid-value
         =missing_key

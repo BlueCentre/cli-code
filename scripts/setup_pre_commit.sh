@@ -24,4 +24,4 @@ echo "Running pre-commit on all files (first time may take a while)..."
 pre-commit run --all-files
 
 echo "✅ Pre-commit hooks have been configured successfully!"
-echo "Now Ruff linting and formatting will run automatically before each commit." 
+echo "Now Ruff linting and formatting will run automatically before each commit."

@@ -35,4 +35,4 @@ This issue tracks the need to improve test coverage for the specified module.
 
 ## Additional Context
 
-[Any additional information that might be helpful] 
+[Any additional information that might be helpful]

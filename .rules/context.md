@@ -34,4 +34,4 @@ Follow these style guidelines when generating or modifying code:
 - Document functions with docstrings
 - Keep functions focused on a single responsibility
 
-This context is used to initialize the assistant's knowledge about the project. 
+This context is used to initialize the assistant's knowledge about the project.

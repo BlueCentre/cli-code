@@ -31,7 +31,7 @@ fi
 if [ ! -f "coverage.xml" ]; then
     echo -e "${YELLOW}No coverage.xml found. Running coverage first...${NC}"
     ./run_coverage.sh
-    
+
     # Check if coverage run was successful
     if [ $? -ne 0 ]; then
         echo -e "${RED}Coverage generation failed. Cannot continue.${NC}"
@@ -39,29 +39,34 @@ if [ ! -f "coverage.xml" ]; then
     fi
 fi
 
+# Extract properties with proper quoting
+PROJECT_KEY=$(grep "sonar.projectKey" sonar-project.properties | cut -d= -f2)
+ORGANIZATION=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2)
+# Use the more specific sources definition
+SOURCES=$(grep -n "sonar.sources" sonar-project.properties | sort -r -n | head -1 | cut -d: -f3 | cut -d= -f2)
+TESTS=$(grep "sonar.tests" sonar-project.properties | tail -1 | cut -d= -f2)
+SOURCE_ENCODING=$(grep "sonar.sourceEncoding" sonar-project.properties | cut -d= -f2)
+SCM_PROVIDER=$(grep "sonar.scm.provider" sonar-project.properties | cut -d= -f2)
+
 # Run sonar-scanner with the same arguments as in CI
 echo -e "${YELLOW}Running sonar-scanner...${NC}"
 sonar-scanner \
   -Dsonar.python.coverage.reportPaths=coverage.xml \
   -Dsonar.host.url=https://sonarcloud.io \
-  -Dsonar.projectKey=$(grep "sonar.projectKey" sonar-project.properties | cut -d= -f2) \
-  -Dsonar.organization=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2) \
-  -Dsonar.sources=$(grep "sonar.sources" sonar-project.properties | cut -d= -f2) \
-  -Dsonar.tests=$(grep "sonar.tests" sonar-project.properties | cut -d= -f2) \
-  -Dsonar.sourceEncoding=$(grep "sonar.sourceEncoding" sonar-project.properties | cut -d= -f2) \
-  -Dsonar.scm.provider=$(grep "sonar.scm.provider" sonar-project.properties | cut -d= -f2) \
+  -Dsonar.projectKey="${PROJECT_KEY}" \
+  -Dsonar.organization="${ORGANIZATION}" \
+  -Dsonar.sources="${SOURCES}" \
+  -Dsonar.tests="${TESTS}" \
+  -Dsonar.sourceEncoding="${SOURCE_ENCODING}" \
+  -Dsonar.scm.provider="${SCM_PROVIDER}" \
   -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
 
 # Check if sonar-scanner was successful
 if [ $? -eq 0 ]; then
     echo -e "\n${GREEN}SonarCloud scan completed successfully!${NC}"
-    
-    # Extract project key for URL
-    PROJECT_KEY=$(grep "sonar.projectKey" sonar-project.properties | cut -d= -f2)
-    ORGANIZATION=$(grep "sonar.organization" sonar-project.properties | cut -d= -f2)
-    
+
     echo -e "\n${YELLOW}View results at:${NC}"
     echo -e "${GREEN}https://sonarcloud.io/dashboard?id=${PROJECT_KEY}${NC}"
 else
     echo -e "\n${RED}SonarCloud scan failed!${NC}"
-fi 
+fi

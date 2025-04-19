@@ -137,4 +137,4 @@ The minimum acceptable coverage for this project is **60%**. This threshold is e
 - Extract complex logic into separate testable functions
 - Use dependency injection to make external dependencies mockable
 - Avoid global state when possible
-- Use clear error handling patterns 
+- Use clear error handling patterns

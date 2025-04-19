@@ -24,7 +24,7 @@ run_test_with_timeout() {
     TEST_FILE=$1
     echo "Testing: $TEST_FILE" | tee -a "$SUMMARY_LOG"
     LOG_FILE="$LOG_DIR/$(basename "$TEST_FILE").log"
-    
+
     # Run test with timeout and capture output to log file
     if timeout $TIMEOUT python -m pytest "$TEST_FILE" -v > "$LOG_FILE" 2>&1; then
         echo "✅ $TEST_FILE completed successfully" | tee -a "$SUMMARY_LOG"
@@ -86,7 +86,7 @@ HANGING_TESTS=()
 for TEST_FILE in $TEST_FILES; do
     run_test_with_timeout "$TEST_FILE"
     EXIT_CODE=$?
-    
+
     if [ $EXIT_CODE -eq 124 ]; then
         HANGING_TESTS+=("$TEST_FILE")
     elif [ $EXIT_CODE -ne 0 ]; then
@@ -130,4 +130,4 @@ if [ ${#HANGING_TESTS[@]} -gt 0 ] || [ ${#FAILED_TESTS[@]} -gt 0 ]; then
     fi
 fi
 
-echo "All tests passed successfully." | tee -a "$SUMMARY_LOG" 
+echo "All tests passed successfully." | tee -a "$SUMMARY_LOG"

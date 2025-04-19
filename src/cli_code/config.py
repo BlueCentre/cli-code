@@ -24,6 +24,23 @@ import yaml
 log = logging.getLogger(__name__)
 
 
+# Helper function to load configuration (used in tests)
+def load_config(config_path: Optional[Union[str, Path]] = None) -> dict:
+    """
+    Load configuration from the specified path or default config.
+
+    This is a helper function used mainly for tests and CLI entry points.
+
+    Args:
+        config_path: Optional path to the configuration file
+
+    Returns:
+        dict: Configuration dictionary
+    """
+    config_instance = Config(config_file_path=config_path)
+    return config_instance.config
+
+
 class Config:
     """
     Configuration management for the CLI Code application.
