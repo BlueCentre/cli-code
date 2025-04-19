@@ -142,12 +142,12 @@ jobs:
           -Dsonar.projectKey=BlueCentre_cli-code
           -Dsonar.organization=vitruviansoftware
           -Dsonar.python.coverage.reportPaths=coverage.xml
-          -Dsonar.sources=src/cli_code,src/mcp_code
+          -Dsonar.sources=src
           -Dsonar.tests=tests
           -Dsonar.sourceEncoding=UTF-8
           -Dsonar.scm.provider=git
-          -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
-          -Dsonar.newCode.referenceBranch=origin/main
+          -Dsonar.newCode.referenceBranch=refs/heads/main
+          # -Dsonar.newCode.referenceBranch=origin/main
 
     # Add specific PR properties based on GitHub context
     - name: SonarCloud PR Analysis
