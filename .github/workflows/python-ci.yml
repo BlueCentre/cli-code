@@ -142,7 +142,7 @@ jobs:
           -Dsonar.projectKey=BlueCentre_cli-code
           -Dsonar.organization=vitruviansoftware
           -Dsonar.python.coverage.reportPaths=coverage.xml
-          -Dsonar.sources=src/cli_code
+          -Dsonar.sources=src/cli_code,src/mcp_code
           -Dsonar.tests=tests
           -Dsonar.sourceEncoding=UTF-8
           -Dsonar.scm.provider=git
