@@ -26,7 +26,7 @@ A CLI tool that provides Claude Code-like capabilities but with the flexibility 
 $ llm config set-default-model gemini-2.5-pro
 
 # Use specific model for current session
-$ llm --model gpt-o1 
+$ llm --model gpt-o1
 ```
 
 ### Configuration
@@ -71,7 +71,7 @@ $ llm config add-api-key google GOOGLE_API_KEY
    - Token tracking and context management
    - `/compact` command implementation
 3. Add basic file operations and tool integration
-4. Expand to OpenAI models 
+4. Expand to OpenAI models
 5. Enhance with advanced tools (search, web access)
 6. Package for distribution (PyPI/npm)
 7. Create documentation and examples
@@ -95,4 +95,4 @@ $ llm config add-api-key google GOOGLE_API_KEY
 - How to handle tool capabilities that differ between models?
 - What's the best local storage approach for conversation history?
 - How to implement efficient codebase indexing for context?
-- Should we support plugins/extensions for custom tools? 
+- Should we support plugins/extensions for custom tools?

@@ -1,6 +1,6 @@
 #!/bin/bash
 # memory.sh - Backup and restore assistant memory
-# Usage: 
+# Usage:
 #   ./scripts/memory.sh backup - Creates a backup of assistant memory
 #   ./scripts/memory.sh restore - Provides instructions to restore memory
 
@@ -20,7 +20,7 @@ function restore_memory() {
     echo "Backup file not found: $BACKUP_FILE"
     exit 1
   fi
-  
+
   echo "This script will help you restore memory in a new assistant session."
   echo "Instructions:"
   echo "1. When starting a new chat with the assistant, paste the following instructions:"
@@ -29,7 +29,7 @@ function restore_memory() {
   echo "Please restore my memory backup from the scripts/memory_backup.json file"
   echo "Steps:"
   echo "1. Read the file content with read_file tool"
-  echo "2. Parse the JSON content" 
+  echo "2. Parse the JSON content"
   echo "3. Create entities and relations from the backup using memory tools"
   echo "4. Confirm when memory has been restored"
   echo "------- COPY ABOVE THIS LINE -------"
@@ -50,4 +50,4 @@ case "$1" in
     echo "  restore - Provides instructions for restoring assistant memory"
     exit 1
     ;;
-esac 
+esac

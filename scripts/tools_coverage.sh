@@ -42,4 +42,4 @@ coverage combine
 coverage report --include="src/cli_code/tools/*"
 coverage html --include="src/cli_code/tools/*"
 
-echo "Tools coverage complete!" 
+echo "Tools coverage complete!"

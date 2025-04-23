@@ -22,4 +22,4 @@ coverage combine
 coverage report --include="src/cli_code/tools/test_runner.py"
 coverage html --include="src/cli_code/tools/test_runner.py"
 
-echo "Test runner coverage complete!" 
+echo "Test runner coverage complete!"

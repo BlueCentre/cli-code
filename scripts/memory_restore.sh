@@ -17,11 +17,11 @@ echo "------- COPY BELOW THIS LINE -------"
 echo "Please restore my memory backup from the scripts/memory_backup.json file"
 echo "Steps:"
 echo "1. Read the file content with read_file tool"
-echo "2. Parse the JSON content" 
+echo "2. Parse the JSON content"
 echo "3. Create entities and relations from the backup using memory tools"
 echo "4. Confirm when memory has been restored"
 echo "------- COPY ABOVE THIS LINE -------"
 echo
 echo "The assistant will then be able to restore its memory from the backup file."
 
-chmod +x "$0" 
+chmod +x "$0"

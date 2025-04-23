@@ -92,4 +92,4 @@ Gemini model initialized successfully.
 Context will be initialized from 3 .rules/*.md files.
 ```
 
-This helps you confirm that your desired context is being used for the conversation. 
+This helps you confirm that your desired context is being used for the conversation.

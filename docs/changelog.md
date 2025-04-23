@@ -40,7 +40,7 @@ All notable changes to this project will be documented in this file.
 - Configuration now supports environment variables via .env file
 - Added test coverage improvements
 
-## [0.1.21] 
+## [0.1.21]
 
 - Implemented native Gemini function calling for much more reliable tool usage
 - Rewritten the tool execution system to use Gemini's built-in function calling capability
@@ -87,4 +87,4 @@ All notable changes to this project will be documented in this file.
 - Fixed tool execution issues: The CLI now properly processes tool calls and executes Bash commands correctly
 - Fixed argument parsing for Bash tool: Commands are now passed as a single argument to avoid parsing issues
 - Improved error handling in tools: Better handling of failures and timeouts
-- Updated model name throughout the codebase to use `gemini-1.5-pro` consistently 
+- Updated model name throughout the codebase to use `gemini-1.5-pro` consistently

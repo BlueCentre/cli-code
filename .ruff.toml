@@ -24,4 +24,4 @@ unfixable = ["E701", "E702"]
 # Enable auto-formatting
 quote-style = "double"
 indent-style = "space"
-line-ending = "auto" 
+line-ending = "auto"

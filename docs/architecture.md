@@ -108,7 +108,7 @@ flowchart TD
     ollama_api[Ollama OpenAI API]
     local_fs[Local File System]
     local_shell[Local Shell]
-    
+
     user -->|Uses| cli_app
     cli_app -->|API calls| gemini_api
     cli_app -->|API calls| ollama_api
@@ -121,7 +121,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     user[Developer]
-    
+
     subgraph cli_system[CLI Code Assistant]
         cli_main[CLI Frontend]
         agent_interface[Model Agent Interface]
@@ -130,11 +130,11 @@ flowchart TD
         tools[Tool Execution Layer]
         config[Configuration]
     end
-    
+
     gemini_api[Google Gemini API]
     ollama_api[Ollama OpenAI API]
     local_fs[Local File System]
-    
+
     user -->|Uses| cli_main
     cli_main -->|Reads settings| config
     cli_main -->|Uses| agent_interface
@@ -187,7 +187,7 @@ flowchart TD
     D -->|No| F{Config File?}
     F -->|Yes| G[Use config]
     F -->|No| H[Use default]
-    
+
     C --> Z[Initialize provider]
     E --> Z
     G --> Z
@@ -214,7 +214,7 @@ flowchart TD
     F -->|No| H{Config File?}
     H -->|Yes| I[Use config]
     H -->|No| J[Use provider default]
-    
+
     C --> Z[Initialize model]
     E --> Z
     G --> Z
@@ -252,7 +252,7 @@ sequenceDiagram
     Agent->>LLM: Send history + tools
     LLM->>Agent: Response or tool call
     Agent->>History: Add model response
-    
+
     alt Tool Call Execution
         Agent->>Tools: Execute tool
         Tools->>Agent: Tool result
@@ -261,7 +261,7 @@ sequenceDiagram
         LLM->>Agent: Next response
         Agent->>History: Add response
     end
-    
+
     Agent->>User: Final response
 ```
 
@@ -336,7 +336,7 @@ The current approach to handling context window constraints includes:
    - Limits history to `MAX_HISTORY_TURNS` (approximately 20 pairs of user/model interactions).
    - Preserves the initial system prompt and recent interactions.
 
-2. **Provider-Specific Handling**: 
+2. **Provider-Specific Handling**:
    - Each provider implementation (Gemini, Ollama) handles context structure according to the provider's API requirements.
    - For Gemini, the history is formatted as a list of message objects with "role" and "parts".
    - For Ollama (OpenAI-compatible), the history is formatted as a list of message objects with "role" and "content".
@@ -362,11 +362,11 @@ flowchart TD
     B --> C{Exceeds Limit?}
     C -->|Yes| D[Trim Context]
     C -->|No| E[Add to Context]
-    
+
     D --> F{Select Strategy}
     F -->|Window| G[Remove Oldest]
     F -->|Summarize| H[Summarize Older]
-    
+
     G --> E
     H --> E
 ```
@@ -399,4 +399,4 @@ flowchart TD
 
 This enhanced context management system will balance maintaining coherent multi-turn conversations with the token limitations of current LLM architectures, providing a more reliable and efficient user experience.
 
-This analysis provides a comprehensive overview of the planned `cli-code` architecture. 
+This analysis provides a comprehensive overview of the planned `cli-code` architecture.
