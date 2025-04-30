@@ -7,6 +7,7 @@ import glob
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional, Union
 
 import google.api_core.exceptions
@@ -17,7 +18,7 @@ import google.generativeai.types as genai_types
 import questionary
 import rich
 from google.api_core.exceptions import GoogleAPIError
-from google.generativeai.types import HarmBlockThreshold, HarmCategory
+from google.generativeai.types import FunctionDeclaration, HarmBlockThreshold, HarmCategory
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -172,17 +173,21 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         """Generate a response using the Gemini model with function calling capabilities."""
         logging.info(f"Agent Loop - Processing prompt: '{prompt[:100]}...' using model '{self.current_model_name}'")
 
+        # --- Start: Handle special commands early ---
+        # Handle special commands *before* adding initial prompt to history or preparing context
+        command_response = self._handle_special_commands(prompt)
+        if command_response is not None:  # Help command returned text
+            return command_response
+        elif prompt.strip().lower() == "/exit":  # Check specifically for /exit after handling
+            return None  # Return None immediately for exit
+        # --- End: Handle special commands early ---
+
         # Early validation
         if not self._validate_prompt_and_model(prompt):
             return "Error: Cannot process empty prompt or model not initialized. Please try again."
 
-        # Add initial user prompt to history
+        # Add initial user prompt to history (only if not a handled command)
         self.add_to_history({"role": "user", "parts": [prompt]})
-
-        # Handle special commands
-        command_response = self._handle_special_commands(prompt)
-        if command_response is not None:
-            return command_response
 
         # Prepare the context and input for the model
         turn_input_prompt = self._prepare_input_context(prompt)
@@ -270,12 +275,18 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
                         return result_value
                     elif result_type == "task_completed":
                         task_completed = True
-                        log.info("Task completed flag is set. Finalizing.")
+                        final_summary = result_value  # Store the summary
+                        # Handle potential None in log message
+                        summary_log_part = f"{final_summary[:100]}..." if final_summary else "None"
+                        log.info(f"Task completed flag is set. Finalizing with summary: {summary_log_part}")
                         break
 
-            # Handle loop completion
+            # Handle loop completion (max iterations or task complete)
+            # Add check for rejection message here before handling normal completion
             if last_text_response and "User rejected" in last_text_response:
+                log.info("Agent loop finished after user rejection.")
                 return last_text_response
+            # Pass the captured final_summary here
             return self._handle_loop_completion(task_completed, final_summary, iteration_count)
 
     def _process_agent_iteration(self, status, last_text_response):
@@ -311,18 +322,27 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
             final_text = self._extract_final_text(response_candidate)
             if final_text.strip():
                 return "complete", final_text.strip()
+            # If stop reason but no text, fall through to process content anyway
 
         # Process the response content
         result = self._process_response_content(response_candidate, status)
-        if result:
-            # Special case: if the result contains "User rejected" for a tool execution,
-            # store it as the last_text_response but don't return it yet; continue the loop
-            if "User rejected" in str(result) and "operation on" in str(result):
-                return "continue", result
-            return "complete", result
 
-        # No immediate result or completion - check if task is completed via flags
-        return "task_completed", None
+        # Check the result type
+        if result is not None:
+            # Check if the result is a rejection message
+            if isinstance(result, str) and "User rejected" in result:
+                log.info("User rejection detected, continuing agent loop.")
+                return "continue", result  # Keep loop going, pass rejection message back
+            else:
+                # Otherwise, assume it's a final text response or task completion signal
+                log.info("Final text response or completion signal received.")
+                return "complete", result
+
+        # If result is None, it means either no actionable content initially,
+        # OR a tool was executed successfully and the loop should continue.
+        log.info("No text response or completion signal, continuing agent loop.")
+        # Return a generic continue message if the tool succeeded but didn't return text
+        return "continue", "Tool executed, continue loop."
 
     def _get_llm_response(self):
         """Get response from the language model."""
@@ -370,9 +390,7 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
     def _process_response_content(self, response_candidate, status):
         """Process the content of a response candidate."""
         # Initialize tracking variables
-        function_call_part_to_execute = None
         text_response_buffer = ""
-        processed_function_call_in_turn = False
 
         # Check for content being None
         if response_candidate.content is None:
@@ -382,30 +400,65 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         if not response_candidate.content.parts:
             return self._handle_empty_parts(response_candidate)
 
-        # Process parts if they exist
+        # Process parts: Execute the *first* function call encountered.
+        processed_function_call_in_turn = False
         for part in response_candidate.content.parts:
-            function_call_part_to_execute, text_response_buffer, processed_function_call_in_turn = (
-                self._process_individual_part(
-                    part,
-                    response_candidate,
-                    function_call_part_to_execute,
-                    text_response_buffer,
-                    processed_function_call_in_turn,
-                    status,
-                )
-            )
+            log.debug(f"-- Processing Part: {part} (Type: {type(part)}) --")
 
-        # Process function call if present
-        if function_call_part_to_execute:
-            return self._execute_function_call(function_call_part_to_execute, status)
+            # Handle function call part
+            if hasattr(part, "function_call") and part.function_call:
+                log.info(f"LLM requested Function Call part: {part.function_call}")
+                # Add the function call request to history
+                self.add_to_history({"role": "model", "parts": [part]})
+                self._manage_context_window()
 
-        # Return text response if present
-        if text_response_buffer:
-            log.info(f"Text response buffer has content ('{text_response_buffer.strip()}'). Finalizing.")
-            return text_response_buffer.strip()
+                # Execute the function call immediately
+                execution_result = self._execute_function_call(part, status)
+                processed_function_call_in_turn = True
 
-        # Handle case with no actionable content
-        return self._handle_no_actionable_content(response_candidate)
+                # If execution returned a message (error, rejection, task complete), return it
+                if execution_result is not None:
+                    log.info(f"Function call execution returned result: {execution_result}")
+                    # Check specifically for rejection to ensure it bubbles up immediately
+                    if isinstance(execution_result, str) and "User rejected" in execution_result:
+                        return execution_result  # Return rejection message immediately
+                    # Otherwise, return the result (could be error or task complete summary)
+                    return execution_result
+                else:
+                    # Tool executed successfully, continue agent loop (return None from this method)
+                    log.info("Function call executed successfully, continuing agent loop.")
+                    return None  # Signal outer loop to continue
+
+            # Handle text part (accumulate text found before any function call)
+            elif hasattr(part, "text") and part.text:
+                llm_text = part.text
+                log.info(f"LLM returned text part: {llm_text[:100]}...")
+                text_response_buffer += llm_text + "\n"
+                # Add text part to history
+                self.add_to_history({"role": "model", "parts": [part]})
+                self._manage_context_window()
+
+            # Handle unexpected part types
+            else:
+                log.warning(f"LLM returned unexpected response part: {part}")
+                # Add unexpected part to history anyway
+                self.add_to_history({"role": "model", "parts": [part]})
+                self._manage_context_window()
+
+        # --- Loop finished ---
+
+        # If we processed a function call that returned None, we already returned None above.
+        # If we exit the loop without processing a function call:
+        if not processed_function_call_in_turn:
+            if text_response_buffer:
+                log.info(f"No function call executed. Returning accumulated text: '{text_response_buffer.strip()}'")
+                return text_response_buffer.strip()
+            else:
+                # Handle case with no actionable content at all
+                return self._handle_no_actionable_content(response_candidate)
+
+        # Should technically be unreachable if a function call was processed
+        return None  # Default return if something unexpected happens
 
     def _handle_null_content(self, response_candidate):
         """Handle the case where the content field is null."""
@@ -426,36 +479,6 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
         elif response_candidate.finish_reason != 1:  # Not STOP
             return f"(Response candidate {response_candidate.index} finished unexpectedly: {response_candidate.finish_reason} with no parts)"
         return None
-
-    def _process_individual_part(
-        self, part, response_candidate, function_call_part, text_buffer, processed_function_call, status
-    ):
-        """Process an individual part from the response."""
-        log.debug(f"-- Processing Part: {part} (Type: {type(part)}) --")
-
-        # Handle function call part
-        if hasattr(part, "function_call") and part.function_call and not processed_function_call:
-            log.info(f"LLM requested Function Call part: {part.function_call}")
-            self.add_to_history({"role": "model", "parts": [part]})
-            self._manage_context_window()
-            function_call_part = part
-            processed_function_call = True
-
-        # Handle text part
-        elif hasattr(part, "text") and part.text:
-            llm_text = part.text
-            log.info(f"LLM returned text part: {llm_text[:100]}...")
-            text_buffer += llm_text + "\n"
-            self.add_to_history({"role": "model", "parts": [part]})
-            self._manage_context_window()
-
-        # Handle unexpected part types
-        else:
-            log.warning(f"LLM returned unexpected response part: {part}")
-            self.add_to_history({"role": "model", "parts": [part]})
-            self._manage_context_window()
-
-        return function_call_part, text_buffer, processed_function_call
 
     def _execute_function_call(self, function_call_part, status):
         """Execute a function call from the LLM."""
@@ -567,6 +590,30 @@ class GeminiModel(AbstractModelAgent):  # Inherit from base class
 
                 # Return the rejection message which will be caught by _execute_function_call
                 return f"User rejected the proposed {tool_name_str} operation on {tool_args.get('file_path', 'unknown file')}"
+
+        except KeyboardInterrupt:
+            # Handle user cancellation explicitly
+            log.warning("User cancelled tool confirmation.")
+            cancellation_message = "User cancelled tool confirmation."
+            # Add cancellation to history (similar to rejection/error)
+            self.history.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "function_response": {
+                                "name": tool_name_str,
+                                "response": {
+                                    "status": "cancelled",
+                                    "message": cancellation_message,
+                                },
+                            }
+                        }
+                    ],
+                }
+            )
+            self._manage_context_window()
+            return cancellation_message  # Return specific cancellation message
 
         except Exception as confirm_err:
             log.error(f"Error during confirmation: {confirm_err}", exc_info=True)
@@ -913,8 +960,15 @@ The user's first message will contain initial directory context and their reques
     def _find_last_model_text(self, history: list) -> str:
         for item in reversed(history):
             if item["role"] == "model":
-                if isinstance(item["parts"][0], str):
-                    return item["parts"][0]
+                parts = item.get("parts")  # Safely get parts
+                # Check if parts exists, is a list, and is not empty
+                if parts and isinstance(parts, list) and len(parts) > 0:
+                    # Check if the first part is a string
+                    if isinstance(parts[0], str):
+                        return parts[0]
+                    # Optional: Check if first part has a 'text' attribute
+                    elif hasattr(parts[0], "text") and parts[0].text:
+                        return parts[0].text.strip()
         return "No text found in history"
 
     # --- Add Gemini-specific history management methods ---

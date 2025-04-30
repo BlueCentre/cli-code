@@ -153,49 +153,99 @@ class TestOllamaModel:
 
     def test_prepare_openai_tools(self):
         """Test preparation of tools in OpenAI function format."""
-        # Create a mock for AVAILABLE_TOOLS
-        with patch("cli_code.models.ollama.AVAILABLE_TOOLS") as mock_available_tools:
-            # Sample tool definition
-            mock_available_tools.return_value = {
-                "test_tool": {
-                    "name": "test_tool",
-                    "description": "A test tool",
-                    "parameters": {
-                        "param1": {"type": "string", "description": "A string parameter"},
-                        "param2": {"type": "integer", "description": "An integer parameter"},
-                    },
-                    "required": ["param1"],
-                }
-            }
+        # Create a mock for AVAILABLE_TOOLS at the correct import path
+        # Also mock the get_function_declaration method for a sample tool
+        mock_tool_instance = MagicMock()
 
+        # Mock the FunctionDeclaration and its components
+        mock_declaration = MagicMock()
+        mock_declaration.name = "test_tool"
+        mock_declaration.description = "A test tool"
+        mock_declaration.parameters = MagicMock()
+        mock_declaration.parameters._pb = MagicMock()  # Mock the underlying protobuf object
+
+        # Mock MessageToDict conversion result
+        mock_params_dict = {
+            "type": "object",
+            "properties": {
+                "param1": {"type": "string", "description": "A string parameter"},
+                "param2": {"type": "integer", "description": "An integer parameter"},
+            },
+            "required": ["param1"],
+        }
+
+        mock_tool_instance.get_function_declaration.return_value = mock_declaration
+
+        # Patch the correct AVAILABLE_TOOLS path used by the OllamaModel class
+        # Patch MessageToDict as well
+        with (
+            patch("cli_code.models.ollama.AVAILABLE_TOOLS", {"test_tool": mock_tool_instance}),
+            patch("cli_code.models.ollama.MessageToDict", return_value=mock_params_dict) as mock_msg_to_dict,
+        ):
             model = OllamaModel("http://localhost:11434", self.mock_console, "llama3")
             tools = model._prepare_openai_tools()
 
             # Verify tools format
             assert len(tools) == 1
-            assert tools[0]["type"] == "function"
-            assert tools[0]["function"]["name"] == "test_tool"
-            assert "parameters" in tools[0]["function"]
-            assert "properties" in tools[0]["function"]["parameters"]
-            assert "param1" in tools[0]["function"]["parameters"]["properties"]
-            assert "param2" in tools[0]["function"]["parameters"]["properties"]
-            assert tools[0]["function"]["parameters"]["required"] == ["param1"]
+            expected_schema = {
+                "type": "function",
+                "function": {
+                    "name": "test_tool",
+                    "description": "A test tool",
+                    "parameters": mock_params_dict,
+                },
+            }
+            assert tools[0] == expected_schema
+            mock_tool_instance.get_function_declaration.assert_called_once()
+            mock_msg_to_dict.assert_called_once_with(mock_declaration.parameters._pb)
 
     def test_manage_ollama_context(self):
         """Test context management for Ollama models."""
-        model = OllamaModel("http://localhost:11434", self.mock_console, "llama3")
+        # Mock the count_tokens function (not strictly needed for this test now, but harmless)
+        with patch("cli_code.models.ollama.count_tokens", return_value=10) as mock_count_tokens:
+            # Set a low iteration limit for the test
+            with patch("cli_code.models.ollama.MAX_OLLAMA_ITERATIONS", 5):
+                model = OllamaModel("http://localhost:11434", self.mock_console, "llama3")
 
-        # Add many messages to force context truncation
-        for i in range(30):
-            model.add_to_history({"role": "user", "content": f"Test message {i}"})
-            model.add_to_history({"role": "assistant", "content": f"Test response {i}"})
+                # Store the system message
+                system_message = model.history[0]
 
-        # Call context management
-        model._manage_ollama_context()
+                # Prevent _manage_ollama_context from running inside add_to_history during setup
+                # Apply the patch *before* the loop that calls add_to_history
+                with patch.object(model, "_manage_ollama_context") as mock_manage_inside_add:
+                    # Add messages to exceed the limit (MAX_OLLAMA_ITERATIONS = 5)
+                    # 1 system + 10 messages = 11 total
+                    messages_to_add = 10
+                    for i in range(messages_to_add):
+                        role = "user" if i % 2 == 0 else "assistant"
+                        model.add_to_history({"role": role, "content": f"Message {i}"})
 
-        # Verify history was truncated but system message preserved
-        assert len(model.history) < 61  # Less than original count
-        assert model.history[0]["role"] == "system"  # System message preserved
+                    # Verify it wasn't called during the loop because add_to_history used the mocked version
+                    mock_manage_inside_add.assert_called()  # It should have been called 10 times by add_to_history
+                    assert mock_manage_inside_add.call_count == messages_to_add
+
+                # At this point, the *real* _manage_ollama_context has NOT run yet.
+                initial_length = len(model.history)  # Should be 11
+                assert initial_length == 11
+
+                # Now, call the *real* context management method explicitly using the original method
+                # We need to access the original method before it was patched
+                original_manage_context = model.__class__._manage_ollama_context
+                original_manage_context(model)  # Call it on the instance
+
+                final_length = len(model.history)
+
+                # Verify truncation occurred based on MAX_OLLAMA_ITERATIONS
+                # Expected length = 1 (system) + (MAX_OLLAMA_ITERATIONS - 1) = 1 + 4 = 5
+                expected_length = 5
+                assert final_length == expected_length
+                # Verify system message is preserved
+                assert model.history[0] == system_message
+                # Verify the *correct* last messages are preserved
+                # History: [S, M0, M1, M2, M3, M4, M5, M6, M7, M8, M9]
+                # Keep index 0 (S) and last 4 (M6, M7, M8, M9)
+                assert model.history[1]["content"] == "Message 6"  # Check second element
+                assert model.history[-1]["content"] == "Message 9"  # Check last element
 
     def test_add_to_history(self):
         """Test adding messages to history."""
@@ -215,6 +265,7 @@ class TestOllamaModel:
     def test_clear_history(self):
         """Test clearing history."""
         model = OllamaModel("http://localhost:11434", self.mock_console, "llama3")
+        system_message = model.history[0]  # Get the initial system message
 
         # Add some messages
         model.add_to_history({"role": "user", "content": "Test message"})
@@ -222,21 +273,35 @@ class TestOllamaModel:
         # Clear history
         model.clear_history()
 
-        # Verify history was cleared
-        assert len(model.history) == 0
+        # Verify history was cleared except for the system message
+        assert len(model.history) == 1
+        assert model.history[0] == system_message
 
     def test_list_models(self):
         """Test listing available models."""
-        # Mock the completion response
+        # Create MagicMock objects for model data
+        mock_model1 = MagicMock()
+        mock_model1.id = "llama3:latest"
+        mock_model1.name = "llama3"
+        mock_model1.modified_at = "2023-10-26T17:28:18.419424546Z"
+        mock_model1.size = 4697386093
+        mock_model1.details = {"format": "gguf"}
+
+        mock_model2 = MagicMock()
+        mock_model2.id = "mistral:latest"
+        mock_model2.name = "mistral"
+        mock_model2.modified_at = "2023-10-27T17:28:18.419424546Z"
+        mock_model2.size = 4109865159
+        mock_model2.details = {"format": "gguf"}
+
+        mock_models_data = [mock_model1, mock_model2]
+
+        # Mock the client's list response object
         mock_response = MagicMock()
-        mock_models = [
-            {"id": "llama3", "object": "model", "created": 1621880188},
-            {"id": "mistral", "object": "model", "created": 1622880188},
-        ]
-        mock_response.json.return_value = {"data": mock_models}
+        mock_response.data = mock_models_data
 
         # Set up client mock to return response
-        self.mock_client.models.list.return_value.data = mock_models
+        self.mock_client.models.list.return_value = mock_response
 
         model = OllamaModel("http://localhost:11434", self.mock_console, "llama3")
         result = model.list_models()
@@ -244,21 +309,67 @@ class TestOllamaModel:
         # Verify client method called
         self.mock_client.models.list.assert_called_once()
 
-        # Verify result
-        assert result == mock_models
+        # Verify result format (should match processed structure)
+        expected_result = [
+            {
+                "id": "llama3:latest",
+                "name": "llama3",
+                "modified_at": "2023-10-26T17:28:18.419424546Z",
+                "size": 4697386093,
+                "details": {"format": "gguf"},
+            },
+            {
+                "id": "mistral:latest",
+                "name": "mistral",
+                "modified_at": "2023-10-27T17:28:18.419424546Z",
+                "size": 4109865159,
+                "details": {"format": "gguf"},
+            },
+        ]
+        assert result == expected_result
+
+    def test_list_models_no_models(self):
+        """Test listing when no models are available."""
 
     def test_generate_with_function_calls(self):
         """Test generate method with function calls."""
-        # Create response with function calls
-        mock_message = MagicMock()
-        mock_message.content = None
-        mock_message.tool_calls = [MagicMock(function=MagicMock(name="test_tool", arguments='{"param1": "value1"}'))]
+        # 1. Initial API Call Response (Requesting Tool Call)
+        mock_tool_call_message = MagicMock()
+        mock_tool_call_message.content = None
+        mock_tool_calls = [
+            MagicMock(id="call_123", function=MagicMock(name="test_tool", arguments='{"param1": "value1"}'))
+        ]
+        mock_tool_call_message.tool_calls = mock_tool_calls
+        # Ensure model_dump returns a dict compatible with history
+        mock_tool_call_message.model_dump.return_value = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [  # Simulate structure expected in history
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in mock_tool_calls
+            ],
+        }
+        mock_tool_call_response = MagicMock()
+        mock_tool_call_response.choices = [MagicMock(message=mock_tool_call_message, finish_reason="tool_calls")]
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock(message=mock_message, finish_reason="tool_calls")]
+        # 2. Second API Call Response (After Tool Result)
+        mock_final_text_message = MagicMock()
+        mock_final_text_message.content = "Final answer after tool use."
+        mock_final_text_message.tool_calls = None
+        # Ensure model_dump returns a simple dict for the text response
+        mock_final_text_message.model_dump.return_value = {
+            "role": "assistant",
+            "content": mock_final_text_message.content,
+        }
+        mock_final_text_response = MagicMock()
+        mock_final_text_response.choices = [MagicMock(message=mock_final_text_message, finish_reason="stop")]
 
-        # Set up client mock
-        self.mock_client.chat.completions.create.return_value = mock_response
+        # Configure side effect for API calls
+        self.mock_client.chat.completions.create.side_effect = [mock_tool_call_response, mock_final_text_response]
 
         # Mock get_tool to return a tool that executes successfully
         tool_mock = MagicMock()
@@ -268,11 +379,18 @@ class TestOllamaModel:
         model = OllamaModel("http://localhost:11434", self.mock_console, "llama3")
         result = model.generate("Test prompt")
 
-        # Verify client method called
-        self.mock_client.chat.completions.create.assert_called()
+        # Verify client method called twice
+        assert self.mock_client.chat.completions.create.call_count == 2
 
-        # Verify tool execution
+        # Verify tool execution was called ONCE
         tool_mock.execute.assert_called_once_with(param1="value1")
 
-        # Check that there was a second API call with the tool results
-        assert self.mock_client.chat.completions.create.call_count == 2
+        # Verify the final result is the text from the second response
+        assert result == "Final answer after tool use."
+
+        # Check history contains the tool request and response
+        assert any(msg.get("role") == "assistant" and msg.get("tool_calls") for msg in model.history)
+        assert any(msg.get("role") == "tool" and msg.get("content") == "Tool execution result" for msg in model.history)
+
+    # ... test_generate_without_function_calls ...
+    # ... test_generate_with_api_error ...

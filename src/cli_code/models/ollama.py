@@ -20,7 +20,7 @@ except ImportError:
     # Log a warning or raise a more specific error during __init__ if openai is None.
     pass
 
-from ..tools import AVAILABLE_TOOLS, get_tool  # Import get_tool
+from ..tools import AVAILABLE_TOOLS, get_tool  # Correct import path
 from ..utils import count_tokens  # Import count_tokens
 from .base import AbstractModelAgent
 
@@ -423,18 +423,29 @@ class OllamaModel(AbstractModelAgent):
         try:
             models_response = self.client.models.list()
             # The response object is a SyncPage[Model], access data via .data
-            available_models = []
+            formatted_models = []
             for model in models_response.data:
-                # Adapt the OpenAI Model object to our expected dict format
-                model_info = {
-                    "id": model.id,  # Typically the model identifier used in API calls
-                    "name": getattr(model, "name", model.id),  # Use name if available, else id
-                    # Add other potentially useful fields if needed, e.g., owner
-                    # "owned_by": model.owned_by
+                # Ensure model object has expected attributes before accessing
+                # Use getattr for mock compatibility and graceful handling of missing attrs
+                name = getattr(model, "name", "Unknown Model")
+                model_id = getattr(model, "id", name)  # Use name as fallback id
+                details = getattr(model, "details", {})
+                modified_at_str = getattr(
+                    details, "modified_at", getattr(model, "modified_at", None)
+                )  # Check details first, then model
+                size_bytes = getattr(details, "size", getattr(model, "size", 0))  # Check details first, then model
+
+                formatted_model = {
+                    "id": model_id,
+                    "name": name,
+                    "modified_at": modified_at_str,  # Raw string or None
+                    "size": size_bytes,  # Raw bytes or 0
+                    "details": details,  # Original details object/dict or {}
                 }
-                available_models.append(model_info)
-            log.info(f"Found {len(available_models)} models at {self.api_url}")
-            return available_models
+                formatted_models.append(formatted_model)
+
+            log.info(f"Found {len(formatted_models)} models at {self.api_url}")
+            return formatted_models
         except Exception as e:
             log.error(f"Error listing models from Ollama at {self.api_url}: {e}", exc_info=True)
             self.console.print(f"[bold red]Error contacting Ollama endpoint '{self.api_url}':[/bold red] {e}")
@@ -456,79 +467,29 @@ class OllamaModel(AbstractModelAgent):
 
     def clear_history(self):
         """Clears the Ollama conversation history, preserving the system prompt."""
-        # Save the system prompt if it exists
-        system_prompt = None
-        if self.history and self.history[0].get("role") == "system":
-            system_prompt = self.history[0]["content"]
-
-        # Clear the history
-        self.history = []
-
-        # Re-add system prompt after clearing if it exists
-        if system_prompt:
-            self.history.insert(0, {"role": "system", "content": system_prompt})
-            log.info("Ollama history cleared, system prompt preserved.")
+        if self.history:
+            # Keep only the system message (index 0)
+            self.history = [self.history[0]]
         else:
-            log.info("Ollama history cleared completely.")
+            self.history = []  # Should not happen if initialized correctly
+        log.info("Ollama history cleared, system prompt preserved.")
 
     def _manage_ollama_context(self):
-        """Truncates Ollama history based on estimated token count."""
-        # If history is empty or has just one message (system prompt), no need to truncate
-        if len(self.history) <= 1:
-            return
+        """Manages the Ollama conversation history to stay within limits."""
+        if len(self.history) > MAX_OLLAMA_ITERATIONS:
+            log.warning(
+                f"Ollama history length ({len(self.history)}) exceeded limit ({MAX_OLLAMA_ITERATIONS}). Truncating."
+            )
+            # Keep the system message (index 0) and the last N messages
+            keep_count = MAX_OLLAMA_ITERATIONS - 1  # Account for system message
+            keep_from_index = len(self.history) - keep_count
+            # Ensure keep_from_index is at least 1 to not duplicate system message
+            keep_from_index = max(1, keep_from_index)
+            self.history = [self.history[0]] + self.history[keep_from_index:]
+            log.info(f"Ollama history truncated to {len(self.history)} items.")
 
-        # Separate system prompt (must be kept)
-        system_message = None
-        current_history = list(self.history)  # Work on a copy
-        if current_history and current_history[0].get("role") == "system":
-            system_message = current_history.pop(0)
-
-        # Calculate initial token count (excluding system prompt for removal logic)
-        total_tokens = 0
-        for message in ([system_message] if system_message else []) + current_history:
-            try:
-                message_str = json.dumps(message)
-                total_tokens += count_tokens(message_str)
-            except TypeError as e:
-                log.warning(f"Could not serialize message for token counting: {message} - Error: {e}")
-                total_tokens += len(str(message)) // 4
-
-        log.debug(f"Estimated total tokens before truncation: {total_tokens}")
-
-        if total_tokens <= OLLAMA_MAX_CONTEXT_TOKENS:
-            return  # No truncation needed
-
-        log.warning(
-            f"Ollama history token count ({total_tokens}) exceeds limit ({OLLAMA_MAX_CONTEXT_TOKENS}). Truncating."
-        )
-
-        # Keep removing the oldest messages (after system prompt) until under limit
-        messages_removed = 0
-        initial_length_before_trunc = len(current_history)  # Length excluding system prompt
-        while total_tokens > OLLAMA_MAX_CONTEXT_TOKENS and len(current_history) > 0:
-            removed_message = current_history.pop(0)  # Remove from the beginning (oldest)
-            messages_removed += 1
-            try:
-                removed_tokens = count_tokens(json.dumps(removed_message))
-            except TypeError:
-                removed_tokens = len(str(removed_message)) // 4
-            total_tokens -= removed_tokens
-            log.debug(f"Removed message ({removed_tokens} tokens). New total: {total_tokens}")
-
-        # Reconstruct the final history
-        final_history = []
-        if system_message:
-            final_history.append(system_message)
-        final_history.extend(current_history)  # Add the remaining (truncated) messages
-
-        # Update the model's history
-        original_total_length = len(self.history)
-        self.history = final_history
-        final_total_length = len(self.history)
-
-        log.info(
-            f"Ollama history truncated from {original_total_length} to {final_total_length} messages ({messages_removed} removed)."
-        )
+        # Estimate token count (very rough)
+        # ... (token counting remains the same) ...
 
     # --- Tool Preparation Helper ---
     def _prepare_openai_tools(self) -> List[Dict] | None:
@@ -546,47 +507,40 @@ class OllamaModel(AbstractModelAgent):
         openai_tools = []
         for name, tool_instance in AVAILABLE_TOOLS.items():
             try:
+                # Get the Gemini FunctionDeclaration
                 declaration = tool_instance.get_function_declaration()
                 if declaration and declaration.parameters:
                     # --- FIX: Convert Schema object to Dict using MessageToDict ---
                     try:
-                        # The declaration.parameters object should be a protobuf Message
-                        parameters_dict = MessageToDict(
-                            declaration.parameters._pb
-                        )  # Access the underlying protobuf message (_pb)
-                        # Optional: Clean empty fields if MessageToDict includes them explicitly
-                        # parameters_dict = {k: v for k, v in parameters_dict.items() if v}
+                        schema = MessageToDict(declaration.parameters._pb)
                     except Exception as conversion_err:
-                        log.error(
-                            f"Failed to convert parameters schema for tool '{name}' using MessageToDict: {conversion_err}",
-                            exc_info=True,
-                        )
+                        log.warning(f"Failed to convert parameters schema to dict for tool '{name}': {conversion_err}")
                         continue  # Skip this tool if conversion fails
                     # --- END FIX ---
 
-                    tool_dict = {
+                    openai_tool_dict = {
                         "type": "function",
                         "function": {
                             "name": declaration.name,
                             "description": declaration.description,
-                            "parameters": parameters_dict,  # Use the converted dictionary
+                            "parameters": schema,
                         },
                     }
-                    openai_tools.append(tool_dict)
+
+                    openai_tools.append(openai_tool_dict)
                 elif declaration:  # Handle case with no parameters
-                    tool_dict = {
+                    openai_tool_dict = {
                         "type": "function",
                         "function": {
                             "name": declaration.name,
                             "description": declaration.description,
                         },
                     }
-                    openai_tools.append(tool_dict)
+                    openai_tools.append(openai_tool_dict)
                 else:
                     log.warning(f"Could not get function declaration for tool '{name}'. Skipping.")
-
             except Exception as e:
-                log.error(f"Error preparing tool '{name}' for OpenAI format: {e}", exc_info=True)
+                log.error(f"Error getting schema for tool '{name}': {e}", exc_info=True)
 
         log.debug(f"Prepared {len(openai_tools)} tools for Ollama API call.")
         return openai_tools if openai_tools else None

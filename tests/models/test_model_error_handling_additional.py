@@ -69,11 +69,21 @@ class TestModelContextHandling:
         # Execute
         original_length = len(model.history)
         model._manage_ollama_context()
+        final_length = len(model.history)
 
         # Assert
-        # Should have removed some messages but kept system prompt
-        assert len(model.history) < original_length
-        assert model.history[0]["role"] == "system"  # System prompt should be preserved
+        # Assert based on MAX_OLLAMA_ITERATIONS (currently 5)
+        # If original length was <= 5, it shouldn't change.
+        # If original length was > 5, it should be truncated to 5.
+        if original_length > 5:
+            assert final_length == 5, f"Expected length 5 after truncation, got {final_length}"
+        else:
+            assert final_length == original_length, (
+                f"Expected length {original_length} (no truncation), got {final_length}"
+            )
+
+        if final_length > 0:
+            assert model.history[0]["role"] == "system"  # Check system prompt preserved
 
     @patch("cli_code.models.gemini.genai")
     def test_gemini_manage_context_window(self, mock_genai, mock_console):
@@ -354,14 +364,21 @@ class TestModelEdgeCases:
         # Mock generative model for initialization
         mock_model = MagicMock()
         mock_genai.GenerativeModel.return_value = mock_model
+        # Setup mock status context manager
+        mock_status = MagicMock()
+        mock_console.status.return_value.__enter__.return_value = mock_status
 
         # Create the model
         model = GeminiModel(api_key="fake_api_key", console=mock_console)
 
         # Mock a response with empty parts
         mock_response = MagicMock()
-        mock_response.candidates = [MagicMock()]
-        mock_response.candidates[0].content.parts = []  # Empty parts
+        mock_candidate = MagicMock()
+        mock_candidate.content = MagicMock()
+        mock_candidate.content.parts = []  # Empty parts
+        mock_candidate.finish_reason = 5  # Example unexpected reason
+        mock_candidate.index = 0  # Add index for error message
+        mock_response.candidates = [mock_candidate]
 
         mock_model.generate_content.return_value = mock_response
 
@@ -369,7 +386,12 @@ class TestModelEdgeCases:
         result = model.generate("Test prompt")
 
         # Assert
-        assert "no content" in result.lower() or "content/parts" in result.lower()
+        # assert "no content" in result.lower() or "content/parts" in result.lower() # OLD
+        # Check the specific message from _handle_empty_parts
+        assert (
+            f"(Response candidate {mock_candidate.index} finished unexpectedly: {mock_candidate.finish_reason} with no parts)"
+            in result
+        )  # NEW
 
     def test_ollama_with_empty_system_prompt(self, mock_console):
         """Test Ollama with an empty system prompt."""
